@@ -8,10 +8,11 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import AuditLog, FileObj, MetricValue, Report, Task, TaskFile, Txn
+from db.models import AuditLog, BankAccount, FileObj, MetricValue, Report, Task, TaskFile, Txn
 from db.session import get_session
 from algorithm.algo.preread import run_preread
 from algorithm.algo.merge import AccountInput, merge_accounts, mode_catalog
@@ -310,11 +311,13 @@ def list_tasks(
     date_from: str | None = None,
     date_to: str | None = None,
     q: str | None = None,
+    trash: int = 0,
     db: Session = Depends(get_session),
     _: None = Depends(require_local_access),
 ):
     """解析结果列表：按银行关心的维度汇总，并支持合格性/风险/解析质量/银行/时间/关键字筛选。"""
     stmt = select(Task).order_by(Task.id.desc()).limit(min(limit, 1000))
+    stmt = stmt.where(Task.deleted_at.is_not(None)) if trash else stmt.where(Task.deleted_at.is_(None))
     if status:
         stmt = stmt.where(Task.status == status)
     rows = db.execute(stmt).scalars().all()
@@ -350,6 +353,80 @@ def list_tasks(
         needle = q.strip().lower()
         items = [i for i in items if needle in (i.get("biz_no") or "").lower()]
     return {"items": items, "total": len(items), "facets": facets}
+
+
+class TaskIdsPayload(BaseModel):
+    task_ids: list[int]
+    confirm: bool = False
+
+
+def _load_tasks(db: Session, ids: list[int]) -> list[Task]:
+    if not ids:
+        raise HTTPException(400, detail={"code": "E_PARAM", "message": "未选择任何流水"})
+    rows = db.execute(select(Task).where(Task.id.in_(ids))).scalars().all()
+    if not rows:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "选中的流水不存在"})
+    return list(rows)
+
+
+@router.post("/recycle")
+def recycle_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
+                  _: None = Depends(require_local_access)):
+    # 批量移入回收站：只标记 deleted_at，明细与报告都保留，可恢复
+    rows = _load_tasks(db, payload.task_ids)
+    now = datetime.utcnow()
+    moved = 0
+    for row in rows:
+        if row.deleted_at is None:
+            row.deleted_at = now
+            moved += 1
+    db.add(AuditLog(action="recycle_tasks", object_type="task", object_id=rows[0].id,
+                    detail=f"ids={sorted(r.id for r in rows)}; moved={moved}"))
+    db.commit()
+    return {"moved": moved, "ids": sorted(r.id for r in rows)}
+
+
+@router.post("/restore")
+def restore_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
+                  _: None = Depends(require_local_access)):
+    # 从回收站恢复
+    rows = _load_tasks(db, payload.task_ids)
+    restored = 0
+    for row in rows:
+        if row.deleted_at is not None:
+            row.deleted_at = None
+            restored += 1
+    db.add(AuditLog(action="restore_tasks", object_type="task", object_id=rows[0].id,
+                    detail=f"ids={sorted(r.id for r in rows)}; restored={restored}"))
+    db.commit()
+    return {"restored": restored, "ids": sorted(r.id for r in rows)}
+
+
+@router.post("/purge")
+def purge_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
+                _: None = Depends(require_local_access)):
+    # 彻底删除：只允许回收站内、且 confirm=true；连同明细/指标/报告/材料关联一起删
+    if not payload.confirm:
+        raise HTTPException(400, detail={"code": "E_CONFIRM", "message": "彻底删除需要 confirm=true"})
+    rows = _load_tasks(db, payload.task_ids)
+    live = [r for r in rows if r.deleted_at is None]
+    if live:
+        raise HTTPException(409, detail={"code": "E_STATE",
+                                         "message": f"这些流水还在用，请先移入回收站：{[r.id for r in live]}"})
+    ids = [r.id for r in rows]
+    purged = 0
+    for task in rows:
+        db.query(Txn).filter(Txn.task_id == task.id).delete()
+        db.query(MetricValue).filter(MetricValue.task_id == task.id).delete()
+        db.query(Report).filter(Report.task_id == task.id).delete()
+        db.query(TaskFile).filter(TaskFile.task_id == task.id).delete()
+        db.query(BankAccount).filter(BankAccount.task_id == task.id).delete()
+        db.delete(task)
+        purged += 1
+    db.add(AuditLog(action="purge_tasks", object_type="task", object_id=ids[0],
+                    detail=f"ids={sorted(ids)}; purged={purged}"))
+    db.commit()
+    return {"purged": purged, "ids": sorted(ids)}
 
 
 @router.post("/{task_id}/reanalyze")

@@ -80,6 +80,7 @@ export interface TaskFacets {
 export interface TaskSummaryList { items: TaskSummary[]; total: number; facets: TaskFacets }
 
 export interface TaskFilters {
+  trash?: number;
   authenticity?: string;
   source?: string;
   risk?: string;
@@ -103,6 +104,7 @@ export async function listTasks(filters: TaskFilters = {}): Promise<TaskSummaryL
   }
   if (filters.min_income !== undefined) params.set('min_income', String(filters.min_income));
   if (filters.max_income !== undefined) params.set('max_income', String(filters.max_income));
+  if (filters.trash) params.set('trash', '1');
   return json<TaskSummaryList>(await authFetch(BASE + '/tasks?' + params.toString()));
 }
 
@@ -318,4 +320,25 @@ export async function saveThresholds(values: Record<string, string | number | nu
 
 export async function resetThresholds(): Promise<{ version: number; values: Record<string, string | number | null> }> {
   return json(await authFetch(BASE + '/thresholds/reset', { method: 'POST' }));
+}
+
+export async function recycleTasks(taskIds: number[]): Promise<{ moved: number }> {
+  return json(await authFetch(BASE + '/tasks/recycle', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_ids: taskIds }),
+  }));
+}
+
+export async function restoreTasks(taskIds: number[]): Promise<{ restored: number }> {
+  return json(await authFetch(BASE + '/tasks/restore', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_ids: taskIds }),
+  }));
+}
+
+export async function purgeTasks(taskIds: number[]): Promise<{ purged: number }> {
+  return json(await authFetch(BASE + '/tasks/purge', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_ids: taskIds, confirm: true }),
+  }));
 }

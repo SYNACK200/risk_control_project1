@@ -116,7 +116,7 @@ def _latest_report(db: Session, task_id: int) -> dict:
 
 
 def collect_entities(db: Session) -> dict:
-    tasks = db.execute(select(Task).where(Task.status == "DONE").order_by(Task.id.desc())).scalars().all()
+    tasks = db.execute(select(Task).where(Task.status == "DONE", Task.deleted_at.is_(None)).order_by(Task.id.desc())).scalars().all()
     accounts: dict[str, dict] = {}
     subjects: dict[str, dict] = {}
     for task in tasks:
@@ -255,7 +255,7 @@ def _merge_subject_legacy(db: Session, holder_key: str, method: str, overlap: st
     if overlap not in {m["id"] for m in OVERLAP_MODES}:
         raise ValueError(f"未知重叠算法：{overlap}")
 
-    tasks = db.execute(select(Task).where(Task.status == "DONE")).scalars().all()
+    tasks = db.execute(select(Task).where(Task.status == "DONE", Task.deleted_at.is_(None))).scalars().all()
     picked = []
     for task in tasks:
         check = task.check_result if isinstance(task.check_result, dict) else {}
@@ -436,7 +436,7 @@ def merge_subject(db: Session, holder_key: str, method: str = "net_internal", ov
     from algorithm.ocr.models import Transaction
 
     mode = method if method in MODES else "net_internal"
-    tasks = db.execute(select(Task).where(Task.status == "DONE")).scalars().all()
+    tasks = db.execute(select(Task).where(Task.status == "DONE", Task.deleted_at.is_(None))).scalars().all()
     picked = []
     for task in tasks:
         check = task.check_result if isinstance(task.check_result, dict) else {}

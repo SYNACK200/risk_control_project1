@@ -17,12 +17,15 @@ logger = logging.getLogger("risk_control")
 async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
     init_db()
+    ensure_columns()
     logger.info("服务启动；数据库已就绪（缺表自动创建）。")
     try:
         yield
     finally:
         logger.info("服务已停止。")
 
+
+from db.migrate import ensure_columns
 
 app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan)
 
