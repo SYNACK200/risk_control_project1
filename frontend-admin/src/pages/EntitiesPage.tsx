@@ -116,6 +116,12 @@ export function EntitiesPage() {
 
         {result && !loading && (
           <section style={{ marginTop: 16 }}>
+            {result.sync && result.sync.sync_months.length > 0 && (
+              <div className="notice info">
+                同步放大：{result.sync.sync_months.length} / {result.sync.months} 个月出现多账户同时大额流出，
+                系数 ×{result.sync.amplify_factor}（超可加：合并风险高于简单相加）
+              </div>
+            )}
             <div className="merge-head">
               <span className={'tag risk-' + result.risk.level}>信用风险 {RISK_TEXT[result.risk.level] ?? result.risk.level}</span>
               <span className="muted">命中 {result.risk.hits} 项 · 覆盖 {result.coverage.months} 个月（{result.coverage.from} ~ {result.coverage.to}）· 重叠 {result.coverage.overlap_months.length} 个月</span>
