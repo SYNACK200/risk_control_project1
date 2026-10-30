@@ -143,7 +143,7 @@ file_layer → content_layer → ledger_layer → external_layer
 | A02–A08、D01、D06、D08 | 交易日期 |
 | C03–C06、B07 | 交易余额 |
 
-真实样本（102 笔）结果：剔除 7 笔（退款 2、理财 1、还款 4），入账由 3897.99 降至 3781.39；月均收入 630.23 元；D02 夜间占比 0.1961（20/102 笔落在 22:00–06:00），E03 返回 null 并注明缺关系数据。2026-10-29 用独立脚本按原始明细重算 40 项，数值全部一致；0 笔明细的微信脱敏件 40 项全部为 null。微信零钱提现等内部划转未命中六类，暂按普通入账处理，待约定是否加第七类。招行脱敏件（30 笔）A01=17957.03（与按明细手算一致），S6 余额链 29 处全闭合，结论「未发现异常」；对手方整列打码，E01/E02 返回 null。
+真实样本（102 笔）结果：剔除 7 笔（退款 2、理财 1、还款 4），入账由 3897.99 降至 3781.39；月均收入 658.56 元（v2 按实际覆盖 5.7419 个整月折算，v1 按 6 个自然月为 630.23 元）；D02 夜间占比 0.1961（20/102 笔落在 22:00–06:00），E03 返回 null 并注明缺关系数据。2026-10-29 用独立脚本按原始明细重算 40 项（v1 口径），数值全部一致；v2 月均类改按实际覆盖整月折算，A02 随之为 658.56；0 笔明细的微信脱敏件 40 项全部为 null。微信零钱提现等内部划转未命中六类，暂按普通入账处理，待约定是否加第七类。招行脱敏件（30 笔）A01=17957.03（与按明细手算一致），S6 余额链 29 处全闭合，结论「未发现异常」；对手方整列打码，E01/E02 返回 null。
 
 # 规则命中当前口径
 
@@ -168,7 +168,7 @@ file_layer → content_layer → ledger_layer → external_layer
 
 # 报告聚合当前口径
 
-`build_report(verdict, metrics, carrier=..., hits=..., transactions=..., txn_ids=..., materials=...)` 输出 contract「报告结构」的 13 个字段：
+`build_report(verdict, metrics, carrier=..., hits=..., transactions=..., txn_ids=..., materials=...)` 输出 contract「报告结构」的 14 个字段（含 `self_check`）：
 
 | 字段 | 来源 |
 | --- | --- |
@@ -178,7 +178,7 @@ file_layer → content_layer → ledger_layer → external_layer
 | metrics / metric_set_version | `compute_metrics()` |
 | threshold_version / conclusions | `evaluate_thresholds()` |
 | trend | `MetricSet.trend`：月收入用剔除后入账，月支出用全部出账 |
-| evidence | 五态证据，按 `(rule_code,page_no,row_no)` 去重；`txn_id` 由页行映射，拿不到时 null 并写受限说明 |
+| evidence | 五态证据 + 阈值结论依据的明细行，`rule_code` 为检查编码或结论编码；按 `(rule_code,page_no,row_no)` 去重，`txn_id` 由页行映射，拿不到时 null 并写受限说明；坐标为 0,0 的文件级证据单独声明不可跳转 |
 | materials | 报告依据的材料清单，调用方（后端 task_file）传入；空清单时在 limitations 声明「材料清单未提供」 |
 | version | 报告版本，调用方传入，从 1 起只增不改 |
 
@@ -209,7 +209,9 @@ file_layer → content_layer → ledger_layer → external_layer
 - `CRYPTO_HIT` 传入 `hits` 时按 `CRYPTO` 标签计数，未传时按摘要词库；与 E06 的标签口径保持一致。
 - 净流出月序列、月均余额、当日进出、放款/涉币金额条件依赖原始明细：`build_report` 传入 `transactions` 才判定，否则只写「未传交易明细」说明。
 - `layers` 按 contract 输出数组；mock 样例是对象，二者不一致，已记入待处理。
-- 真实样本结果（icbc_desensitized.pdf，threshold_version=2）：未发现异常（核验受限），3 条阈值提示（INCOME_UNSTABLE 1.1851、LOW_BALANCE 21.65 vs 106.15、BALANCE_DECLINE −15.54% 期末 21.67）；NET_OUTFLOW 不触发（7 月 −209.68 之后 8 月 −2.70 被单月 100 元下限拦住，未达连续 2 月）；对手方缺失率告警 47.06%（48/102）+ 10 笔掩码名称告警 + HHI 未校准不判定；趋势 6 个月，证据为空（五态未判失败）。
+- 阈值结论带可回指证据（每条最多 20 笔）：`DTI_HIGH` 取还款类出账，`INCOME_UNSTABLE` 取各月最后一笔未剔除入账，`LOW_BALANCE` 取近 30 天最低余额行，`MULTI_LOAN` 取各放款对手方首笔，`GAMBLING_HIT`/`NIGHT_TRADING`/`CRYPTO_HIT` 取命中行，`NET_OUTFLOW` 取净流出月最后一笔，`BALANCE_DECLINE` 取期末月最后一笔余额行，`FAST_IN_OUT` 取当日进出日的全部行，`COUNTERPARTY_CONCENTRATED` 取金额最大对手方的行，`NEW_LOAN` 取近六个月放款行，`SMALL_LOAN_REPAY` 取小贷出账行。证据只用于回指原文，不把线索升级为证明。
+- 整列缺失在 limitations 各写一次并列出不可算的指标组：无对手方名称 → E01/E02、无余额 → C03–C06/B07、无日期 → A02–A08/D01/D06/D08、无方向、无金额。
+- 真实样本结果（icbc_desensitized.pdf，threshold_version=2）：未发现异常（核验受限），4 条阈值提示（INCOME_UNSTABLE 1.1851、LOW_BALANCE 21.65 vs 110.92、NIGHT_TRADING 0.1961、BALANCE_DECLINE −15.54% 期末 21.67）；NET_OUTFLOW 不触发（7 月 −209.68 之后 8 月 −2.70 被单月 100 元下限拦住，未达连续 2 月）；对手方整列为空（0/102 有名称），E01/E02 不可算并写入 limitations；趋势 6 个月；evidence 27 条，坐标均非 0。
 
 # 样本集当前口径
 

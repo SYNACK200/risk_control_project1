@@ -107,15 +107,18 @@ def _position_ids(
 def _evidence(
     items: list[Evidence],
     position_ids: dict[tuple[int, int], int | None],
-) -> tuple[list[ReportEvidence], int]:
+) -> tuple[list[ReportEvidence], int, int]:
     seen: set[tuple] = set()
     result: list[ReportEvidence] = []
     missing = 0
+    no_coord = 0
     for item in items:
         key = (item.rule_code, item.page_no, item.row_no)
         if key in seen:
             continue
         seen.add(key)
+        if item.x == 0 and item.y == 0:
+            no_coord += 1
         txn_id = item.txn_id
         if txn_id is None:
             txn_id = position_ids.get((item.page_no, item.row_no))
@@ -130,7 +133,29 @@ def _evidence(
                 y=item.y,
             )
         )
-    return result, missing
+    return result, missing, no_coord
+
+
+def _column_limitations(transactions: list[Transaction]) -> list[str]:
+    """整列缺失时给一次明确的「哪类指标不可算」，不逐项重复。"""
+    if not transactions:
+        return []
+    limits: list[str] = []
+    if not any((txn.counterparty_name or "").strip() for txn in transactions):
+        limits.append(
+            "明细无对手方名称（版式缺列或整列为空），E01/E02 不可算，对手方集中度未判定"
+        )
+    if not any(txn.balance is not None for txn in transactions):
+        limits.append("明细无余额（版式缺余额列或整列为空），C03–C06、B07 不可算，余额链核对受限")
+    if not any(txn.txn_date for txn in transactions):
+        limits.append("明细无交易日期（版式缺日期列或整列为空），A02–A08、D01、D06、D08 不可算")
+    if not any(txn.direction in ("in", "out") for txn in transactions):
+        limits.append(
+            "明细无收付方向（版式缺方向列且金额未印正负号），收入/支出类指标不可算"
+        )
+    if not any(txn.amount is not None for txn in transactions):
+        limits.append("明细无交易金额，金额类指标不可算")
+    return limits
 
 
 def build_report(
@@ -159,12 +184,16 @@ def build_report(
         transactions=transactions,
     )
     position_ids = _position_ids(transactions, txn_ids)
-    evidence, missing = _evidence(verdict.evidence, position_ids)
+    evidence, missing, no_coord = _evidence(
+        list(verdict.evidence) + list(threshold_result.evidence),
+        position_ids,
+    )
 
     report_materials = list(materials or [])
 
     report_self_check: ReportSelfCheck | None = None
     limitations = list(verdict.limitations) + list(threshold_result.notes) + list(metrics.notes)
+    limitations.extend(_column_limitations(transactions or []))
     if self_check is None:
         limitations.append("未执行识别自检，报告无法说明解析结果能否回查到原件")
     else:
@@ -189,6 +218,8 @@ def build_report(
         limitations.append("材料清单未提供，报告无法说明依据了哪几份材料")
     if missing:
         limitations.append("交易号未落库，证据定位到页/行/坐标")
+    if no_coord:
+        limitations.append(f"{no_coord} 条证据为文件级判断或原行无坐标，无法跳转到页内位置")
     limitations = _dedupe(limitations)
 
     return Report(

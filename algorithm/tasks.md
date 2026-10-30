@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | 1 | 拉代码 | `git pull origin dev` | 最新提交 |
 | 2 | 装依赖 | `cd algorithm && pip install -r requirements.txt` | 无报错 |
-| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 194 passed |
+| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 199 passed |
 | 4 | 跑样本 | `python algorithm/local_run.py 样例.pdf --password 口令 --template algorithm/integration/samples/icbc_template.json` | 输出 summary 与报告 JSON |
 | 5 | 看自检 | 同上输出里的 S1~S7 | 金额/日期/余额回查 100% |
 
@@ -18,7 +18,7 @@
 | 解析（模板 + 通用兜底） | `ocr/parse.py` | 工行 8 页 191 笔 |
 | 四层核验与五态 | `algo/content_layer.py`、`ledger_layer.py`、`file_layer.py`、`verdict.py` | 工行结论「未发现异常」+ 21 条受限 |
 | 40 项指标（口径 v2） | `algo/metrics.py` | METRIC_SET_VERSION=2；工行 A02=2997.37 |
-| 报告 13 字段 | `algo/report.py` | JSON 字段齐全 |
+| 报告 14 字段 | `algo/report.py` | JSON 字段齐全（含 self_check） |
 | 识别自检七项 | `algo/self_check.py` | 工行 S1/S2/S3/S5/S6/S7 pass，S4 181/191 |
 | 少量标注外推 | `ocr/infer.py` | 只标 3 处解析 191 笔且与完整模板一致 |
 | OCR 惰性导入 | `ocr/__init__.py` | 纯电子件环境可启动 |
@@ -38,8 +38,8 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 验收命令 |
 | --- | --- | --- | --- | --- |
-| [ ] | AL-31 | 版式缺列写入 limitations（无对手方列 → E 类不可算） | 审批人看到 E 全空会以为系统坏了 | 工行报告含该说明 |
-| [ ] | AL-24 | 证据坐标：每条结论带页码 + 坐标 | 现在 evidence 基本为空 | 报告 evidence 每条有 page/坐标 |
+| [x] | AL-31 | 版式缺列写入 limitations（无对手方列 → E 类不可算） | 审批人看到 E 全空会以为系统坏了 | 工行/招行报告均含「明细无对手方名称，E01/E02 不可算」（2026-10-31） |
+| [x] | AL-24 | 证据坐标：每条结论带页码 + 坐标 | 现在 evidence 基本为空 | 报告 evidence 每条有 page/坐标；工行件 4 条阈值结论共 27 条证据，坐标非 0（2026-10-31） |
 | [ ] | AL-34 | 模板转换层：标注页坐标框 → 解析模板 | 标注产物目前不能直接用 | 标注导出后可直接喂 parse() |
 | [ ] | AL-28/29 | 对手方列识别 + 续行合并；表头关键词按银行配置 | 招行对手方全空 | 招行对手方命中率 > 80% |
 

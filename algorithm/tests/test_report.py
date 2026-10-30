@@ -197,10 +197,70 @@ def test_evidence_maps_txn_id_and_dedupes():
         transactions=_history(),
         txn_ids=[11, 22, 33],
     )
-    assert len(report.evidence) == 2
-    assert report.evidence[0].txn_id == 22
-    assert report.evidence[1].txn_id is None
+    assert len([item for item in report.evidence if item.rule_code in ("C1", "F1")]) == 2
+    c1 = next(item for item in report.evidence if item.rule_code == "C1")
+    f1 = next(item for item in report.evidence if item.rule_code == "F1")
+    assert c1.txn_id == 22
+    assert f1.txn_id is None
     assert any("交易号未落库" in item for item in report.limitations)
+
+
+def test_threshold_conclusions_carry_row_evidence():
+    report = _report()
+    codes = {item.code for item in report.conclusions}
+    assert {"DTI_HIGH", "LOW_BALANCE"} <= codes
+    evidence = [item for item in report.evidence if item.rule_code in codes]
+    assert evidence
+    for item in evidence:
+        assert item.page_no == 1
+        assert (item.x, item.y) == (200.0, 220.0)
+        assert item.txn_id is not None
+
+
+def test_conclusion_evidence_capped_per_code():
+    day = "2026-01-05"
+    txns = [
+        _txn(day, "消费", direction="out", amount="1", row=index)
+        for index in range(1, 31)
+    ]
+    report = _report(transactions=txns, thresholds=ThresholdConfig(counterparty_hhi=Decimal("0.5")))
+    assert any(item.code == "COUNTERPARTY_CONCENTRATED" for item in report.conclusions)
+    picked = [item for item in report.evidence if item.rule_code == "COUNTERPARTY_CONCENTRATED"]
+    assert len(picked) == 20
+
+
+def test_missing_counterparty_column_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "消费", direction="out", amount="10", row=index).model_copy(
+            update={"counterparty_name": ""}
+        )
+        for index in range(1, 4)
+    ]
+    report = _report(transactions=txns)
+    assert any("明细无对手方名称" in item and "E01/E02" in item for item in report.limitations)
+
+
+def test_missing_balance_column_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "消费", direction="out", amount="10", row=index).model_copy(
+            update={"balance": None}
+        )
+        for index in range(1, 4)
+    ]
+    report = _report(transactions=txns)
+    assert any("明细无余额" in item and "C03–C06" in item for item in report.limitations)
+
+
+def test_evidence_without_coordinates_declared_in_limitations():
+    evidence = [Evidence(rule_code="F1", page_no=1, x=0.0, y=0.0)]
+    report = build_report(
+        _verdict(evidence=evidence),
+        compute_metrics(_history()),
+        carrier="electronic",
+        transactions=_history(),
+        txn_ids=[11, 22, 33],
+    )
+    assert any("无法跳转到页内位置" in item for item in report.limitations)
 
 
 def test_screenshot_verdict_and_limitation_passthrough():
