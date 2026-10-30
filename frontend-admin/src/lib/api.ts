@@ -104,6 +104,30 @@ export async function reanalyzeTask(taskId: number, password?: string): Promise<
   }));
 }
 
+export interface FlowMergeMode { key: string; label: string; one_line: string; formula: string; when: string; caveat: string; level: string }
+export interface FlowMergeAccount { account_id: string; bank_code: string | null; period_start: string | null; period_end: string | null; txn_count: number; inflow: string; outflow: string }
+export interface FlowMergeTransfer { amount: string; from: string; to: string; out_date: string; in_date: string }
+export interface FlowMergeResult {
+  mode: string; label: string; formula: string; one_line: string;
+  period_start: string | null; period_end: string | null; overlap_days: number;
+  accounts: FlowMergeAccount[];
+  raw_txn_count: number; txn_count: number; dropped_duplicates: number;
+  internal_transfers: FlowMergeTransfer[];
+  metrics: { code: string; name: string; value: string | null; basis: string }[];
+  notes: string[];
+}
+
+export async function getMergeModes(): Promise<{ items: FlowMergeMode[] }> {
+  return json<{ items: FlowMergeMode[] }>(await fetch(BASE + '/tasks/merge/modes'));
+}
+
+export async function mergeTasks(taskIds: number[], mode: string): Promise<FlowMergeResult> {
+  return json<FlowMergeResult>(await fetch(BASE + '/tasks/merge', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_ids: taskIds, mode }),
+  }));
+}
+
 export async function getReport(taskId: number): Promise<ReportPayload> {
   return json<ReportPayload>(await fetch(`${BASE}/reports/${taskId}`));
 }
@@ -189,11 +213,6 @@ export interface EntityConflict {
   bank_name: string | null; holders: string[]; tasks: number[]; message: string;
 }
 
-export interface EntitiesPayload {
-  accounts: EntityAccount[]; subjects: EntitySubject[]; conflicts: EntityConflict[];
-  summary: { accounts: number; subjects: number; multi_account_subjects: number; conflicts: number };
-}
-
 export interface MergeMethod {
   id: string; label: string; short: string; detail: string; formula: string; assumption: string;
 }
@@ -212,15 +231,51 @@ export interface MergeResult {
   explain: { why_this_method: string; assumption: string; ratio_rule: string; balance_rule: string };
 }
 
+export interface EntitiesPayload {
+  accounts: EntityAccount[]; subjects: EntitySubject[]; conflicts: EntityConflict[];
+  summary: { accounts: number; subjects: number; multi_account_subjects: number; conflicts: number };
+}
+
+export interface SubjectMergeMethod {
+  id: string; label: string; short: string; detail: string; formula: string; assumption: string;
+}
+
+export interface SubjectMergeResult {
+  subject: string;
+  method: SubjectMergeMethod;
+  overlap: { id: string; label: string; detail: string };
+  accounts: { task_id: number; bank_name: string | null; account_masked: string | null; months: number;
+             txn_count: number; balance_end: string | null; risk_hits: number; verdict: string | null }[];
+  coverage: { months: number; overlap_months: string[]; from: string | null; to: string | null };
+  metrics: { code: string; name: string; value: number | null; unit: string; how: string; note: string }[];
+  risk: { level: string; hits: number; per_account: number[] };
+  unsupported: { code: string; name: string; reason: string }[];
+  warnings: string[];
+  explain: { why_this_method: string; assumption: string; ratio_rule: string; balance_rule: string };
+}
+
 export async function getEntities(): Promise<EntitiesPayload> {
   return json<EntitiesPayload>(await fetch(BASE + '/entities'));
 }
 
-export async function getMergeMethods(): Promise<{ methods: MergeMethod[]; overlap_modes: { id: string; label: string; detail: string }[] }> {
+export async function getMergeMethods(): Promise<{ methods: SubjectMergeMethod[]; overlap_modes: { id: string; label: string; detail: string }[] }> {
   return json(await fetch(BASE + '/entities/methods'));
 }
 
-export async function mergeSubject(subject: string, method: string, overlap: string): Promise<MergeResult> {
+export async function mergeSubject(subject: string, method: string, overlap: string): Promise<SubjectMergeResult> {
   const params = new URLSearchParams({ subject, method, overlap });
-  return json<MergeResult>(await fetch(BASE + '/entities/merge?' + params.toString()));
+  return json<SubjectMergeResult>(await fetch(BASE + '/entities/merge?' + params.toString()));
+}
+
+export async function reanalyzeWithTemplate(taskId: number, templateId: number | null, password?: string): Promise<{ task_id: number; version: number }> {
+  const form = new FormData();
+  if (password) form.append('password', password);
+  if (templateId !== null) form.append('template_id', String(templateId));
+  return json<{ task_id: number; version: number }>(await fetch(BASE + '/tasks/' + taskId + '/reanalyze', { method: 'POST', body: form }));
+}
+
+export async function whitelistTask(taskId: number, reason: string): Promise<{ task_id: number; whitelisted: boolean }> {
+  const form = new FormData();
+  form.append('reason', reason);
+  return json<{ task_id: number; whitelisted: boolean }>(await fetch(BASE + '/tasks/' + taskId + '/whitelist', { method: 'POST', body: form }));
 }

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, reanalyzeTask, type MetricDef, type PrereadInfo, type ReportPayload, type TxnRow } from '../lib/api';
+import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, listTemplates, reanalyzeTask, reanalyzeWithTemplate, whitelistTask, type MetricDef, type PrereadInfo, type ReportPayload, type TemplateRow, type TxnRow } from '../lib/api';
 import { InsightSection } from './Charts';
 import { MetricExplain } from './MetricExplain';
 import { CheckTable } from './CheckTable';
@@ -39,6 +39,10 @@ export function ReportView({ taskId }: { taskId: number }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const layerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [focusLayer, setFocusLayer] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [templateId, setTemplateId] = useState<string>('');
+  const [whitelist, setWhitelist] = useState<{ reason: string; at: string } | null>(null);
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -50,10 +54,17 @@ export function ReportView({ taskId }: { taskId: number }) {
         setReport(rep);
         setTxns(rows);
         setPreread(task.check_result?.preread ?? null);
+        const wl = (task.check_result as Record<string, unknown> | undefined)?.whitelist as
+          { reason: string; at: string } | undefined;
+        setWhitelist(wl ?? null);
       })
       .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
     return () => { alive = false; };
   }, [taskId]);
+
+  useEffect(() => {
+    listTemplates().then(setTemplates).catch(() => setTemplates([]));
+  }, []);
 
   useEffect(() => {
     getVerificationDefinitions()
@@ -63,6 +74,33 @@ export function ReportView({ taskId }: { taskId: number }) {
       .then(d => setDefs(Object.fromEntries(d.items.map(i => [i.code, i]))))
       .catch(() => setDefs({}));
   }, []);
+
+  async function reanalyzeWithTpl() {
+    setError('');
+    setNote('');
+    try {
+      const password = window.prompt('加密件请再输一次打开口令；没有就点确定。') ?? '';
+      const id = templateId ? Number(templateId) : null;
+      await reanalyzeWithTemplate(taskId, id, password || undefined);
+      const rep = await getReport(taskId);
+      setReport(rep);
+      setNote(id ? '已用所选模板重新解析' : '已用通用解析（无模板）重新解析');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function markWhitelist() {
+    const reason = window.prompt('开绿灯的理由（会写入审计）：', '我方自造测试数据，已人工确认') ?? '';
+    if (!reason) return;
+    try {
+      await whitelistTask(taskId, reason);
+      setWhitelist({ reason, at: new Date().toISOString().slice(0, 19) });
+      setNote('已开绿灯，后续不再按解析失败阻断');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function reanalyze() {
     setError('');
@@ -103,6 +141,25 @@ export function ReportView({ taskId }: { taskId: number }) {
               <div className="verdict-title">{report.verdict}</div>
               <div className="verdict-reason">{report.verdict_reason}</div>
             </div>
+            <div className="reanalyze-bar">
+              <span className="filter-label">解析模板</span>
+              <select value={templateId} onChange={e => setTemplateId(e.target.value)}>
+                <option value="">通用解析（无模板）</option>
+                {templates.map(tpl => (
+                  <option key={tpl.id} value={String(tpl.id)}>{tpl.bank_code} v{tpl.version}</option>
+                ))}
+              </select>
+              <button className="btn" type="button" onClick={() => { void reanalyzeWithTpl(); }}>重新解析</button>
+              {!whitelist && (
+                <button className="btn" type="button" onClick={() => { void markWhitelist(); }}>开绿灯（人工放行）</button>
+              )}
+              {note && <span className="muted">{note}</span>}
+            </div>
+            {whitelist && (
+              <div className="notice ok">
+                已开绿灯（白名单）：{whitelist.reason} · {whitelist.at}
+              </div>
+            )}
             <p className="muted">载体 {report.carrier} · 指标集 v{report.metric_set_version} · 阈值 v{report.threshold_version} · 材料 {report.materials.length} 份</p>
 
             {(() => {
