@@ -1,0 +1,25 @@
+READ ONLY SYSTEM RECHECK: 2026-10-29T23:23:11.1307484+08:00
+Maintenance identity: LAPTOP-KE5B4O17\姜佳庆
+ACL objects=348; unexpected ACE/rights=0
+Original baseline=347; missing=0; extra=1
+BACKUP tree.acl SHA256=05A3A9A18F3C91ECE21C78D884BF08C743CB6B1843A7F980287270FAD9E8DA0F
+BACKUP original-live-acl.json SHA256=41E32210E3181E1D7AA048933BBD408B06FE99F900C127A00AC2F6BAAE3C70CC
+BACKUP parent.acl SHA256=9032B0EABB0D00031DCF662EEDD71E479573BC9F09C0EC8EE2708E1650CF0D78
+BACKUP drive-context.sddl SHA256=69B6CDED6CB88B592CA119FA324595F9BA5C1540C9528191B503657EC4FD052A
+Backup protection allowed subjects only: PASS
+Parent/root ACL inheritance protected: PASS
+D:\RiskControlDemo\mysql84\server\bin\mysqld.exe  Ver 8.4.13 for Win64 on x86_64 (MySQL Community Server - GPL)
+D:\RiskControlDemo\mysql84\server\bin\mysql.exe  Ver 8.4.13 for Win64 on x86_64 (MySQL Community Server - GPL)
+D:\RiskControlDemo\mysql84\server\bin\mysqladmin.exe  Ver 8.4.13 for Win64 on x86_64 (MySQL Community Server - GPL)
+Data children=0
+Runtime config SHA256=D88488116138E8F573BC0E470855614891E794BDB3C16C9DED949496BF2C0AC3
+Init config SHA256=BA6795F49A05FE5A8E0E8F2DCF41036EE15384702127C20838226BE4A52EFEE9
+MySQL80 state=Running; service PID=4452
+New service count=0
+Listener port=3306; PID=5420
+Old listener direct service/child identity=True
+MySQL80 status: Running (read only)
+READY PASS: phase=BeforeInitialize. OS identity only; authenticated server checks remain mandatory.
+READY_EXIT=0
+No ACL/config/service/database mutation performed this turn.
+D-drive inheritance source DACL unchanged=True

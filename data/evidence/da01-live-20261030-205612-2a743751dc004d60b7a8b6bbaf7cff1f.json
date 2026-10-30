@@ -1,0 +1,67 @@
+{
+  "source": "live_mysql",
+  "recorded_at": "2026-10-30T20:56:12.2687205+08:00",
+  "passed": true,
+  "format": 1,
+  "endpoint": "127.0.0.1:3307",
+  "database_writes": false,
+  "runtime_accounts": [
+    {
+      "locked": "N",
+      "user": "rc_demo_app",
+      "default_role": "rc_role_app",
+      "host": "localhost",
+      "plugin": "caching_sha2_password",
+      "default_role_host": "localhost"
+    },
+    {
+      "locked": "N",
+      "user": "rc_demo_audit_writer",
+      "default_role": "rc_role_audit_writer",
+      "host": "localhost",
+      "plugin": "caching_sha2_password",
+      "default_role_host": "localhost"
+    },
+    {
+      "locked": "N",
+      "user": "rc_demo_reader",
+      "default_role": "rc_role_reader",
+      "host": "localhost",
+      "plugin": "caching_sha2_password",
+      "default_role_host": "localhost"
+    }
+  ],
+  "result": "PASS: AcceptDA01\nadmin_structure_and_isolation: PASS\nruntime_metadata: PASS\nrc_demo_app: PASS\nrc_demo_reader: PASS\nrc_demo_audit_writer: PASS\naccount=rc_demo_app@localhost; locked=N; plugin=caching_sha2_password; default_role=rc_role_app@localhost\naccount=rc_demo_audit_writer@localhost; locked=N; plugin=caching_sha2_password; default_role=rc_role_audit_writer@localhost\naccount=rc_demo_reader@localhost; locked=N; plugin=caching_sha2_password; default_role=rc_role_reader@localhost",
+  "checks": [
+    {
+      "ok": true,
+      "name": "admin_structure_and_isolation",
+      "code": null,
+      "category": "PASS"
+    },
+    {
+      "ok": true,
+      "name": "runtime_metadata",
+      "code": null,
+      "category": "PASS"
+    },
+    {
+      "ok": true,
+      "name": "rc_demo_app",
+      "code": null,
+      "category": "PASS"
+    },
+    {
+      "ok": true,
+      "name": "rc_demo_reader",
+      "code": null,
+      "category": "PASS"
+    },
+    {
+      "ok": true,
+      "name": "rc_demo_audit_writer",
+      "code": null,
+      "category": "PASS"
+    }
+  ]
+}
