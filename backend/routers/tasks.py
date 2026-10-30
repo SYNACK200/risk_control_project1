@@ -147,6 +147,61 @@ def list_tasks(status: str | None = None, limit: int = 20, db: Session = Depends
              "created_at": t.created_at.isoformat() if t.created_at else None} for t in rows]
 
 
+@router.post("/{task_id}/reanalyze")
+def reanalyze_task(
+    task_id: int,
+    password: str | None = Form(None),
+    db: Session = Depends(get_session),
+):
+    """用原文件重跑一次分析，补齐逐项明细（旧版报告没有 checks）。"""
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(404, "任务不存在")
+    if task.file_id is None:
+        raise HTTPException(400, detail={"code": "E_STATE", "message": "任务没有关联文件"})
+    f = db.get(FileObj, task.file_id)
+    if f is None or not f.storage_path:
+        raise HTTPException(400, detail={"code": "E_STATE", "message": "原文件已不在存储中，无法重算"})
+    path = Path(f.storage_path)
+    if not path.exists():
+        raise HTTPException(400, detail={"code": "E_STATE", "message": "原文件已被清理，无法重算"})
+    data = path.read_bytes()
+
+    template = None
+    if task.template_id:
+        from db.models import Template
+        row = db.get(Template, task.template_id)
+        if row is not None:
+            template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
+
+    preread = run_preread(data, password=password)
+    try:
+        result = run_analysis(data, password=password, template=template, preread=preread)
+    except EncryptedFile as exc:
+        raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": str(exc)}) from exc
+
+    latest = db.execute(
+        select(Report).where(Report.task_id == task_id).order_by(Report.version.desc())
+    ).scalars().first()
+    new_version = (latest.version + 1) if latest else 1
+    payload = dict(result["report"])
+    payload["version"] = new_version  # 对外可见的报告版本，只增不改
+    db.add(Report(task_id=task_id, version=new_version, payload=payload))
+
+    task.check_result = {
+        "warnings": result["warnings"],
+        "self_check": result.get("self_check"),
+        "preread": result.get("preread"),
+    }
+    db.add(AuditLog(action="reanalyze_task", object_type="task", object_id=task_id,
+                    detail="report v" + str(new_version)))
+    db.commit()
+    return {"task_id": task_id, "version": new_version, "layers": [
+        {"layer": l["layer"], "status": l["status"], "checks": len(l.get("checks") or [])}
+        for l in result["report"].get("layers", [])
+    ]}
+
+
 @router.get("/{task_id}")
 def get_task(task_id: int, db: Session = Depends(get_session)):
     task = db.get(Task, task_id)

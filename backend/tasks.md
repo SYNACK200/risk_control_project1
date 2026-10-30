@@ -28,6 +28,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | BE-43 | POST /tasks/{id}/reanalyze：按原文件重跑并写入新版本（payload.version 递增） | v2.4.0 前的旧报告没有逐项结果，只能解释不能补 | routers/tasks.py | 旧任务重算后 checks 齐全，version 递增 |
 | [x] | BE-42 | 受理阶段预读拦截：非流水返回 422 E_NOT_STATEMENT（附 preread 明细），预读写入 check_result.preread | 无关文件不能进流水解析与报告 | routers/tasks.py | 上传合同 PDF 返回 422；上传流水 200 且 check_result.preread 有值 |
 | [ ] | BE-20a | 本地口令保护：/bank 与写接口要求口令（先做单口令，不做完整 RBAC） | 现在任何能访问 8000 的人都能看报告 | `main.py`、新依赖 | 无口令访问返回 401；带口令 200 |
 | [ ] | BE-39 | 报告输出 authenticity_summary（level/label/未通过层/受限数） | 前端自算会与导出/审计不一致 | `algo/report.py` 调用链 + `schemas` | 报告 JSON 含该字段，页面与它一致 |
