@@ -220,3 +220,5 @@
 | 2026-10-30 | 报告 layers 每层新增 checks[]（code/name/status/detail），新增 self_check[] 七项自检结果；附 GET /api/v1/verification-definitions 返回 36 个检查点的检验方法 | 算法、后端、银行侧 |
 | 2026-10-30 | 新增预读取：受理阶段先全文预读，非流水返回 422 E_NOT_STATEMENT（附 preread 明细）；预读结果写入 task.check_result.preread；自检新增 S8 预读一致性 | 算法、后端、两端 |
 | 2026-10-30 | 新增 POST /api/v1/tasks/{id}/reanalyze：用原文件重跑，生成新版本报告（补齐逐项 checks）；加密件需再给口令；旧版本保留 | 后端、银行侧 |
+| 2026-10-30 | GET /tasks 改为解析结果汇总：每条含 bank/period/verdict/authenticity/parse/risk/materials/report_version，支持 authenticity、risk、parse、bank、date_from、date_to、q 筛选；返回 items/total/facets | 后端、银行侧 |
+| 2026-10-30 | 银行侧拆为两个页面：/ 解析结果列表（多维筛选）与 /report/:id 报告详情；前端改用 HashRouter 兼容静态托管 | 银行侧 |
