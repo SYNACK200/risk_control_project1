@@ -28,6 +28,8 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | BE-48 | 人工白名单：POST /tasks/{id}/whitelist，写 check_result.whitelist 与审计；汇总返回 whitelisted | 自己造的数据需要显式放行而不是改结论 | routers/tasks.py、services/summary.py | 任务 7 whitelisted=true，理由入库 |
+| [x] | BE-47 | 重解析支持指定模板并重建明细：POST /tasks/{id}/reanalyze 收 template_id，删除旧 txn/metric_value 后按新结果写入 | 之前只换报告不换明细，等于白重算 | routers/tasks.py | 任务 7 重解析后 txn 570、metric_value 40 |
 | [x] | BE-45 | 实体接口：GET /entities、/entities/methods、/entities/merge（含口径说明、警告、不支持项） | 前端不重复定义合并口径 | routers/entities.py | 三个接口 200；merge 返回 6 指标 + 口径说明 |
 | [x] | BE-44 | 解析结果汇总接口：GET /tasks 返回合格性/风险/解析质量等汇总与 facets，支持多维筛选 | 前端不应各算一套 | services/summary.py、routers/tasks.py | 返回 items/total/facets；筛选生效 |
 | [x] | BE-43 | POST /tasks/{id}/reanalyze：按原文件重跑并写入新版本（payload.version 递增） | v2.4.0 前的旧报告没有逐项结果，只能解释不能补 | routers/tasks.py | 旧任务重算后 checks 齐全，version 递增 |

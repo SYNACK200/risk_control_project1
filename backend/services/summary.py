@@ -162,4 +162,6 @@ def summarize(
         "materials": materials,
         "limitations": limitations,
         "report_version": report_version,
+        "whitelisted": bool((task.check_result or {}).get("whitelist")) if isinstance(task.check_result, dict) else False,
+        "whitelist_reason": ((task.check_result or {}).get("whitelist") or {}).get("reason") if isinstance(task.check_result, dict) else None,
     }

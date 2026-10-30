@@ -223,3 +223,4 @@
 | 2026-10-30 | GET /tasks 改为解析结果汇总：每条含 bank/period/verdict/authenticity/parse/risk/materials/report_version，支持 authenticity、risk、parse、bank、date_from、date_to、q 筛选；返回 items/total/facets | 后端、银行侧 |
 | 2026-10-30 | 银行侧拆为两个页面：/ 解析结果列表（多维筛选）与 /report/:id 报告详情；前端改用 HashRouter 兼容静态托管 | 银行侧 |
 | 2026-10-30 | 新增 GET /entities（账户/户名/冲突）、GET /entities/methods（7 种合并方式与 3 种重叠算法）、GET /entities/merge?subject=&method=&overlap=（合并结果含口径说明与不支持项） | 后端、银行侧 |
+| 2026-10-31 | 重解析支持 `template_id`（换模板/无模板通用解析）并重建 txn/metric_value；新增 `POST /tasks/{id}/whitelist`（人工开绿灯，写审计）；`GET /tasks` 汇总新增 `whitelisted/whitelist_reason`；受理时按预读银行自动匹配启用模板 | 后端、银行侧 |
