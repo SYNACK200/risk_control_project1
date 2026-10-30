@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from db.models import MetricValue, Report, Txn
 from db.session import get_session
+from helpers.security import require_local_access
 
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ if str(ROOT) not in sys.path:
 from algorithm.algo.metric_defs import definitions_version, metric_definitions  # noqa: E402
 from algorithm.algo.verification_defs import verification_definitions  # noqa: E402
 
-router = APIRouter(tags=["reports"])
+router = APIRouter(tags=["reports"], dependencies=[Depends(require_local_access)])
 
 
 @router.get("/reports/{task_id}")
