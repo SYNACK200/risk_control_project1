@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from db.models import AuditLog
 from db.session import get_session
-from helpers.security import require_local_access
+from helpers.security import require_banker
 
-router = APIRouter(prefix="/audit", tags=["audit"], dependencies=[Depends(require_local_access)])
+router = APIRouter(prefix="/audit", tags=["audit"], dependencies=[Depends(require_banker)])
 
 
 def _parse_time(value: str | None, name: str) -> datetime | None:

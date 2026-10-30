@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session
 
 from db.models import AuditLog
 from db.session import get_session
-from helpers.security import require_local_access
+from helpers.security import require_banker
 from services import thresholds as svc
 
-router = APIRouter(prefix="/thresholds", tags=["thresholds"], dependencies=[Depends(require_local_access)])
+router = APIRouter(prefix="/thresholds", tags=["thresholds"], dependencies=[Depends(require_banker)])
 
 
 class ThresholdPayload(BaseModel):

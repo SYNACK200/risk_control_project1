@@ -16,18 +16,27 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import AuditLog, BankAccount, FileObj, MetricValue, Report, Task, TaskFile, Txn
+from db.models import AuditLog, BankAccount, FileObj, MetricValue, Report, Task, TaskFile, Txn, User
 from db.session import get_session
 from algorithm.algo.preread import run_preread
 from algorithm.algo.merge import AccountInput, merge_accounts, mode_catalog
 from algorithm.ocr.models import Transaction
 from datetime import date as _date
-from helpers.security import require_local_access
+from helpers.security import current_user, require_banker
 from services import thresholds as threshold_service
 from services.analysis import EncryptedFile, is_password_protected, run_analysis
 from services.workflow import transition
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+def _ensure_access(task: Task, user: User) -> None:
+    """银行侧可看全部；借款侧只能看自己的。"""
+    if user.role == "banker":
+        return
+    if task.user_id != user.id:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在"})
+
 STORAGE = Path(__file__).resolve().parents[1] / "storage" / "uploads"
 STORAGE.mkdir(parents=True, exist_ok=True)
 PASSWORD_ATTEMPT_LIMIT = 3
@@ -87,7 +96,7 @@ def create_task(
     source_ref: str | None = Form(None),
     bank_code: str | None = Form(None),
     db: Session = Depends(get_session),
-    _: None = Depends(require_local_access),
+    user: User = Depends(current_user),
 ):
     data = file.file.read()
     if not data:
@@ -166,6 +175,7 @@ def create_task(
     except Exception as exc:  # 解析失败也要留任务与审计
         task = Task(
             biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
+            user_id=user.id,
             status="PENDING",
             failure_code="E_PARSE",
             created_at=datetime.now(),
@@ -191,6 +201,7 @@ def create_task(
 
     task = Task(
         biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
+        user_id=user.id,
         task_type="credit", channel="upload", file_id=file_obj.id,
         carrier=result["carrier"], status="PENDING",
         template_id=template_row.id if template_row else None,
@@ -317,11 +328,13 @@ def list_tasks(
     q: str | None = None,
     trash: int = 0,
     db: Session = Depends(get_session),
-    _: None = Depends(require_local_access),
+    user: User = Depends(current_user),
 ):
     """解析结果列表：按银行关心的维度汇总，并支持合格性/风险/解析质量/银行/时间/关键字筛选。"""
     stmt = select(Task).order_by(Task.id.desc()).limit(min(limit, 1000))
     stmt = stmt.where(Task.deleted_at.is_not(None)) if trash else stmt.where(Task.deleted_at.is_(None))
+    if user.role != "banker":
+        stmt = stmt.where(Task.user_id == user.id)
     if status:
         stmt = stmt.where(Task.status == status)
     rows = db.execute(stmt).scalars().all()
@@ -375,11 +388,12 @@ def _load_tasks(db: Session, ids: list[int]) -> list[Task]:
 
 @router.get("/{task_id}/transactions.csv")
 def transactions_export(task_id: int, db: Session = Depends(get_session),
-                        _: None = Depends(require_local_access)):
+                        user: User = Depends(current_user)):
     # 明细导出：UTF-8 BOM + CRLF，Excel 直接双击可读
     task = db.get(Task, task_id)
     if task is None or task.deleted_at is not None:
         raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在或已删除"})
+    _ensure_access(task, user)
     rows = db.execute(select(Txn).where(Txn.task_id == task_id)
                       .order_by(Txn.txn_date, Txn.id)).scalars().all()
     buffer = io.StringIO()
@@ -400,11 +414,12 @@ def transactions_export(task_id: int, db: Session = Depends(get_session),
 
 @router.get("/{task_id}/export.json")
 def report_export(task_id: int, db: Session = Depends(get_session),
-                  _: None = Depends(require_local_access)):
+                  user: User = Depends(current_user)):
     # 完整报告导出：报告 + 明细 + 阈值版本，用于归档或二次分析
     task = db.get(Task, task_id)
     if task is None or task.deleted_at is not None:
         raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在或已删除"})
+    _ensure_access(task, user)
     report_row = db.execute(
         select(Report).where(Report.task_id == task_id).order_by(Report.version.desc())
     ).scalars().first()
@@ -438,7 +453,9 @@ def report_export(task_id: int, db: Session = Depends(get_session),
 
 @router.post("/recycle")
 def recycle_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
-                  _: None = Depends(require_local_access)):
+                  user: User = Depends(current_user)):
+    if user.role != "banker":
+        raise HTTPException(403, detail={"code": "E_FORBIDDEN", "message": "只有银行侧可以清理流水"})
     # 批量移入回收站：只标记 deleted_at，明细与报告都保留，可恢复
     rows = _load_tasks(db, payload.task_ids)
     now = datetime.utcnow()
@@ -455,7 +472,9 @@ def recycle_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
 
 @router.post("/restore")
 def restore_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
-                  _: None = Depends(require_local_access)):
+                  user: User = Depends(current_user)):
+    if user.role != "banker":
+        raise HTTPException(403, detail={"code": "E_FORBIDDEN", "message": "只有银行侧可以清理流水"})
     # 从回收站恢复
     rows = _load_tasks(db, payload.task_ids)
     restored = 0
@@ -471,7 +490,9 @@ def restore_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
 
 @router.post("/purge")
 def purge_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
-                _: None = Depends(require_local_access)):
+                user: User = Depends(current_user)):
+    if user.role != "banker":
+        raise HTTPException(403, detail={"code": "E_FORBIDDEN", "message": "只有银行侧可以清理流水"})
     # 彻底删除：只允许回收站内、且 confirm=true；连同明细/指标/报告/材料关联一起删
     if not payload.confirm:
         raise HTTPException(400, detail={"code": "E_CONFIRM", "message": "彻底删除需要 confirm=true"})
@@ -608,10 +629,11 @@ def whitelist_task(
 
 
 @router.get("/{task_id}")
-def get_task(task_id: int, db: Session = Depends(get_session)):
+def get_task(task_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)):
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(404, "任务不存在")
+    _ensure_access(task, user)
     return {"id": task.id, "biz_no": task.biz_no, "status": task.status, "carrier": task.carrier,
             "period_start": task.period_start, "period_end": task.period_end,
             "failure_code": task.failure_code,
@@ -677,7 +699,7 @@ def add_supplement(
     task_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_session),
-    _: None = Depends(require_local_access),
+    user: User = Depends(current_user),
 ):
     """为待补件任务追加材料；不创建新任务，也不覆盖历史材料。"""
     task = db.get(Task, task_id)
