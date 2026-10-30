@@ -3,12 +3,13 @@ import { Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AnnotatePage } from './pages/Annotate';
 import { TaskListPage } from './pages/TaskListPage';
 import { EntitiesPage } from './pages/EntitiesPage';
+import { ThresholdsPage } from './pages/ThresholdsPage';
 import { MergePage } from './pages/MergePage';
 import { TemplateAdmin } from './components/TemplateAdmin';
 import { ReportView } from './components/ReportView';
 
 function Home() {
-  const [tab, setTab] = useState<'tasks' | 'entities' | 'merge' | 'annotate' | 'templates'>('tasks');
+  const [tab, setTab] = useState<'tasks' | 'entities' | 'merge' | 'thresholds' | 'annotate' | 'templates'>('tasks');
   return (
     <div className="app">
       <div className="topbar">
@@ -17,6 +18,7 @@ function Home() {
           <button className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}>解析结果</button>
           <button className={tab === 'entities' ? 'active' : ''} onClick={() => setTab('entities')}>客户与账户</button>
           <button className={tab === 'merge' ? 'active' : ''} onClick={() => setTab('merge')}>账户合并</button>
+          <button className={tab === 'thresholds' ? 'active' : ''} onClick={() => setTab('thresholds')}>风控参数</button>
           <button className={tab === 'annotate' ? 'active' : ''} onClick={() => setTab('annotate')}>模板标注</button>
           <button className={tab === 'templates' ? 'active' : ''} onClick={() => setTab('templates')}>模板管理</button>
         </div>
@@ -24,6 +26,7 @@ function Home() {
       {tab === 'tasks' && <TaskListPage />}
       {tab === 'entities' && <EntitiesPage />}
       {tab === 'merge' && <MergePage />}
+      {tab === 'thresholds' && <ThresholdsPage />}
       {tab === 'annotate' && <AnnotatePage />}
       {tab === 'templates' && <TemplateAdmin />}
     </div>
