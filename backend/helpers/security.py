@@ -8,6 +8,7 @@ import json
 import os
 import secrets
 import time
+from pathlib import Path
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -23,8 +24,34 @@ ITERATIONS = 120_000
 TOKEN_TTL_SECONDS = 12 * 3600
 
 
+_SECRET_FILE = Path(__file__).resolve().parents[1] / ".auth_secret"
+_secret_cache: bytes | None = None
+
+
 def _secret() -> bytes:
-    return os.getenv("AUTH_SECRET", "dev-secret-change-me").encode("utf-8")
+    """优先环境变量；否则首次启动生成随机密钥并落盘（backend/.auth_secret）。
+
+    不再使用固定默认密钥——那样任何人拿到代码就能伪造令牌。
+    """
+    global _secret_cache
+    if _secret_cache is not None:
+        return _secret_cache
+    env = os.getenv("AUTH_SECRET")
+    if env:
+        _secret_cache = env.encode("utf-8")
+        return _secret_cache
+    if _SECRET_FILE.exists():
+        _secret_cache = _SECRET_FILE.read_text(encoding="utf-8").strip().encode("utf-8")
+        return _secret_cache
+    value = secrets.token_urlsafe(48)
+    _SECRET_FILE.write_text(value, encoding="utf-8")
+    try:
+        os.chmod(_SECRET_FILE, 0o600)
+    except OSError:
+        pass
+    print("[auth] 已生成随机 AUTH_SECRET 并保存到 backend/.auth_secret（不要提交到仓库）", flush=True)
+    _secret_cache = value.encode("utf-8")
+    return _secret_cache
 
 
 def hash_password(password: str) -> str:
