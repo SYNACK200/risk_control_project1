@@ -162,3 +162,55 @@ export interface InferResult {
 export async function inferTemplate(form: FormData): Promise<InferResult> {
   return json<InferResult>(await fetch(BASE + '/templates/infer', { method: 'POST', body: form }));
 }
+
+export interface EntityAccount {
+  key: string; bank_name: string | null; bank_code: string | null;
+  account_masked: string | null; holders: Record<string, number>;
+  tasks: number[]; period_start: string | null; period_end: string | null;
+}
+
+export interface EntitySubject {
+  key: string; holder_masked: string | null; confidence: string;
+  accounts: Record<string, number>; tasks: number[];
+}
+
+export interface EntityConflict {
+  kind: string; severity: string; account_key: string; account_masked: string | null;
+  bank_name: string | null; holders: string[]; tasks: number[]; message: string;
+}
+
+export interface EntitiesPayload {
+  accounts: EntityAccount[]; subjects: EntitySubject[]; conflicts: EntityConflict[];
+  summary: { accounts: number; subjects: number; multi_account_subjects: number; conflicts: number };
+}
+
+export interface MergeMethod {
+  id: string; label: string; short: string; detail: string; formula: string; assumption: string;
+}
+
+export interface MergeResult {
+  subject: string;
+  method: MergeMethod;
+  overlap: { id: string; label: string; detail: string };
+  accounts: { task_id: number; bank_name: string | null; account_masked: string | null; months: number;
+             txn_count: number; balance_end: string | null; risk_hits: number; verdict: string | null }[];
+  coverage: { months: number; overlap_months: string[]; from: string | null; to: string | null };
+  metrics: { code: string; name: string; value: number | null; unit: string; how: string; note: string }[];
+  risk: { level: string; hits: number; per_account: number[] };
+  unsupported: { code: string; name: string; reason: string }[];
+  warnings: string[];
+  explain: { why_this_method: string; assumption: string; ratio_rule: string; balance_rule: string };
+}
+
+export async function getEntities(): Promise<EntitiesPayload> {
+  return json<EntitiesPayload>(await fetch(BASE + '/entities'));
+}
+
+export async function getMergeMethods(): Promise<{ methods: MergeMethod[]; overlap_modes: { id: string; label: string; detail: string }[] }> {
+  return json(await fetch(BASE + '/entities/methods'));
+}
+
+export async function mergeSubject(subject: string, method: string, overlap: string): Promise<MergeResult> {
+  const params = new URLSearchParams({ subject, method, overlap });
+  return json<MergeResult>(await fetch(BASE + '/entities/merge?' + params.toString()));
+}

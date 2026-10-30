@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session
 from db.models import AuditLog, FileObj, MetricValue, Report, Task, TaskFile, Txn
 from db.session import get_session
 from algorithm.algo.preread import run_preread
+from algorithm.algo.merge import AccountInput, merge_accounts, mode_catalog
+from algorithm.ocr.models import Transaction
+from datetime import date as _date
 from services.analysis import EncryptedFile, run_analysis
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -292,3 +295,56 @@ def get_task(task_id: int, db: Session = Depends(get_session)):
             "check_result": task.check_result,
             "created_at": task.created_at.isoformat() if task.created_at else None}
 
+
+@router.get("/merge/modes")
+def merge_modes():
+    """可选的多账户合并方式（含公式、适用条件与已知偏差）。"""
+    return {"items": mode_catalog()}
+
+
+@router.post("/merge")
+def merge_tasks(payload: dict, db: Session = Depends(get_session)):
+    """把同一借款人的多个账户合并成一份视图。
+
+    入参：{"task_ids": [1,2], "mode": "net_internal"}
+    """
+    task_ids = [int(x) for x in (payload.get("task_ids") or [])]
+    mode = str(payload.get("mode") or "net_internal")
+    if len(task_ids) < 2:
+        raise HTTPException(400, detail={"code": "E_STATE", "message": "至少选择两个账户/任务"})
+    accounts = []
+    for task_id in task_ids:
+        task = db.get(Task, task_id)
+        if task is None:
+            continue
+        rows = db.execute(select(Txn).where(Txn.task_id == task_id).order_by(Txn.id)).scalars().all()
+        def _d(value):
+            if not value:
+                return None
+            try:
+                return _date.fromisoformat(str(value)[:10])
+            except ValueError:
+                return None
+        accounts.append(AccountInput(
+            account_id=str(task_id),
+            bank_code=None,
+            period_start=_d(task.period_start),
+            period_end=_d(task.period_end),
+            transactions=[
+                Transaction(
+                    page_no=r.page_no or 1, row_no=index + 1,
+                    txn_date=r.txn_date, direction=r.direction,
+                    amount=r.amount, balance=r.balance,
+                    summary=r.summary, counterparty_name=r.counterparty_name,
+                )
+                for index, r in enumerate(rows)
+            ],
+        ))
+    try:
+        result = merge_accounts(accounts, mode)
+    except ValueError as exc:
+        raise HTTPException(400, detail={"code": "E_STATE", "message": str(exc)}) from exc
+    db.add(AuditLog(action="merge_accounts", object_type="task", object_id=task_ids[0],
+                    detail=f"mode={mode}; tasks={task_ids}"))
+    db.commit()
+    return result
