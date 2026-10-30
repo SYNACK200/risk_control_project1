@@ -235,3 +235,4 @@
 | 2026-10-31 | 流水回收站：`task.deleted_at` 软删除；`GET /tasks?trash=1`、`POST /tasks/recycle`、`POST /tasks/restore`、`POST /tasks/purge`（confirm 必填，仅回收站内） | 后端、银行侧 |
 | 2026-10-31 | 报告导出：`GET /tasks/{id}/transactions.csv`（UTF-8 BOM）、`GET /tasks/{id}/export.json`（报告+明细）；报告页新增导出与打印按钮 | 后端、银行侧 |
 | 2026-10-31 | 模板管理增强：PUT /templates/{id}（出新版本）、duplicate、disable、DELETE、stats、preview（试跑不落库）、export、import | 后端、银行侧 |
+| 2026-10-31 | 合格性从 4 级拆为 5 级：pass/grant(可授信)/supplement(需补充)/fail/unknown；authenticity.missing_materials 暴露缺材料项；facets 与列表 chips 同步 | 后端、银行侧 |

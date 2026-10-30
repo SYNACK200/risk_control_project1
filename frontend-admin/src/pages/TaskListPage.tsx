@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listTasks, purgeTasks, recycleTasks, restoreTasks, type TaskFacets, type TaskFilters, type TaskSummary, type TaskSummaryList } from '../lib/api';
 
-const AUTH: Record<string, string> = { pass: '合格', partial: '部分合格', fail: '不合格', unknown: '无法判定' };
+const AUTH: Record<string, string> = { pass: '合格', grant: '可授信', supplement: '需补充', fail: '不合格', unknown: '无法判定' };
 const SRC: Record<string, string> = { clean: '未见可疑', limited: '受限', suspicious: '来源可疑', unknown: '无法判定' };
 const RISK: Record<string, string> = { none: '未见', low: '低', medium: '中', high: '高' };
 const PARSE: Record<string, string> = { ok: '完整', partial: '不完整', failed: '失败' };
@@ -125,7 +125,7 @@ export function TaskListPage() {
           <div className="filter-row">
             <span className="filter-label">流水合格性</span>
             <Chip active={!filters.authenticity} onClick={() => set({ authenticity: undefined })}>全部</Chip>
-            {(['pass', 'partial', 'fail', 'unknown'] as const).map(level => (
+            {(['pass', 'grant', 'supplement', 'fail', 'unknown'] as const).map(level => (
               <Chip key={level} active={filters.authenticity === level} onClick={() => toggle('authenticity', level)}>
                 {AUTH[level]} {facets.authenticity?.[level] ?? 0}
               </Chip>
@@ -206,7 +206,11 @@ export function TaskListPage() {
                   <td className="num">{money(t.income)}</td>
                   <td className="num">{money(t.monthly_income)}</td>
                   <td className="num">{t.dti ?? '—'}</td>
-                  <td><span className={'tag ' + t.authenticity.level}>{t.authenticity.label}</span></td>
+                  <td title={(t.authenticity.missing_materials || []).length > 0
+                    ? '缺材料：' + (t.authenticity.missing_materials || []).join('、')
+                    : (t.authenticity.limited_layers || []).join('、')}>
+                    <span className={'tag ' + t.authenticity.level}>{t.authenticity.label}</span>
+                  </td>
                   <td><span className={'tag src-' + t.source.level}>{t.source.label}</span></td>
                   <td title={(t.risk_codes || []).join('、')}>
                     <span className={'tag risk-' + t.risk.level}>{t.risk.label}</span>

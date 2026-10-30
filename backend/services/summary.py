@@ -17,10 +17,19 @@ RISKY_CODES = {
 
 AUTH_LABEL = {
     "pass": "合格",
-    "partial": "部分合格（有受限）",
+    "grant": "可授信",
+    "supplement": "需补充",
     "fail": "不合格",
     "unknown": "无法判定",
 }
+
+# 拆法：
+#   可授信 = 核心层没有「矛盾/不一致」，受限只来自「我们查不到」（外部未开通、
+#            基线缺失、字体非嵌入这类留档即可的问题）
+#   需补充 = 缺少关键材料或存在需客户补交的项（每页合计/页脚笔数/期初期末余额）
+#   不合格 = 出现一致性矛盾（inconsistent/fail）或截图件
+CORE_LAYERS = ("file", "content", "ledger")
+REQUIRED_MATERIAL_CODES = {"C2", "C3", "C4"}
 
 PARSE_LABEL = {"ok": "完整", "partial": "不完整", "failed": "失败"}
 
@@ -28,26 +37,59 @@ RISK_LABEL = {"high": "高", "medium": "中", "low": "低", "none": "未见"}
 
 
 def _auth(layers: list[dict], carrier: str | None) -> dict:
-    statuses = {item.get("layer"): item.get("status") for item in layers}
+    statuses = {item.get("layer"): item.get("status") for item in (layers or [])}
     bad = [name for name, status in statuses.items() if status in ("inconsistent", "fail")]
-    if bad or carrier == "screenshot":
+    if not statuses:
+        level = "unknown"
+    elif bad or carrier == "screenshot":
         level = "fail"
     elif carrier == "image":
         level = "unknown"
     elif all(statuses.get(name) == "pass" for name in ("file", "content", "ledger", "external")):
         level = "pass"
     else:
-        level = "partial"
+        core_checks = [
+            check
+            for layer in layers
+            if layer.get("layer") in CORE_LAYERS
+            for check in (layer.get("checks") or [])
+        ]
+        skipped = [
+            check.get("code")
+            for check in core_checks
+            if check.get("status") == "skipped" and check.get("code") in REQUIRED_MATERIAL_CODES
+        ]
+        # 核心层里出现 fail/inconsistent 的单点，或某层一项都没执行过 → 也要补充/复核
+        core_flagged = [
+            check.get("code")
+            for check in core_checks
+            if check.get("status") in ("fail", "inconsistent")
+        ]
+        unverified = [
+            layer.get("layer")
+            for layer in layers
+            if layer.get("layer") in CORE_LAYERS and not (layer.get("checks") or [])
+        ]
+        level = "supplement" if (skipped or core_flagged or unverified or not core_checks) else "grant"
     limited = [
         name
         for name in ("file", "content", "ledger", "external")
         if statuses.get(name) in ("limited", "skipped", "unavailable", "undetermined")
+    ]
+    missing_materials = [
+        check.get("code")
+        for layer in layers
+        if layer.get("layer") in CORE_LAYERS
+        for check in (layer.get("checks") or [])
+        if check.get("status") == "skipped" and check.get("code") in REQUIRED_MATERIAL_CODES
     ]
     return {
         "level": level,
         "label": AUTH_LABEL[level],
         "blocked_layers": bad,
         "limited_layers": limited,
+        "core_passed": all(statuses.get(name) == "pass" for name in CORE_LAYERS),
+        "missing_materials": missing_materials,
     }
 
 

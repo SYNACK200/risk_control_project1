@@ -28,6 +28,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | BE-55 | 合格性五级：grant/supplement 替代 partial；核心层无矛盾且无缺失=可授信，缺 C2/C3/C4 或核心单点 fail 或某层未执行=需补充；空层=无法判定；新增 missing_materials | 部分合格无法区分是客户要补还是系统查不到 | services/summary.py、tests/test_summary.py | facets supplement 13 / fail 1 / unknown 1；17 passed |
 | [x] | BE-54 | 数据隔离：task.user_id 归属；列表/详情/报告/导出按角色过滤；回收站/模板/阈值/实体/审计仅银行侧 | 借款侧不能看到别人的流水 | routers/tasks.py、reports.py、各管理路由 | 借款侧 3 条 / 银行侧 15 条；借款侧 /entities 403 |
 | [x] | BE-53 | 账号体系：app_user 表、PBKDF2 密码、HMAC 令牌（12h）、/auth/register|login|me|change-password|users；首次启动种 admin | 之前只有共享口令，无法区分用户与角色 | db/models.py、helpers/security.py、routers/auth.py | 注册/登录 200；错令牌 401 |
 | [x] | BE-52 | 模板生命周期接口：编辑出新版本、复制、停用、删除（被用过 409）、统计、试跑、导出、导入 | 模板只启用不管理，出错无法修也无法验证 | routers/templates.py | 统计/复制/试跑/导出均 200；试跑 570 笔 |
