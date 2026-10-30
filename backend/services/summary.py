@@ -51,6 +51,28 @@ def _auth(layers: list[dict], carrier: str | None) -> dict:
     }
 
 
+SOURCE_LABEL = {
+    "clean": "未见可疑",
+    "limited": "受限（需复核）",
+    "suspicious": "来源可疑",
+    "unknown": "无法判定",
+}
+
+
+def _source(layers: list[dict], verdict: str | None) -> dict:
+    """原始文件来源侧：只看载体/结构层，不掺内容层。"""
+    file_status = next((item.get("status") for item in layers if item.get("layer") == "file"), None)
+    if verdict == "来源可疑" or file_status == "fail":
+        level = "suspicious"
+    elif file_status == "pass":
+        level = "clean"
+    elif file_status in ("limited", "skipped", "unavailable", "undetermined"):
+        level = "limited"
+    else:
+        level = "unknown"
+    return {"level": level, "label": SOURCE_LABEL[level], "file_status": file_status}
+
+
 def _parse(payload: dict, task_status: str, txn_count: int | None) -> dict:
     metrics = payload.get("metrics") or []
     total = len(metrics)
@@ -73,6 +95,13 @@ def _parse(payload: dict, task_status: str, txn_count: int | None) -> dict:
         "failed_checks": failed,
         "limited_checks": limited,
     }
+
+
+def _metric_value(payload: dict, code: str) -> str | None:
+    for item in payload.get("metrics") or []:
+        if item.get("code") == code and item.get("value") is not None:
+            return str(item.get("value"))
+    return None
 
 
 def _risk(payload: dict) -> dict:
@@ -121,6 +150,12 @@ def summarize(
         "period_start": task.period_start,
         "period_end": task.period_end,
         "verdict": payload.get("verdict"),
+        "source": _source(layers, payload.get("verdict")),
+        "income": _metric_value(payload, "A01"),
+        "monthly_income": _metric_value(payload, "A02"),
+        "dti": _metric_value(payload, "B02"),
+        "net_inflow": _metric_value(payload, "C01"),
+        "risk_codes": [h["code"] for h in risk["hits"]],
         "authenticity": auth,
         "parse": parse,
         "risk": risk,
