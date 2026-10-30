@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | 1 | 拉代码 | `git pull origin dev` | 最新提交 |
 | 2 | 装依赖 | `cd algorithm && pip install -r requirements.txt` | 无报错 |
-| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 176 passed |
+| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 194 passed |
 | 4 | 跑样本 | `python algorithm/local_run.py 样例.pdf --password 口令 --template algorithm/integration/samples/icbc_template.json` | 输出 summary 与报告 JSON |
 | 5 | 看自检 | 同上输出里的 S1~S7 | 金额/日期/余额回查 100% |
 
@@ -29,10 +29,10 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
-| [ ] | AL-47 | 方向识别治本：从收付列/金额符号/借贷标志判定方向 | 招行 A01 现在只能给 null，收入算不出 | `ocr/parse.py` + `ocr/table.py` | 招行样本 A01 可算出且与人工核对一致（约 1.8 万） |
+| [x] | AL-47 | 方向识别治本：从收付列/金额符号/借贷标志判定方向 | 招行 A01 现在只能给 null，收入算不出 | `ocr/parse.py` + `ocr/table.py` | 招行样本 A01=17957.03，与手算一致（2026-10-30） |
 | [ ] | AL-43 | 逐笔确认工行跨引擎 10 笔不一致 | 自检 S4 只到 181/191，不查清等于有盲区 | `algo/self_check.py` + 排查脚本 | 10 笔逐一给出「切分差异/抽取错误」结论 |
 | [ ] | AL-44 | 自检结果进报告（limitations + 独立小节）与接口字段 | 报告现在看不到「识别有多可靠」 | `algo/report.py` | 报告含自检结论，页面可显示 |
-| [ ] | AL-36 | 外推自检：用余额链/页脚笔数反验推断，错了拒绝生成模板 | 现在推错也会生成模板 | `ocr/infer.py` | 故意错标注时返回 warnings 且不产模板 |
+| [x] | AL-36 | 外推自检：用余额链/页脚笔数反验推断，错了拒绝生成模板 | 现在推错也会生成模板 | `ocr/infer.py` | 故意错标注时返回 warnings 且不产模板 |
 
 ## P1
 

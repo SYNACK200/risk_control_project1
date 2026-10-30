@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
 
@@ -38,6 +39,7 @@ MAX_BODY_SIZE = 12.0
 WORD_X_TOLERANCE = 4.0
 LINE_Y_TOLERANCE = 4.0
 CLOCK_JOIN_GAP = 6.0
+CONT_MAX_GAP = 24.0
 
 
 class OcrUnavailable(RuntimeError):
@@ -157,36 +159,49 @@ def _is_body_char(obj: dict) -> bool:
 
 
 def _fitz_page_words(page: fitz.Page) -> tuple[list[Word], list[str], bool]:
-    """按字号过滤水印/缩印重影，返回 (词, 正文字符串, 页面是否有任何文本)。"""
+    """按字号过滤水印/缩印重影，返回 (词, 正文字符串, 页面是否有任何文本)。
+
+    只按几何位置判断正文，不按块/行编号：含图像块的 PDF 里 words 的块号不计图像块，
+    与 dict 的编号会错位，招行件的图片块排在正文前，曾导致整页词被滤空。
+    """
     layout = page.get_text("dict")
-    body_lines: dict[tuple[int, int], list[tuple[float, float, float, float]]] = {}
+    body_rects: list[fitz.Rect] = []
     body_texts: list[str] = []
     has_text = False
-    for block_index, block in enumerate(layout["blocks"]):
-        block_no = block.get("number", block_index)
-        for line_index, line in enumerate(block.get("lines", [])):
-            rects: list[tuple[float, float, float, float]] = []
+    for block in layout["blocks"]:
+        for line in block.get("lines", []):
             for span in line.get("spans", []):
                 text = span.get("text", "")
                 if text.strip():
                     has_text = True
                 if MIN_BODY_SIZE <= float(span.get("size", 0)) <= MAX_BODY_SIZE:
-                    rects.append(tuple(span["bbox"]))
+                    body_rects.append(fitz.Rect(span["bbox"]))
                     body_texts.append(text)
-            if rects:
-                body_lines[(block_no, line_index)] = rects
 
+    spans = sorted(body_rects, key=lambda rect: rect.y0)
+    tops = [rect.y0 for rect in spans]
     matrix = page.rotation_matrix
     words: list[Word] = []
-    for x0, y0, x1, y1, text, block_no, line_no, _ in page.get_text("words"):
-        rects = body_lines.get((block_no, line_no))
-        if not rects or not text.strip():
+    for x0, y0, x1, y1, text, _block, _line, _no in page.get_text("words"):
+        if not text.strip():
             continue
-        if not any(x0 < r[2] and x1 > r[0] and y0 < r[3] and y1 > r[1] for r in rects):
+        area = max((x1 - x0) * (y1 - y0), 1e-6)
+        start = bisect_left(tops, y0 - MAX_BODY_SIZE - 1)
+        end = bisect_right(tops, y1)
+        if not any(_overlap_ratio(area, x0, y0, x1, y1, r) >= 0.5 for r in spans[start:end]):
             continue
         rect = fitz.Rect(x0, y0, x1, y1) * matrix
         words.append(Word(text=text, x0=rect.x0, x1=rect.x1, top=rect.y0, bottom=rect.y1))
     return words, body_texts, has_text
+
+
+def _overlap_ratio(area: float, x0: float, y0: float, x1: float, y1: float, rect: fitz.Rect) -> float:
+    """词框与字号命中框的交叠面积占比；水印/大字号词只沾边，占比很低。"""
+    width = min(x1, rect.x1) - max(x0, rect.x0)
+    height = min(y1, rect.y1) - max(y0, rect.y0)
+    if width <= 0 or height <= 0:
+        return 0.0
+    return (width * height) / area
 
 
 def _fitz_extract(
@@ -271,6 +286,8 @@ def _transactions_from_pages(
     footer_count: int | None = None
     page_footer_total = 0
     summaries: list[PageSummary] = []
+    has_direction_column = False
+    has_split_amount = False
 
     for page_no, words in pages:
         page_footer: int | None = None
@@ -285,6 +302,9 @@ def _transactions_from_pages(
             header_line, tokens, mapping = header
             columns = build_columns(tokens, mapping)
             header_top = header_line.top
+            fields = set(mapping.values())
+            has_direction_column = has_direction_column or "direction" in fields
+            has_split_amount = has_split_amount or bool({"amount_in", "amount_out"} & fields)
         elif columns is None:
             warnings.append(f"第 {page_no} 页未识别到表头，跳过该页")
             continue
@@ -341,6 +361,9 @@ def _transactions_from_pages(
             if txn_date is None:
                 if current is None:
                     continue
+                # 表格结束后页脚（页码、温馨提示）离上一行很远，不能并入上一笔
+                if current.bbox is not None and line.top - current.bbox[3] > CONT_MAX_GAP:
+                    continue
                 extra = _cell_text(cells.get("summary", []))
                 if extra and extra not in (current.summary or ""):
                     current.summary = f"{current.summary or ''}{extra}"
@@ -378,7 +401,38 @@ def _transactions_from_pages(
 
     if footer_count is None and page_footer_total:
         footer_count = page_footer_total
+    _fill_signed_directions(
+        transactions,
+        warnings,
+        has_direction_column=has_direction_column,
+        has_split_amount=has_split_amount,
+    )
     return transactions, footer_count, summaries
+
+
+def _fill_signed_directions(
+    transactions: list[Transaction],
+    warnings: list[str],
+    *,
+    has_direction_column: bool,
+    has_split_amount: bool,
+) -> None:
+    """金额列以正负记收支时，未带负号的行补为入账。
+
+    仅在整表既无收付方向列、也无收入/支出两列，且金额列确实出现过负数时启用：
+    列内没有负数可能只是没有出账，不能据此认定符号约定。
+    """
+    if has_direction_column or has_split_amount:
+        return
+    if not any(txn.direction == "out" for txn in transactions):
+        return
+    filled = 0
+    for txn in transactions:
+        if txn.direction is None and txn.amount:
+            txn.direction = "in"
+            filled += 1
+    if filled:
+        warnings.append(f"金额列未印收付方向，按正负号约定判定：{filled} 笔无负号金额按入账处理")
 
 
 def _ocr_to_words(page) -> list[Word]:

@@ -234,3 +234,100 @@ def test_invalid_image_raises_ocr_unavailable():
 def test_empty_and_unsupported_input():
     assert parse(b"").warnings == ["空文件"]
     assert parse(b"hello").warnings == ["不支持的文件格式"]
+
+
+CMB_HEADER = ["记账日期", "货币", "交易金额", "联机余额", "交易摘要", "对手信息"]
+CMB_XS = [40, 160, 240, 340, 440, 530]
+
+
+def make_cmb_like_pdf(rows, footer_y=None, footer_lines=None):
+    doc = fitz.open()
+    page = doc.new_page(width=800, height=1000)
+    page.insert_text((40, 60), "招商银行交易流水", fontsize=12, fontname="china-s")
+    y = 110
+    for label, x in zip(CMB_HEADER, CMB_XS):
+        page.insert_text((x, y), label, fontsize=7, fontname="china-s")
+    last_y = y
+    for index, row in enumerate(rows, start=1):
+        last_y = y + 20 * index
+        for value, x in zip(row, CMB_XS):
+            page.insert_text((x, last_y), value, fontsize=7, fontname="china-s")
+    for line in footer_lines or []:
+        page.insert_text((470, footer_y), line, fontsize=7, fontname="china-s")
+        footer_y = (footer_y or 0) + 14
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_signed_amount_column_fills_direction():
+    rows = [
+        ["2026-08-30", "CNY", "1,850.00", "1,850.00", "网联收款", "某公司"],
+        ["2026-08-31", "CNY", "-100.00", "1,750.00", "快捷支付", "某商户"],
+        ["2026-09-01", "CNY", "1.00", "1,751.00", "账户结息", "某银行"],
+    ]
+    result = parse(make_cmb_like_pdf(rows))
+
+    assert [txn.direction for txn in result.transactions] == ["in", "out", "in"]
+    assert result.transactions[0].amount == Decimal("1850.00")
+    assert result.transactions[1].amount == Decimal("100.00")
+    assert any("正负号约定" in warning for warning in result.warnings)
+
+
+def test_signed_amount_without_negative_stays_undetermined():
+    rows = [
+        ["2026-08-30", "CNY", "1,850.00", "1,850.00", "网联收款", "某公司"],
+        ["2026-09-01", "CNY", "1.00", "1,851.00", "账户结息", "某银行"],
+    ]
+    result = parse(make_cmb_like_pdf(rows))
+
+    assert [txn.direction for txn in result.transactions] == [None, None]
+    assert not any("正负号约定" in warning for warning in result.warnings)
+
+
+def test_blank_direction_column_prevents_sign_inference():
+    header = ["交易日期", "摘要", "借贷标志", "交易金额", "余额"]
+    xs = [40, 180, 340, 460, 560]
+    rows = [
+        ["2026-09-01", "收款", "", "1,000.00", "1,000.00"],
+        ["2026-09-02", "消费", "", "-200.00", "800.00"],
+    ]
+    result = parse(make_pdf([rows], header, xs))
+
+    assert [txn.direction for txn in result.transactions] == [None, "out"]
+    assert not any("正负号约定" in warning for warning in result.warnings)
+
+
+def test_far_footer_is_not_merged_into_last_row():
+    rows = [
+        ["2026-08-30", "CNY", "1,850.00", "1,850.00", "网联收款", "某公司"],
+        ["2026-09-01", "CNY", "-500.00", "1,350.00", "快捷支付", "某商户"],
+    ]
+    pdf = make_cmb_like_pdf(rows, footer_y=900, footer_lines=["温馨提示：请核对明细", "1/2"])
+    result = parse(pdf)
+
+    last = result.transactions[-1]
+    assert last.summary == "快捷支付"
+    assert last.counterparty_name == "某商户"
+    assert len(result.transactions) == 2
+
+
+def test_image_block_before_text_keeps_fitz_words():
+    doc = fitz.open()
+    page = doc.new_page(width=800, height=1000)
+    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 32, 32), False)
+    pix.clear_with(240)
+    page.insert_image(fitz.Rect(20, 20, 220, 60), pixmap=pix)
+    page.insert_text((40, 90), "银行账户交易明细", fontsize=12, fontname="china-s")
+    for index, label in enumerate(BANK_HEADER):
+        page.insert_text((BANK_XS[index], 110), label, fontsize=7, fontname="china-s")
+    for row_index, row in enumerate(BANK_ROWS, start=1):
+        for index, value in enumerate(row):
+            page.insert_text((BANK_XS[index], 110 + 18 * row_index), value, fontsize=7, fontname="china-s")
+    data = doc.tobytes()
+    doc.close()
+
+    result = parse(data)
+
+    assert len(result.transactions) == 3
+    assert not any("回退 pdfplumber" in warning for warning in result.warnings)
