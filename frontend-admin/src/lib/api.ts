@@ -44,6 +44,14 @@ export async function listTasks(): Promise<TaskRow[]> {
   return json<TaskRow[]>(await fetch(`${BASE}/tasks?limit=50`));
 }
 
+export async function reanalyzeTask(taskId: number, password?: string): Promise<{ task_id: number; version: number }> {
+  const form = new FormData();
+  if (password) form.append('password', password);
+  return json<{ task_id: number; version: number }>(await fetch(BASE + '/tasks/' + taskId + '/reanalyze', {
+    method: 'POST', body: form,
+  }));
+}
+
 export async function getReport(taskId: number): Promise<ReportPayload> {
   return json<ReportPayload>(await fetch(`${BASE}/reports/${taskId}`));
 }
