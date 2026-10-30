@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import secrets
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -122,8 +124,17 @@ def seed_admin(db: Session) -> None:
     count = db.execute(select(func.count(User.id)).where(User.role == "banker")).scalar() or 0
     if count:
         return
-    password = os.getenv("ADMIN_PASSWORD", "admin123")
+    password = os.getenv("ADMIN_PASSWORD")
+    if not password:
+        password = secrets.token_urlsafe(9)
+        path = Path(__file__).resolve().parents[1] / ".admin_password"
+        path.write_text(password, encoding="utf-8")
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
     db.add(User(username="admin", password_hash=hash_password(password),
                 role="banker", display_name="系统管理员"))
     db.commit()
-    print("[auth] 已创建初始银行侧账号 admin / " + password + "（请尽快修改密码）", flush=True)
+    print("[auth] 已创建初始银行侧账号 admin，密码：" + password, flush=True)
+    print("[auth] 密码已写入 backend/.admin_password（首次登录后请修改并删除该文件）", flush=True)

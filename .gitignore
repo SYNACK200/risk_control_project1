@@ -88,3 +88,7 @@ backend/storage/
 backend/uploads/
 backend/*.log
 deploy/.env
+.auth_secret
+.admin_password
+backend/.auth_secret
+backend/.admin_password

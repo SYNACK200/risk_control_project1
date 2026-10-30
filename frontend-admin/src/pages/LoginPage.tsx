@@ -46,7 +46,7 @@ export function LoginPage() {
         <input type="password" placeholder="密码" value={password} onChange={e => setPassword(e.target.value)} />
         {error && <p className="me-warn">{error}</p>}
         <button className="btn" type="submit" disabled={busy}>{busy ? '登录中…' : '登录'}</button>
-        <p className="muted small">首次启动的默认账号：admin / admin123（登录后请修改密码）</p>
+        <p className="muted small">首次启动会创建 admin，随机密码在 backend/.admin_password（登录后请修改并删除该文件）</p>
       </form>
     </div>
   );
