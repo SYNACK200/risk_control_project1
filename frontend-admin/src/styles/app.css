@@ -314,3 +314,13 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
   tr { break-inside: avoid; }
   body { background: #fff !important; }
 }
+
+/* 模板管理增强 */
+.tpl-panel { border: 1px solid #e3e9f3; border-radius: 8px; padding: 12px 14px; margin: 12px 0; background: #fbfcff; }
+.tpl-panel h3 { margin: 0 0 8px; font-size: 14px; }
+.tpl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+.tpl-json { width: 100%; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+  border: 1px solid #d6deeb; border-radius: 6px; padding: 8px; background: #fff; }
+.tpl-pre { background: #fff; border: 1px solid #e3e9f3; border-radius: 6px; padding: 8px; font-size: 12px; overflow: auto; }
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.link-btn.danger-text { color: #b3261e; }
