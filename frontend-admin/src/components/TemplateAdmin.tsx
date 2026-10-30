@@ -47,7 +47,7 @@ export function TemplateAdmin() {
   }
 
   async function saveInfer() {
-    if (!infer) return;
+    if (!infer || infer.valid === false) return;
     try {
       const { id } = await createTemplate({ bank_code: infer.bank_code, field_map: infer.field_map, version: 1 });
       setMsg('已保存模板 #' + id + '（草稿），点“启用”后用于解析');
@@ -101,7 +101,7 @@ export function TemplateAdmin() {
               </tbody>
             </table>
             {infer.warnings.length > 0 && <p className="notice error">{infer.warnings.join('；')}</p>}
-            <button className="btn" style={{ marginTop: 8 }} onClick={() => { void saveInfer(); }}>保存为草稿</button>
+            {infer.valid !== false && <button className="btn" style={{ marginTop: 8 }} onClick={() => { void saveInfer(); }}>保存为草稿</button>}
           </div>
         )}
 

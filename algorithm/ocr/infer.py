@@ -8,10 +8,12 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 import pdfplumber
 
 from .models import Template
+from .parse import parse
 
 DATE_RE = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$")
 NUM_RE = re.compile(r"^[+-]?\d{1,3}(,\d{3})*(\.\d{1,2})?$|^[+-]?\d+(\.\d{1,2})?$")
@@ -41,10 +43,15 @@ class Provenance:
 
 @dataclass
 class InferResult:
-    template: Template
+    template: Template | None
     provenance: list[Provenance]
     columns: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+
+    @property
+    def valid(self) -> bool:
+        """反验通过才产出模板；False 时只有 warnings。"""
+        return self.template is not None
 
 
 def _words(file_bytes: bytes) -> dict[int, list[dict]]:
@@ -198,6 +205,44 @@ def _header_aliases(cols: list[dict], pages: dict[int, list[dict]], limit: int =
     return aliases
 
 
+def _validate(file_bytes: bytes, template: Template) -> list[str]:
+    """用推断出的模板真解析一遍，按行数/余额链反验列语义；返回硬性问题。"""
+    parsed = parse(file_bytes, template)
+    txns = parsed.transactions
+    if not txns:
+        return ["推断模板解析不出交易行，列映射不可用"]
+    problems: list[str] = []
+
+    if parsed.footer_count is not None and parsed.footer_count != len(txns):
+        problems.append(
+            f"推断模板解析 {len(txns)} 笔，与页脚声明 {parsed.footer_count} 笔不符"
+        )
+    no_amount = sum(1 for txn in txns if txn.amount is None)
+    if no_amount * 2 > len(txns):
+        problems.append(f"{no_amount}/{len(txns)} 笔取不到金额，金额列映射可疑")
+    no_direction = sum(1 for txn in txns if txn.amount is not None and txn.direction not in ("in", "out"))
+    if no_direction * 2 > len(txns):
+        problems.append(f"{no_direction}/{len(txns)} 笔取不到收/支方向，方向列映射可疑")
+
+    checked = broken = 0
+    prev: Decimal | None = None
+    for txn in txns:
+        if txn.balance is None or txn.amount is None or txn.direction not in ("in", "out"):
+            prev = None
+            continue
+        if prev is not None:
+            checked += 1
+            sign = Decimal("1") if txn.direction == "in" else Decimal("-1")
+            if abs(Decimal(txn.balance) - prev - sign * txn.amount) > Decimal("0.01"):
+                broken += 1
+        prev = Decimal(txn.balance)
+    if checked >= 2 and broken == checked:
+        problems.append(f"余额链 {checked} 处可核对、全部不符，金额/余额列映射可能颠倒")
+    elif checked >= 5 and broken * 5 > checked:
+        problems.append(f"余额链 {checked} 处可核对、{broken} 处不符，金额或余额列映射可疑")
+    return problems
+
+
 def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNOWN", max_pages: int = 3) -> InferResult:
     """少量标注 → 模板。标注可以是表头词，也可以是样例单元格。"""
     pages = _words(file_bytes)
@@ -231,13 +276,30 @@ def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNO
         field_map[pr.field] = alias if alias else pr.column
     missing = [f for f in ("txn_date", "amount", "balance") if f not in field_map]
     if missing:
-        warnings.append(f"未能推断出必需字段：{', '.join(missing)}，需补充标注" )
+        warnings.append(f"未能推断出必需字段：{', '.join(missing)}，需补充标注")
+        return InferResult(template=None, provenance=_sorted(prov), columns=_columns(cols), warnings=warnings)
 
     template = Template(bank_code=bank_code.upper(), version=1, field_map=field_map)
+    problems = _validate(file_bytes, template)
+    if problems:
+        warnings.extend(problems)
+        warnings.append("反验未通过，未生成模板；请修正标注后重试")
+        return InferResult(template=None, provenance=_sorted(prov), columns=_columns(cols), warnings=warnings)
     return InferResult(
         template=template,
-        provenance=sorted(prov.values(), key=lambda p: (p.column is None, p.column or 99)),
-        columns=[{"index": i, "x0": round(c["x0"], 1), "x1": round(c["x1"], 1), "samples": c["samples"][:3]} for i, c in enumerate(cols)],
+        provenance=_sorted(prov),
+        columns=_columns(cols),
         warnings=warnings,
     )
+
+
+def _sorted(prov: dict[int, Provenance]) -> list[Provenance]:
+    return sorted(prov.values(), key=lambda p: (p.column is None, p.column or 99))
+
+
+def _columns(cols: list[dict]) -> list[dict]:
+    return [
+        {"index": i, "x0": round(c["x0"], 1), "x1": round(c["x1"], 1), "samples": c["samples"][:3]}
+        for i, c in enumerate(cols)
+    ]
 

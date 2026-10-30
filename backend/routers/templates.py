@@ -98,12 +98,13 @@ def infer_template_api(
 
     payload = {
         "bank_code": bank_code.upper(),
+        "valid": result["valid"],
         "field_map": result["field_map"],
         "provenance": result["provenance"],
         "columns": result["columns"],
         "warnings": result["warnings"],
     }
-    if save_draft:
+    if save_draft and result["valid"]:
         row = Template(bank_code=bank_code.upper(), version=1, status="draft",
                        field_map=result["field_map"],
                        header_columns=[c.get("alias") for c in result["columns"]])

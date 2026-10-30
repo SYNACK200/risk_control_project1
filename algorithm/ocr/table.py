@@ -131,17 +131,27 @@ def find_header(
 
 
 def apply_template(tokens: list[Word], mapping: dict[int, str], field_map: dict[str, str | int]) -> dict[int, str]:
+    """模板显式映射优先：同一字段只保留模板指定的那一列，去掉表头自动识别的重名列。"""
     merged = dict(mapping)
+    claimed: dict[str, int] = {}
     for canonical, target in field_map.items():
+        idx: int | None = None
         if isinstance(target, int):
             if 0 <= target < len(tokens):
-                merged[target] = canonical
+                idx = target
+        else:
+            want = _norm(target)
+            for i, token in enumerate(tokens):
+                if _norm(token.text) == want:
+                    idx = i
+                    break
+        if idx is None:
             continue
-        want = _norm(target)
-        for idx, token in enumerate(tokens):
-            if _norm(token.text) == want:
-                merged[idx] = canonical
-                break
+        merged[idx] = canonical
+        claimed[canonical] = idx
+    for idx, canonical in list(merged.items()):
+        if canonical in claimed and claimed[canonical] != idx:
+            del merged[idx]
     return merged
 
 

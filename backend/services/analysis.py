@@ -128,12 +128,13 @@ def run_analysis(
 
 
 def infer_from_marks(file_bytes: bytes, marks: list[dict], bank_code: str = "UNKNOWN") -> dict:
-    """少量标注外推模板：返回 field_map、来源、列样本与告警。"""
+    """少量标注外推模板：返回 field_map、来源、列样本与告警；反验不过时 valid=False 且无模板。"""
     parsed = [InferMark(field=m["field"], page=int(m.get("page", 0)),
                         x=float(m["x"]), y=float(m["y"])) for m in marks]
     res = _infer_template(file_bytes, parsed, bank_code=bank_code)
     return {
-        "field_map": res.template.field_map,
+        "valid": res.valid,
+        "field_map": res.template.field_map if res.template else {},
         "provenance": [
             {"field": p.field, "column": p.column, "source": p.source,
              "confidence": p.confidence, "why": p.why}
