@@ -249,7 +249,7 @@ MERGE_UNSUPPORTED = [
 ]
 
 
-def merge_subject(db: Session, holder_key: str, method: str, overlap: str) -> dict:
+def _merge_subject_legacy(db: Session, holder_key: str, method: str, overlap: str) -> dict:
     if method not in {m["id"] for m in METHODS}:
         raise ValueError(f"未知合并方法：{method}")
     if overlap not in {m["id"] for m in OVERLAP_MODES}:
@@ -419,6 +419,142 @@ def merge_subject(db: Session, holder_key: str, method: str, overlap: str) -> di
             "why_this_method": method_meta["detail"],
             "assumption": method_meta["assumption"],
             "ratio_rule": "比率类指标（月均、DTI、流入流出比）不直接相加，统一按合并后的分子分母重算。",
+            "balance_rule": "余额类指标不跨账户相加：同一时点同一笔钱只存在一个账户里。",
+        },
+    }
+
+
+def merge_subject(db: Session, holder_key: str, method: str = "net_internal", overlap: str = "auto") -> dict:
+    """合并一个户名下的所有账户。计算交给 algorithm.algo.merge（含内部转账抵消与 40 项重算）。
+
+    overlap 参数保留兼容：合并引擎按期间自动处理重叠，不再单独选择重叠算法。
+    """
+    from datetime import date as _date
+
+    from algorithm.algo.merge import MODES, AccountInput, merge_accounts
+    from algorithm.algo.metrics import METRIC_DEFS
+    from algorithm.ocr.models import Transaction
+
+    mode = method if method in MODES else "net_internal"
+    tasks = db.execute(select(Task).where(Task.status == "DONE")).scalars().all()
+    picked = []
+    for task in tasks:
+        check = task.check_result if isinstance(task.check_result, dict) else {}
+        pre = check.get("preread") or {}
+        holder = pre.get("holder_masked") or "未识别户名"
+        if holder != holder_key:
+            continue
+        picked.append((task, pre))
+    if not picked:
+        raise ValueError("没有该户名下的已解析流水")
+
+    accounts: list[AccountInput] = []
+    account_meta = []
+    for task, pre in picked:
+        rows = db.execute(select(Txn).where(Txn.task_id == task.id)).scalars().all()
+        txns = []
+        for i, row in enumerate(rows, 1):
+            txns.append(Transaction(
+                page_no=row.page_no or 1,
+                row_no=i,
+                txn_date=str(row.txn_date) if row.txn_date else None,
+                summary=row.summary,
+                counterparty_name=row.counterparty_name,
+                direction=row.direction,
+                amount=row.amount,
+                balance=row.balance,
+            ))
+        start = _date.fromisoformat(str(task.period_start)) if task.period_start else None
+        end = _date.fromisoformat(str(task.period_end)) if task.period_end else None
+        accounts.append(AccountInput(account_id=str(task.id), bank_code=pre.get("bank_code"),
+                                     period_start=start, period_end=end, transactions=txns))
+        account_meta.append({
+            "task_id": task.id,
+            "bank_name": pre.get("bank_name"),
+            "account_masked": pre.get("account_masked"),
+            "months": len({_month_key(str(row.txn_date)) for row in rows if row.txn_date} - {None}),
+            "txn_count": len(rows),
+            "balance_end": str(rows[-1].balance) if rows and rows[-1].balance is not None else None,
+            "risk_hits": len([c for c in (_latest_report(db, task.id).get("conclusions") or [])
+                              if c.get("code") in RISKY_CODES]),
+            "verdict": _latest_report(db, task.id).get("verdict"),
+        })
+
+    result = merge_accounts(accounts, mode)
+    units = {code: unit for code, _name, unit in METRIC_DEFS}
+    metrics = []
+    for item in result["metrics"]:
+        value = item.get("value")
+        metrics.append({
+            "code": item["code"],
+            "name": item["name"],
+            "value": None if value is None else float(value),
+            "unit": units.get(item["code"], ""),
+            "how": item.get("basis", ""),
+            "note": "",
+        })
+
+    counts = [a["risk_hits"] for a in account_meta]
+    if mode == "worst_case":
+        hits = max(counts) if counts else 0
+    elif mode in ("convex", "weighted"):
+        hits = round(sum(counts) / len(counts)) if counts else 0
+    elif mode == "evidence":
+        hits = max(counts) if counts else 0
+    else:
+        hits = min(3, sum(counts)) if counts else 0
+    risk_level = "high" if hits >= 3 else "medium" if hits == 2 else "low" if hits == 1 else "none"
+
+    months = sorted({_month_key(str(r.txn_date)) for _t, rows in [] for r in rows} - {None}) if False else []
+    month_owner: dict[str, set[int]] = defaultdict(set)
+    for account, meta in zip(accounts, account_meta):
+        for txn in account.transactions:
+            key = _month_key(txn.txn_date)
+            if key:
+                month_owner[key].add(meta["task_id"])
+    months = sorted(month_owner)
+    overlap_months = [k for k, owners in month_owner.items() if len(owners) > 1]
+
+    warnings: list[str] = list(result.get("notes") or [])
+    if overlap_months:
+        warnings.append(f"{len(overlap_months)} 个月份存在多账户重叠，已由合并引擎按期间并集处理")
+    if result.get("overlap_days"):
+        warnings.append(f"账户期间重叠约 {result['overlap_days']} 天")
+    if any(not a["account_masked"] for a in account_meta):
+        warnings.append("有账户未识别出账号，合并结果可信度下降")
+    if holder_key == "未识别户名":
+        warnings.append("该组未识别户名，属于弱关联，需要人工核对身份")
+
+    return {
+        "subject": holder_key,
+        "method": {
+            "id": mode,
+            "label": result["label"],
+            "short": result["one_line"],
+            "detail": result["formula"],
+            "formula": result["formula"],
+            "assumption": "",
+        },
+        "overlap": {"id": "auto", "label": "按期间自动处理", "detail": "合并引擎按各账户期间取并集，重叠不重复计数。"},
+        "accounts": account_meta,
+        "coverage": {
+            "months": len(months),
+            "overlap_months": overlap_months,
+            "from": result.get("period_start"),
+            "to": result.get("period_end"),
+            "raw_txn_count": result.get("raw_txn_count"),
+            "merged_txn_count": result.get("txn_count"),
+            "dropped_duplicates": result.get("dropped_duplicates"),
+            "internal_transfers": len(result.get("internal_transfers") or []),
+        },
+        "metrics": metrics,
+        "risk": {"level": risk_level, "hits": hits, "per_account": counts},
+        "unsupported": [{"code": c, "name": n, "reason": r} for c, n, r in MERGE_UNSUPPORTED],
+        "warnings": warnings,
+        "explain": {
+            "why_this_method": result["one_line"],
+            "assumption": result["formula"],
+            "ratio_rule": "比率类指标（月均、DTI、流入流出比）由合并后的明细重算，不直接相加。",
             "balance_rule": "余额类指标不跨账户相加：同一时点同一笔钱只存在一个账户里。",
         },
     }

@@ -8,7 +8,7 @@ export function EntitiesPage() {
   const [methods, setMethods] = useState<MergeMethod[]>([]);
   const [overlaps, setOverlaps] = useState<{ id: string; label: string; detail: string }[]>([]);
   const [subject, setSubject] = useState<string | null>(null);
-  const [method, setMethod] = useState('union');
+  const [method, setMethod] = useState('net_internal');
   const [overlap, setOverlap] = useState('max');
   const [result, setResult] = useState<MergeResult | null>(null);
   const [showWhy, setShowWhy] = useState(false);
@@ -92,10 +92,12 @@ export function EntitiesPage() {
               {m.label}
             </button>
           ))}
-          <span className="filter-label" style={{ marginLeft: 14 }}>重叠月份</span>
-          <select value={overlap} onChange={e => setOverlap(e.target.value)}>
-            {overlaps.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
+          {overlaps.length > 1 && (<>
+            <span className="filter-label" style={{ marginLeft: 14 }}>重叠月份</span>
+            <select value={overlap} onChange={e => setOverlap(e.target.value)}>
+              {overlaps.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          </>)}
           <button className="link-btn" type="button" onClick={() => setShowWhy(v => !v)}>{showWhy ? '收起说明' : '这个方式怎么算？'}</button>
         </div>
         {current && <p className="muted">当前：<strong>{current.label}</strong> —— {current.short}</p>}
