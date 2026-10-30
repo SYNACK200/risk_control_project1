@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
-import { getEntities, getMergeMethods, mergeSubject, type EntitiesPayload, type MergeMethod, type MergeResult } from '../lib/api';
+import { getEntities, getMergeMethods, mergeSubject, type EntitiesPayload, type SubjectMergeMethod, type SubjectMergeResult } from '../lib/api';
 
 const RISK_TEXT: Record<string, string> = { high: '高', medium: '中', low: '低', none: '未见' };
 
 export function EntitiesPage() {
   const [data, setData] = useState<EntitiesPayload | null>(null);
-  const [methods, setMethods] = useState<MergeMethod[]>([]);
+  const [methods, setMethods] = useState<SubjectMergeMethod[]>([]);
   const [overlaps, setOverlaps] = useState<{ id: string; label: string; detail: string }[]>([]);
   const [subject, setSubject] = useState<string | null>(null);
   const [method, setMethod] = useState('net_internal');
   const [overlap, setOverlap] = useState('max');
-  const [result, setResult] = useState<MergeResult | null>(null);
+  const [result, setResult] = useState<SubjectMergeResult | null>(null);
   const [showWhy, setShowWhy] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

@@ -56,6 +56,19 @@ def create_task(
 
     # 预读取：不看模板，先判断「是不是流水」，并抓基础信息
     preread = run_preread(data, password=password)
+    matched_template = None
+    if template is None and preread.bank_code:
+        from db.models import Template
+
+        row = db.execute(
+            select(Template).where(
+                Template.bank_code == preread.bank_code.upper(), Template.status == "enabled"
+            )
+        ).scalars().first()
+        if row is not None:
+            template_row = row
+            template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
+            matched_template = {"id": row.id, "bank_code": row.bank_code, "by": "preread_bank_name"}
     if preread.verdict == "reject":
         db.add(AuditLog(action="preread_rejected", object_type="file", object_id=0,
                         detail=f"not_statement; rows={preread.txn_like_rows}; reasons={'；'.join(preread.reasons)[:180]}"))
@@ -103,6 +116,7 @@ def create_task(
             "warnings": result["warnings"],
             "self_check": result.get("self_check"),
             "preread": result.get("preread"),
+            "matched_template": matched_template,
         },
         finished_at=datetime.now(),
     )
@@ -251,6 +265,7 @@ def list_tasks(
 def reanalyze_task(
     task_id: int,
     password: str | None = Form(None),
+    template_id: int | None = Form(None),
     db: Session = Depends(get_session),
 ):
     """用原文件重跑一次分析，补齐逐项明细（旧版报告没有 checks）。"""
@@ -268,17 +283,46 @@ def reanalyze_task(
     data = path.read_bytes()
 
     template = None
-    if task.template_id:
-        from db.models import Template
-        row = db.get(Template, task.template_id)
+    from db.models import Template
+    chosen_id = template_id if template_id is not None else task.template_id
+    if chosen_id:
+        row = db.get(Template, chosen_id)
         if row is not None:
             template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
+            task.template_id = row.id
+            task.template_version = row.version
 
     preread = run_preread(data, password=password)
     try:
         result = run_analysis(data, password=password, template=template, preread=preread)
     except EncryptedFile as exc:
         raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": str(exc)}) from exc
+
+    # 明细与指标按本次解析结果重建（重解析的核心目的）
+    from db.models import MetricValue as _MetricValue, Txn as _Txn
+
+    db.query(_Txn).filter(_Txn.task_id == task_id).delete()
+    db.query(_MetricValue).filter(_MetricValue.task_id == task_id).delete()
+    for item in result["transactions"]:
+        db.add(_Txn(
+            task_id=task_id,
+            txn_date=item["txn_date"],
+            direction=item["direction"],
+            amount=None if item["amount"] is None else Decimal(item["amount"]),
+            balance=None if item["balance"] is None else Decimal(item["balance"]),
+            summary=item["summary"],
+            counterparty_name=item["counterparty_name"],
+            page_no=item["page_no"],
+            confidence=None if item["confidence"] is None else Decimal(item["confidence"]),
+        ))
+    for m in result["metrics"]:
+        db.add(_MetricValue(
+            task_id=task_id, metric_code=m["code"], metric_name=m["name"],
+            value_num=None if m["value"] is None else Decimal(m["value"]),
+            unit=m["unit"], note=m["note"],
+            caliber_version=m.get("caliber_version", 1),
+        ))
+    db.flush()
 
     latest = db.execute(
         select(Report).where(Report.task_id == task_id).order_by(Report.version.desc())
@@ -288,11 +332,13 @@ def reanalyze_task(
     payload["version"] = new_version  # 对外可见的报告版本，只增不改
     db.add(Report(task_id=task_id, version=new_version, payload=payload))
 
-    task.check_result = {
+    check = dict(task.check_result or {})
+    check.update({
         "warnings": result["warnings"],
         "self_check": result.get("self_check"),
         "preread": result.get("preread"),
-    }
+    })
+    task.check_result = check
     db.add(AuditLog(action="reanalyze_task", object_type="task", object_id=task_id,
                     detail="report v" + str(new_version)))
     db.commit()
@@ -300,6 +346,27 @@ def reanalyze_task(
         {"layer": l["layer"], "status": l["status"], "checks": len(l.get("checks") or [])}
         for l in result["report"].get("layers", [])
     ]}
+
+
+@router.post("/{task_id}/whitelist")
+def whitelist_task(
+    task_id: int,
+    reason: str = Form(...),
+    db: Session = Depends(get_session),
+):
+    """人工开绿灯：标记该任务为已复核，解析失败不再阻断后续使用。"""
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(404, "任务不存在")
+    check = dict(task.check_result or {})
+    check["whitelist"] = {
+        "reason": reason,
+        "at": datetime.now().isoformat(timespec="seconds"),
+    }
+    task.check_result = check
+    db.add(AuditLog(action="whitelist_task", object_type="task", object_id=task_id, detail=reason[:180]))
+    db.commit()
+    return {"task_id": task_id, "whitelisted": True, "reason": reason}
 
 
 @router.get("/{task_id}")
