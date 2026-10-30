@@ -1,13 +1,17 @@
 """任务接口：上传受理、列表、详情。"""
 from __future__ import annotations
 
+import csv
+import io
 import hashlib
+import json
 import uuid
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -367,6 +371,69 @@ def _load_tasks(db: Session, ids: list[int]) -> list[Task]:
     if not rows:
         raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "选中的流水不存在"})
     return list(rows)
+
+
+@router.get("/{task_id}/transactions.csv")
+def transactions_export(task_id: int, db: Session = Depends(get_session),
+                        _: None = Depends(require_local_access)):
+    # 明细导出：UTF-8 BOM + CRLF，Excel 直接双击可读
+    task = db.get(Task, task_id)
+    if task is None or task.deleted_at is not None:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在或已删除"})
+    rows = db.execute(select(Txn).where(Txn.task_id == task_id)
+                      .order_by(Txn.txn_date, Txn.id)).scalars().all()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["业务号", "交易日期", "方向", "金额", "余额", "摘要", "对方", "页号"])
+    for row in rows:
+        writer.writerow([task.biz_no, row.txn_date, "收入" if row.direction == "in" else "支出" if row.direction == "out" else "",
+                         "" if row.amount is None else row.amount, "" if row.balance is None else row.balance,
+                         row.summary or "", row.counterparty_name or "", row.page_no or ""])
+    body = "\ufeff" + buffer.getvalue()
+    filename = f"{task.biz_no}.csv"
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/{task_id}/export.json")
+def report_export(task_id: int, db: Session = Depends(get_session),
+                  _: None = Depends(require_local_access)):
+    # 完整报告导出：报告 + 明细 + 阈值版本，用于归档或二次分析
+    task = db.get(Task, task_id)
+    if task is None or task.deleted_at is not None:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在或已删除"})
+    report_row = db.execute(
+        select(Report).where(Report.task_id == task_id).order_by(Report.version.desc())
+    ).scalars().first()
+    if report_row is None:
+        raise HTTPException(404, detail={"code": "E_STATE", "message": "该流水还没有报告"})
+    rows = db.execute(select(Txn).where(Txn.task_id == task_id)
+                      .order_by(Txn.txn_date, Txn.id)).scalars().all()
+    payload = {
+        "biz_no": task.biz_no,
+        "status": task.status,
+        "carrier": task.carrier,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "report": report_row.payload,
+        "transactions": [
+            {
+                "txn_date": r.txn_date, "direction": r.direction,
+                "amount": None if r.amount is None else str(r.amount),
+                "balance": None if r.balance is None else str(r.balance),
+                "summary": r.summary, "counterparty_name": r.counterparty_name, "page_no": r.page_no,
+            }
+            for r in rows
+        ],
+    }
+    filename = f"{task.biz_no}.json"
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.post("/recycle")
