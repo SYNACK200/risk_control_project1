@@ -233,3 +233,4 @@
 - 401/503 时两个前端都显示口令门；口令错误提示「口令不正确」。
 - 口令尝试审计只写材料名与结果（password_attempt_ok/cancelled/failed），不记录口令或其派生值。
 | 2026-10-31 | 流水回收站：`task.deleted_at` 软删除；`GET /tasks?trash=1`、`POST /tasks/recycle`、`POST /tasks/restore`、`POST /tasks/purge`（confirm 必填，仅回收站内） | 后端、银行侧 |
+| 2026-10-31 | 报告导出：`GET /tasks/{id}/transactions.csv`（UTF-8 BOM）、`GET /tasks/{id}/export.json`（报告+明细）；报告页新增导出与打印按钮 | 后端、银行侧 |

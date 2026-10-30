@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, listTemplates, reanalyzeTask, reanalyzeWithTemplate, whitelistTask, type MetricDef, type PrereadInfo, type ReportPayload, type TemplateRow, type TxnRow } from '../lib/api';
+import { downloadAttachment, getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, listTemplates, reanalyzeTask, reanalyzeWithTemplate, whitelistTask, type MetricDef, type PrereadInfo, type ReportPayload, type TemplateRow, type TxnRow } from '../lib/api';
 import { InsightSection } from './Charts';
 import { MetricExplain } from './MetricExplain';
 import { CheckTable } from './CheckTable';
@@ -115,6 +115,30 @@ export function ReportView({ taskId }: { taskId: number }) {
     }
   }
 
+  async function exportCsv() {
+    setError('');
+    try {
+      await downloadAttachment('/tasks/' + taskId + '/transactions.csv', 'task-' + taskId + '.csv');
+      setNote('明细已导出（CSV）');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function exportJson() {
+    setError('');
+    try {
+      await downloadAttachment('/tasks/' + taskId + '/export.json', 'task-' + taskId + '.json');
+      setNote('完整报告已导出（JSON）');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function printReport() {
+    window.print();
+  }
+
   function toggleLayer(layer: string) {
     setOpenLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   }
@@ -145,6 +169,9 @@ export function ReportView({ taskId }: { taskId: number }) {
                 ))}
               </select>
               <button className="btn" type="button" onClick={() => { void reanalyzeWithTpl(); }}>重新解析</button>
+              <button className="btn secondary" type="button" onClick={() => { void exportCsv(); }}>导出明细 CSV</button>
+              <button className="btn secondary" type="button" onClick={() => { void exportJson(); }}>导出报告 JSON</button>
+              <button className="btn secondary" type="button" onClick={printReport}>打印 / 存为 PDF</button>
               {!whitelist && (
                 <button className="btn" type="button" onClick={() => { void markWhitelist(); }}>开绿灯（人工放行）</button>
               )}

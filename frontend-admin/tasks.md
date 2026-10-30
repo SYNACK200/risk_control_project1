@@ -38,6 +38,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | FE-61 | 报告页导出：明细 CSV、报告 JSON、打印/存为 PDF（含 @media print 样式） | 银行要把分析结果带出系统 | components/ReportView.tsx、lib/api.ts、styles/app.css | 点两个导出按钮均提示成功、网络 200 |
 | [x] | FE-60 | 列表多选 + 批量移入回收站；流水列表/回收站双视图；回收站内恢复/彻底删除；页内两步确认 | 银行清理流水必须可多选、可恢复 | pages/TaskListPage.tsx | 勾 2 条回收：12→10；回收站 3→2→1（恢复/删除） |
 | [x] | FE-59 | 「风控参数」页：5 组 22 个输入框、改动高亮、保存为新版本（带备注）、恢复默认、版本历史 | 银行要能像调超参一样改阈值并看见版本 | pages/ThresholdsPage.tsx | 改 DTI 0.62 → 保存为 v5；历史可见 v2-v5 |
 | [x] | FE-58 | 本地口令门：请求统一带 Bearer；401/503 弹口令框并保存到 localStorage；银行侧与借款侧共用同一套 | 后端 BE-20a 严格保护后，前端不带口令会白屏 | frontend-admin/src/lib/auth.ts、components/AuthGate.tsx、lib/api.ts；frontend/src/lib/auth.ts、api/client.ts、components/AuthGate.tsx | 无口令→口令门；错口令→「口令不正确」；对口令→列表 15 行、报告页正常 |

@@ -342,3 +342,23 @@ export async function purgeTasks(taskIds: number[]): Promise<{ purged: number }>
     body: JSON.stringify({ task_ids: taskIds, confirm: true }),
   }));
 }
+
+export async function downloadAttachment(path: string, fallbackName: string): Promise<void> {
+  const res = await authFetch(BASE + path);
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.detail?.message || ('导出失败（' + res.status + '）'));
+  }
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = /filename=([^;]+)/.exec(disposition);
+  const name = match ? match[1].trim() : fallbackName;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
