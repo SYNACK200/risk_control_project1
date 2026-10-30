@@ -38,6 +38,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | FE-65 | 列表 chips 改 5 级；悬停显示缺材料；报告页真实性横幅同步新文案 | 银行要一眼分清可批与要补 | pages/TaskListPage.tsx、components/ReportView.tsx | 筛需补充 13 条；报告页显示可授信/需补充 |
 | [x] | FE-64 | 银行侧登录页（仅 banker）+ 非银行账号拦截 + 用户条与退出 | 银行端要明确是银行账号 | pages/LoginPage.tsx、components/AuthGate.tsx、UserBar.tsx | admin/admin123 登录后列表 16 行 |
 | [x] | FE-62 | 模板管理页重做：统计、编辑出新版本、复制、启停、试跑面板、导入导出、外推折叠 | 原页面只有启用按钮，无法判断模板好不好用 | components/TemplateAdmin.tsx | 表格 4 行；复制提示成功；编辑面板打开 |
 | [x] | FE-61 | 报告页导出：明细 CSV、报告 JSON、打印/存为 PDF（含 @media print 样式） | 银行要把分析结果带出系统 | components/ReportView.tsx、lib/api.ts、styles/app.css | 点两个导出按钮均提示成功、网络 200 |
