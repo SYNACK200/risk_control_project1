@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from db.session import get_session
+from helpers.security import require_local_access
 from services.entities import METHODS, OVERLAP_MODES, collect_entities, merge_subject
 
-router = APIRouter(prefix="/entities", tags=["entities"])
+router = APIRouter(prefix="/entities", tags=["entities"], dependencies=[Depends(require_local_access)])
 
 
 @router.get("")

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from db.session import init_db
 from helpers.logging_config import configure_logging
-from routers import entities, reports, tasks, templates
+from routers import audit, entities, reports, tasks, templates
 
 logger = logging.getLogger("risk_control")
 
@@ -38,6 +38,7 @@ app.include_router(tasks.router, prefix=settings.api_prefix)
 app.include_router(reports.router, prefix=settings.api_prefix)
 app.include_router(templates.router, prefix=settings.api_prefix)
 app.include_router(entities.router, prefix=settings.api_prefix)
+app.include_router(audit.router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

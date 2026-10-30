@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 
 from db.models import Template
 from db.session import get_session
+from helpers.security import require_local_access
 from services.analysis import infer_from_marks
 
-router = APIRouter(prefix="/templates", tags=["templates"])
+router = APIRouter(prefix="/templates", tags=["templates"], dependencies=[Depends(require_local_access)])
 
 
 class TemplateIn(BaseModel):
