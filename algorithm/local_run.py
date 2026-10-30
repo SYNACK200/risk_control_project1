@@ -83,7 +83,8 @@ def main() -> int:
     ms = compute_metrics(parsed.transactions)
     ids = list(range(1, len(parsed.transactions) + 1))
     rep = build_report(v, ms, carrier=carrier, transactions=parsed.transactions, txn_ids=ids,
-                       materials=[ReportMaterial(file_id=1, role="original", pages=pages)])
+                       materials=[ReportMaterial(file_id=1, role="original", pages=pages)],
+                       self_check=sc)
     data = json.loads(rep.model_dump_json())
     steps.append(("出报告", "完成", f"结论 {data['verdict']}；指标 {sum(1 for m in ms.metrics if m.value is not None)}/{len(ms.metrics)} 有值"))
 

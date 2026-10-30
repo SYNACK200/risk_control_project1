@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from ..ocr.models import Transaction
 from .hits import HitResult
+from .self_check import SelfCheckResult
 from .metrics import MetricSet, MetricValue, MonthlyFlow
 from .models import Evidence, LayerStatus
 from .thresholds import (
@@ -42,6 +43,22 @@ class ReportMaterial(BaseModel):
     sha256: str | None = None
 
 
+class ReportSelfCheckItem(BaseModel):
+    code: str
+    name: str
+    status: Literal["pass", "limited", "inconsistent"]
+    detail: str
+    ratio: float | None = None
+
+
+class ReportSelfCheck(BaseModel):
+    """识别自检：解析值能否回查到原件；只说明把握程度，不改变五态结论。"""
+
+    status: Literal["pass", "limited", "inconsistent"]
+    summary: str
+    items: list[ReportSelfCheckItem] = Field(default_factory=list)
+
+
 class Report(BaseModel):
     """contract.md「报告结构」；layers 按契约输出数组，每项为四层之一。"""
 
@@ -57,6 +74,7 @@ class Report(BaseModel):
     trend: list[MonthlyFlow] = Field(default_factory=list)
     evidence: list[ReportEvidence] = Field(default_factory=list)
     materials: list[ReportMaterial] = Field(default_factory=list)
+    self_check: ReportSelfCheck | None = None
     version: int = 1
 
 
@@ -126,9 +144,10 @@ def build_report(
     transactions: list[Transaction] | None = None,
     txn_ids: list[int | None] | None = None,
     materials: list[ReportMaterial] | None = None,
+    self_check: SelfCheckResult | None = None,
     version: int = 1,
 ) -> Report:
-    """把五态、指标、阈值、趋势与证据聚合成一份报告。"""
+    """把五态、指标、阈值、趋势、证据与识别自检聚合成一份报告。"""
     if version < 1:
         raise ValueError("报告版本必须从 1 起")
 
@@ -144,7 +163,28 @@ def build_report(
 
     report_materials = list(materials or [])
 
+    report_self_check: ReportSelfCheck | None = None
     limitations = list(verdict.limitations) + list(threshold_result.notes) + list(metrics.notes)
+    if self_check is None:
+        limitations.append("未执行识别自检，报告无法说明解析结果能否回查到原件")
+    else:
+        report_self_check = ReportSelfCheck(
+            status=self_check.status,
+            summary=self_check.summary,
+            items=[
+                ReportSelfCheckItem(
+                    code=item.code,
+                    name=item.name,
+                    status=item.status,
+                    detail=item.detail,
+                    ratio=item.ratio,
+                )
+                for item in self_check.items
+            ],
+        )
+        for item in self_check.items:
+            if item.status != "pass":
+                limitations.append(f"识别自检 {item.code} {item.name}：{item.detail}")
     if not report_materials:
         limitations.append("材料清单未提供，报告无法说明依据了哪几份材料")
     if missing:
@@ -167,5 +207,6 @@ def build_report(
         trend=metrics.trend,
         evidence=evidence,
         materials=report_materials,
+        self_check=report_self_check,
         version=version,
     )
