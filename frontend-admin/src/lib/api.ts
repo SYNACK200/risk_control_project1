@@ -55,7 +55,7 @@ export interface TaskSummary {
   bank_name: string | null; bank_code: string | null;
   period_start: string | null; period_end: string | null;
   verdict: string | null;
-  authenticity: { level: string; label: string; blocked_layers: string[]; limited_layers: string[] };
+  authenticity: { level: string; label: string; blocked_layers: string[]; limited_layers: string[]; missing_materials?: string[] };
   parse: {
     level: string; label: string; txn_count: number;
     metrics_valued: number; metrics_total: number;

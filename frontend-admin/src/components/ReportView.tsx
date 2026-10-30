@@ -7,11 +7,12 @@ import { CheckTable } from './CheckTable';
 
 const LAYER_NAMES: Record<string, string> = { file: '载体层', content: '内容层', ledger: '账务层', external: '外部层' };
 
-type AuthLevel = 'pass' | 'partial' | 'fail' | 'unknown';
+type AuthLevel = 'pass' | 'grant' | 'supplement' | 'fail' | 'unknown';
 
 const AUTH_LABEL: Record<AuthLevel, string> = {
   pass: '已通过真实性校验',
-  partial: '部分通过（存在受限项）',
+  grant: '可授信（核心层通过，外部数据受限）',
+  supplement: '需补充（核心层有受限项）',
   fail: '未通过真实性校验',
   unknown: '无法判定（核验受限）',
 };
@@ -20,7 +21,8 @@ function authenticity(layers: { layer: string; status: string }[], carrier: stri
   const statusOf = (name: string) => layers.find(l => l.layer === name)?.status ?? 'unavailable';
   const anyBad = layers.some(l => l.status === 'inconsistent');
   const allPass = ['file', 'content', 'ledger', 'external'].every(n => statusOf(n) === 'pass');
-  let level: AuthLevel = allPass ? 'pass' : anyBad ? 'fail' : 'partial';
+  const corePass = ['file', 'content', 'ledger'].every(n => statusOf(n) === 'pass');
+  let level: AuthLevel = allPass ? 'pass' : anyBad ? 'fail' : corePass ? 'grant' : 'supplement';
   if (carrier === 'screenshot') level = 'fail';
   if (carrier === 'image') level = 'unknown';
   const blocked = layers.filter(l => l.status !== 'pass').map(l => LAYER_NAMES[l.layer] ?? l.layer);
