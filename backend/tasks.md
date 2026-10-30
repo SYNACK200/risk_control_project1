@@ -28,6 +28,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | BE-49 | 阈值版本落库 threshold_profile + GET/PUT /thresholds、reset；受理与重解析改用当前生效版本，报告记录 threshold_version | 改参数必须可追溯，旧报告不能变 | db/models.py、services/thresholds.py、routers/thresholds.py、services/analysis.py | v2→v3（DTI 0.65）→v4（默认）；重解析报告 threshold_version=4 |
 | [x] | BE-20a | 本地口令保护：/bank 与写接口要求口令（先做单口令，不做完整 RBAC） | 现在任何能访问 8000 的人都能看报告 | `helpers/security.py`、路由依赖 | `cd backend && py -m pytest tests -q`（Bearer 缺失 401、正确口令 200） |
 | [x] | BE-48 | 人工白名单：POST /tasks/{id}/whitelist，写 check_result.whitelist 与审计；汇总返回 whitelisted | 自己造的数据需要显式放行而不是改结论 | routers/tasks.py、services/summary.py | 任务 7 whitelisted=true，理由入库 |
 | [x] | BE-47 | 重解析支持指定模板并重建明细：POST /tasks/{id}/reanalyze 收 template_id，删除旧 txn/metric_value 后按新结果写入 | 之前只换报告不换明细，等于白重算 | routers/tasks.py | 任务 7 重解析后 txn 570、metric_value 40 |

@@ -289,3 +289,33 @@ export async function whitelistTask(taskId: number, reason: string): Promise<{ t
   form.append('reason', reason);
   return json<{ task_id: number; whitelisted: boolean }>(await authFetch(BASE + '/tasks/' + taskId + '/whitelist', { method: 'POST', body: form }));
 }
+
+export interface ThresholdDef {
+  key: string; label: string; group: string; kind: string; unit: string;
+  default: string | number | null; minimum: string | number | null; maximum: string | number | null;
+  desc: string; impacts: string[]; calibrated: boolean;
+}
+
+export interface ThresholdPayload {
+  version: number;
+  values: Record<string, string | number | null>;
+  defaults: Record<string, string | number | null>;
+  defs: ThresholdDef[];
+  history: { version: number; note: string | null; created_at: string | null; values: Record<string, string | number | null> }[];
+}
+
+export async function getThresholds(): Promise<ThresholdPayload> {
+  return json<ThresholdPayload>(await authFetch(BASE + '/thresholds'));
+}
+
+export async function saveThresholds(values: Record<string, string | number | null>, note?: string): Promise<{ version: number; saved_version: number; values: Record<string, string | number | null> }> {
+  return json(await authFetch(BASE + '/thresholds', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values, note: note ?? null }),
+  }));
+}
+
+export async function resetThresholds(): Promise<{ version: number; values: Record<string, string | number | null> }> {
+  return json(await authFetch(BASE + '/thresholds/reset', { method: 'POST' }));
+}

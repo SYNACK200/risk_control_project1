@@ -289,3 +289,12 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
   display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 24px rgba(20, 40, 80, 0.06); }
 .auth-gate-card h2 { margin: 0; font-size: 16px; }
 .auth-gate-card input { border: 1px solid #d6deeb; border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+
+/* 风控参数（超参） */
+.thr-group { margin: 14px 0 6px; }
+.thr-table td { vertical-align: middle; }
+.thr-input { width: 96px; border: 1px solid #d6deeb; border-radius: 6px; padding: 4px 6px; font-size: 13px; }
+.thr-changed { background: #fff9e8; }
+.thr-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 16px 0 8px; }
+.thr-note { flex: 1; min-width: 240px; border: 1px solid #d6deeb; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+.btn.secondary { background: #fff; color: #33445f; border: 1px solid #d6deeb; }
