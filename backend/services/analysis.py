@@ -29,6 +29,17 @@ class EncryptedFile(Exception):
     """PDF 需要口令；由接口转成 E_ENCRYPT。"""
 
 
+def is_password_protected(file_bytes: bytes) -> bool:
+    """只识别 PDF 是否设有打开口令，不验证或保存口令。"""
+    if file_bytes[:4] != b"%PDF":
+        return False
+    doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+    try:
+        return bool(doc.needs_pass)
+    finally:
+        doc.close()
+
+
 def run_analysis(
     file_bytes: bytes,
     *,
@@ -41,10 +52,12 @@ def run_analysis(
     pages = 1
     has_text = False
 
+    password_protected = False
     if file_bytes[:4] == b"%PDF":
         doc = pymupdf.open(stream=file_bytes, filetype="pdf")
         pages = doc.page_count
         if doc.needs_pass:
+            password_protected = True
             if not password or doc.authenticate(password) <= 0:
                 raise EncryptedFile("PDF 需要打开口令")
             tmp = Path(tempfile.gettempdir()) / "backend_plain.pdf"
@@ -92,6 +105,7 @@ def run_analysis(
         "carrier": carrier,
         "pages": pages,
         "has_text_layer": has_text,
+        "password_protected": password_protected,
         "txn_count": len(parsed.transactions),
         "warnings": list(parsed.warnings),
         "preread": preread.to_dict() if preread is not None else None,

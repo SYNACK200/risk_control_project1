@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,14 +17,62 @@ from algorithm.algo.preread import run_preread
 from algorithm.algo.merge import AccountInput, merge_accounts, mode_catalog
 from algorithm.ocr.models import Transaction
 from datetime import date as _date
-from services.analysis import EncryptedFile, run_analysis
+from helpers.security import require_local_access
+from services.analysis import EncryptedFile, is_password_protected, run_analysis
+from services.workflow import transition
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 STORAGE = Path(__file__).resolve().parents[1] / "storage" / "uploads"
 STORAGE.mkdir(parents=True, exist_ok=True)
+PASSWORD_ATTEMPT_LIMIT = 3
 
 
-@router.post("")
+def _safe_file_name(filename: str | None) -> str:
+    return Path(filename or "材料文件").name[:120] or "材料文件"
+
+
+def _find_or_create_file(
+    db: Session,
+    *,
+    digest: str,
+    mime: str | None,
+    storage_path: Path,
+) -> FileObj:
+    row = db.execute(select(FileObj).where(FileObj.sha256 == digest)).scalars().first()
+    if row is None:
+        row = FileObj(sha256=digest, mime=mime, storage_path=str(storage_path))
+        db.add(row)
+        db.flush()
+    return row
+
+
+def _password_failure_count(db: Session, file_id: int) -> int:
+    return int(db.scalar(
+        select(func.count(AuditLog.id)).where(
+            AuditLog.action == "password_attempt_failed",
+            AuditLog.object_type == "file",
+            AuditLog.object_id == file_id,
+        )
+    ) or 0)
+
+
+def _record_password_attempt(
+    db: Session,
+    *,
+    file_id: int,
+    file_name: str,
+    outcome: str,
+) -> None:
+    """审计只记录材料名与结果，绝不记录口令或其派生值。"""
+    db.add(AuditLog(
+        action=f"password_attempt_{outcome}",
+        object_type="file",
+        object_id=file_id,
+        detail=f"file={file_name}; result={outcome}",
+    ))
+
+
+@router.post("", status_code=status.HTTP_202_ACCEPTED)
 def create_task(
     file: UploadFile = File(...),
     password: str | None = Form(None),
@@ -33,6 +81,7 @@ def create_task(
     source_ref: str | None = Form(None),
     bank_code: str | None = Form(None),
     db: Session = Depends(get_session),
+    _: None = Depends(require_local_access),
 ):
     data = file.file.read()
     if not data:
@@ -41,6 +90,22 @@ def create_task(
 
     path = STORAGE / f"{uuid.uuid4().hex}{Path(file.filename or '').suffix or '.pdf'}"
     path.write_bytes(data)
+    file_name = _safe_file_name(file.filename)
+
+    protected = is_password_protected(data)
+    password_file: FileObj | None = None
+    if protected:
+        password_file = _find_or_create_file(
+            db, digest=digest, mime=file.content_type, storage_path=path,
+        )
+        if not password:
+            _record_password_attempt(
+                db, file_id=password_file.id, file_name=file_name, outcome="cancelled",
+            )
+            db.commit()
+            raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "PDF 需要打开口令"})
+        if _password_failure_count(db, password_file.id) >= PASSWORD_ATTEMPT_LIMIT:
+            raise HTTPException(429, detail={"code": "E_LIMIT", "message": "该材料口令尝试次数已达上限"})
 
     template = None
     template_row = None
@@ -82,33 +147,42 @@ def create_task(
     try:
         result = run_analysis(data, password=password, template=template, preread=preread)
     except EncryptedFile as exc:
+        if password_file is not None and password:
+            _record_password_attempt(
+                db, file_id=password_file.id, file_name=file_name, outcome="failed",
+            )
+            db.commit()
         raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": str(exc)}) from exc
     except Exception as exc:  # 解析失败也要留任务与审计
         task = Task(
             biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
-            status="FAILED",
+            status="PENDING",
             failure_code="E_PARSE",
             created_at=datetime.now(),
             period_start=period_start,
             period_end=period_end,
         )
-        db.add(task); db.commit(); db.refresh(task)
+        db.add(task); db.flush()
+        transition(task, "FAILED")
+        db.commit(); db.refresh(task)
         db.add(AuditLog(action="create_task_failed", object_type="task", object_id=task.id, detail=str(exc)[:200]))
         db.commit()
         raise HTTPException(500, detail={"code": "E_PARSE", "message": str(exc)[:200]}) from exc
 
-    file_obj = db.execute(select(FileObj).where(FileObj.sha256 == digest)).scalars().first()
-    if file_obj is None:
-        file_obj = FileObj(
-            sha256=digest, mime=file.content_type, carrier=result["carrier"],
-            pages=result["pages"], has_text_layer=result["has_text_layer"], storage_path=str(path),
-        )
-        db.add(file_obj); db.flush()
+    file_obj = password_file or _find_or_create_file(
+        db, digest=digest, mime=file.content_type, storage_path=path,
+    )
+    file_obj.mime = file.content_type
+    file_obj.carrier = result["carrier"]
+    file_obj.pages = result["pages"]
+    file_obj.has_text_layer = result["has_text_layer"]
+    if not file_obj.storage_path:
+        file_obj.storage_path = str(path)
 
     task = Task(
         biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
         task_type="credit", channel="upload", file_id=file_obj.id,
-        carrier=result["carrier"], status="DONE",
+        carrier=result["carrier"], status="PENDING",
         template_id=template_row.id if template_row else None,
         template_version=template_row.version if template_row else None,
         period_start=period_start, period_end=period_end,
@@ -122,6 +196,12 @@ def create_task(
     )
     db.add(task); db.flush()
     db.add(TaskFile(task_id=task.id, file_id=file_obj.id, role="original", seq=1))
+
+    # 现阶段仍同步执行分析；每次状态推进仍必须满足统一状态机。
+    transition(task, "CHECKING")
+    transition(task, "PARSING")
+    transition(task, "VERIFYING")
+    transition(task, "REPORTING")
 
     for i, t in enumerate(result["transactions"], start=1):
         db.add(Txn(
@@ -147,6 +227,11 @@ def create_task(
     ))
     db.add(AuditLog(action="create_task", object_type="task", object_id=task.id,
                    detail=f"source_ref={source_ref or '-'} carrier={rep['carrier']}"))
+    if result["password_protected"] and password:
+        _record_password_attempt(
+            db, file_id=file_obj.id, file_name=file_name, outcome="success",
+        )
+    transition(task, "DONE")
     db.commit(); db.refresh(task)
 
     return {"task_id": task.id, "biz_no": task.biz_no, "status": task.status,
@@ -221,6 +306,7 @@ def list_tasks(
     date_to: str | None = None,
     q: str | None = None,
     db: Session = Depends(get_session),
+    _: None = Depends(require_local_access),
 ):
     """解析结果列表：按银行关心的维度汇总，并支持合格性/风险/解析质量/银行/时间/关键字筛选。"""
     stmt = select(Task).order_by(Task.id.desc()).limit(min(limit, 1000))
@@ -433,3 +519,45 @@ def merge_tasks(payload: dict, db: Session = Depends(get_session)):
                     detail=f"mode={mode}; tasks={task_ids}"))
     db.commit()
     return result
+
+@router.post("/{task_id}/supplement", status_code=status.HTTP_202_ACCEPTED)
+def add_supplement(
+    task_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_session),
+    _: None = Depends(require_local_access),
+):
+    """为待补件任务追加材料；不创建新任务，也不覆盖历史材料。"""
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(404, "任务不存在")
+    if task.status != "NEED_SUPPLEMENT":
+        raise HTTPException(409, detail={"code": "E_STATE", "message": "当前任务不允许补件"})
+
+    data = file.file.read()
+    if not data:
+        raise HTTPException(400, detail={"code": "E_FORMAT", "message": "补件文件为空"})
+    digest = hashlib.sha256(data).hexdigest()
+    existing = db.execute(
+        select(TaskFile).join(FileObj, TaskFile.file_id == FileObj.id).where(
+            TaskFile.task_id == task.id, FileObj.sha256 == digest,
+        )
+    ).scalars().first()
+    if existing is not None:
+        raise HTTPException(409, detail={"code": "E_STATE", "message": "该材料已在此任务中，无需重复补传"})
+
+    path = STORAGE / f"{uuid.uuid4().hex}{Path(file.filename or '').suffix or '.pdf'}"
+    path.write_bytes(data)
+    file_obj = _find_or_create_file(
+        db, digest=digest, mime=file.content_type, storage_path=path,
+    )
+    max_seq = db.scalar(select(func.max(TaskFile.seq)).where(TaskFile.task_id == task.id)) or 0
+    db.add(TaskFile(task_id=task.id, file_id=file_obj.id, role="supplement", seq=int(max_seq) + 1))
+    transition(task, "PARSING")
+    db.add(AuditLog(
+        action="add_supplement", object_type="task", object_id=task.id,
+        detail=f"file={_safe_file_name(file.filename)}; file_id={file_obj.id}",
+    ))
+    db.commit()
+    return {"task_id": task.id, "status": task.status, "file_id": file_obj.id, "material_count": int(max_seq) + 1}
+
