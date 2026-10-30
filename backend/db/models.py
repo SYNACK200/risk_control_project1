@@ -163,3 +163,13 @@ class AuditLog(Base):
     detail: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
+
+
+class ThresholdProfile(Base):
+    """银行自定义阈值的一次快照；最新 version 生效，旧版本保留可追溯。"""
+    __tablename__ = "threshold_profile"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version: Mapped[int] = mapped_column(Integer, unique=True)
+    values: Mapped[dict] = mapped_column(JSON)
+    note: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

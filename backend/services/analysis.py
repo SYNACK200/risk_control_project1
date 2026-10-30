@@ -46,6 +46,7 @@ def run_analysis(
     password: str | None = None,
     template: dict | None = None,
     preread: object | None = None,
+    thresholds: object | None = None,
 ) -> dict:
     """返回 {carrier, pages, has_text_layer, txn_count, report, metrics, bank} 供落库。"""
     raw = file_bytes
@@ -98,6 +99,7 @@ def run_analysis(
             ReportCheck(code=i.code, name=i.name, status=i.status, detail=i.detail or "")
             for i in self_check.items
         ],
+        thresholds=thresholds,
     )
     payload = json.loads(report.model_dump_json())
 

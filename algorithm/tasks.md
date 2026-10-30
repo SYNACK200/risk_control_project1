@@ -29,6 +29,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | AL-53 | 阈值定义表 THRESHOLD_DEFS（22 项：分组/单位/默认/范围/说明/影响结论/未校准）+ validate_values 双层校验 | 阈值要能被银行改且不越界 | algorithm/algo/thresholds.py | validate_values 缺参数/未知键/越界均抛中文错误 |
 | [x] | AL-52 | 解析四层金字塔：模板 → 自动匹配 → pdfplumber → 通用解析（→ OCR） | 兜底要有层级、每层留痕 | algorithm/ocr/parse.py | warnings 出现「回退表头驱动的通用解析」 |
 | [x] | AL-51 | 表头驱动通用解析：表头别名表、横/竖行重组、三种日期写法、收支与余额变化推方向、认不出不猜并写 warnings | 未知银行/版式不应直接 0 笔 | algorithm/ocr/generic_parse.py | 建行 30 页样本 0 → 570 笔 |
 | [x] | AL-50 | 身份冲突识别：同一账户出现多个户名 → 高风险告警并列出涉及任务 | 借用/冒用账户是「越狱」的主要方式 | backend/services/entities.py | /entities 返回 conflicts 1 条（账户 ****1111，户名 张*/李*，任务 18/20） |

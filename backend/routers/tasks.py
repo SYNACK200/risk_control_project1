@@ -18,6 +18,7 @@ from algorithm.algo.merge import AccountInput, merge_accounts, mode_catalog
 from algorithm.ocr.models import Transaction
 from datetime import date as _date
 from helpers.security import require_local_access
+from services import thresholds as threshold_service
 from services.analysis import EncryptedFile, is_password_protected, run_analysis
 from services.workflow import transition
 
@@ -121,6 +122,7 @@ def create_task(
 
     # 预读取：不看模板，先判断「是不是流水」，并抓基础信息
     preread = run_preread(data, password=password)
+    threshold_config = threshold_service.build_config(db)
     matched_template = None
     if template is None and preread.bank_code:
         from db.models import Template
@@ -145,7 +147,10 @@ def create_task(
         })
 
     try:
-        result = run_analysis(data, password=password, template=template, preread=preread)
+        result = run_analysis(
+            data, password=password, template=template, preread=preread,
+            thresholds=threshold_service.build_config(db),
+        )
     except EncryptedFile as exc:
         if password_file is not None and password:
             _record_password_attempt(
@@ -380,7 +385,10 @@ def reanalyze_task(
 
     preread = run_preread(data, password=password)
     try:
-        result = run_analysis(data, password=password, template=template, preread=preread)
+        result = run_analysis(
+            data, password=password, template=template, preread=preread,
+            thresholds=threshold_service.build_config(db),
+        )
     except EncryptedFile as exc:
         raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": str(exc)}) from exc
 
