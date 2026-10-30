@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | 1 | 拉代码 | `git pull origin dev` | 最新提交 |
 | 2 | 装依赖 | `cd algorithm && pip install -r requirements.txt` | 无报错 |
-| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 199 passed |
+| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 203 passed |
 | 4 | 跑样本 | `python algorithm/local_run.py 样例.pdf --password 口令 --template algorithm/integration/samples/icbc_template.json` | 输出 summary 与报告 JSON |
 | 5 | 看自检 | 同上输出里的 S1~S7 | 金额/日期/余额回查 100% |
 

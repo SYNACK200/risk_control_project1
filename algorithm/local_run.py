@@ -27,6 +27,35 @@ def mask(text: str, keep: int = 4) -> str:
     return text[:keep] + "*" * max(1, len(text) - keep)
 
 
+def load_template(path: pathlib.Path) -> Template:
+    """兼容旧版 field_map 与 v2 箱体模板；后者按表头指纹转成字段别名。"""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    field_map = data.get("field_map")
+    if field_map is None:
+        columns = [
+            column
+            for table in data.get("tables", [])
+            for column in table.get("columns", [])
+            if column.get("field")
+        ]
+        fingerprint = data.get("match_rule", {}).get("header_fingerprint", [])
+        if columns and len(columns) == len(fingerprint):
+            field_map = {
+                column["field"]: name for column, name in zip(columns, fingerprint)
+            }
+        elif columns:
+            field_map = {
+                column["field"]: index for index, column in enumerate(columns)
+            }
+    if not field_map:
+        raise ValueError("模板缺少 field_map，tables 里也没有可用的 columns")
+    return Template(
+        bank_code=data.get("bank_code", "UNKNOWN"),
+        version=data.get("version", data.get("schema_version", 1)),
+        field_map=field_map,
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("path")
@@ -61,8 +90,7 @@ def main() -> int:
     # 2 解析（可选模板）
     tpl = None
     if a.template:
-        t = json.loads(pathlib.Path(a.template).read_text(encoding="utf-8"))
-        tpl = Template(bank_code=t.get("bank_code", "UNKNOWN"), version=t.get("version", 1), field_map=t["field_map"])
+        tpl = load_template(pathlib.Path(a.template))
     parsed = parse(raw, tpl)
     steps.append(("解析", "成功" if parsed.transactions else "失败",
                   f"{len(parsed.transactions)} 笔；完整率 {parsed.field_completeness}；低置信 {parsed.low_conf_ratio}；警告 {len(parsed.warnings)} 条"))

@@ -67,7 +67,7 @@
 - [ ] 阈值存储口径按分工归口（2026-10-29 核对）：报告只落 `threshold_version`（int）与触发项 `{code,level,threshold,value}`（contract.md:97-98），未触发项的阈值不留痕、报告不带全量阈值快照；按 Agent.md:13-17，阈值在数据库怎么存归数据组、配置接口归后端，算法组只在 design 第七节发布「阈值定义清单」与版本、不写库。contract 表清单（contract.md:115-127）没有 threshold 配置表，只有 `rule.threshold` json（:125）；report 表字段（:123）也未列 `threshold_version`/`conclusions`，与报告 JSON 结构（contract.md:90-101）不一致。需数据组补阈值表结构、PM/PD 统一报告字段；算法侧已提供 `export_thresholds()` 整版 JSON 导出（2026-10-29）供建表参考。
 
 - [ ] 周一拿到业务流程与提示词模板后，按模板调整本轮提示词再下指令
-- [ ] 招行版式匹配件与解析器格式不一致（2026-10-30）：组长给的 `integration/samples/cmb_template.json` 是 v2 箱体格式（`page_size`/`match_rule`/`meta_boxes`/`tables` 列 x/w），`Template` 模型只有 `bank_code/version/field_map`，`parse()` 不读这些键；当前招行解析靠通用表头识别（本轮补了「对手信息」别名）。要让箱体模板真正参与解析，属 AL-34 模板转换层（箱体 → 列映射 / 坐标裁切），需先定转换口径再排期。
+- [ ] 招行版式匹配件与解析器格式不一致（2026-10-30）：组长给的 `integration/samples/cmb_template.json` 是 v2 箱体格式（`page_size`/`match_rule`/`meta_boxes`/`tables` 列 x/w），`Template` 模型只有 `bank_code/version/field_map`，`parse()` 不读这些键；当前招行解析靠通用表头识别（本轮补了「对手信息」别名）。2026-10-31 `local_run.py` 已兼容：v2 箱体按 `match_rule.header_fingerprint` 与 `tables[].columns` 转成字段别名，招行带模板与不带模板结果一致；但 `parse()` 仍未消费坐标箱体，完整转换层属 AL-34，需先定转换口径再排期。
 - [ ] 招行脱敏件 `cmb_desensitized.pdf` 把对手信息整列抹除（不保留占位名，避免掩码被当成同一对手方），E01/E02 返回 null；真实集中度要本机用原件核验后删除，不留副本。
 - [ ] F9 判据变更待确认（2026-10-30）：原实现用全页最小文字 y 当顶边距，招行真件续页不重复抬头、直接从表头起排，第 2 页被误判偏离 9.8 pt → 「来源可疑」。现改为只比页尺寸/旋转/左边距，顶边距仅在起始行相同的页之间比，右边距与下边距随内容长度变化不比。属取证口径调整，需组长确认后写进 design。
 - [ ] 解析主引擎取词改为几何交叠判定（2026-10-30）：原按 dict 块号/行号对齐 words，PDF 含图像块时两套编号错位（招行 logo 在前，正文全丢，被迫回退 pdfplumber），且用宽松相交会捞进水印大字导致列错位（工行件曾出现 24 处余额断层）。现按「词框与 5–12pt span 交叠 ≥0.5」判定；建行等其余真件仍需回归。
