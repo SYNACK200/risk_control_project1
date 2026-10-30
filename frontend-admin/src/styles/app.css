@@ -283,3 +283,9 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .check-card .card-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .check-card .card-caret { color: #4a6fa5; font-size: 12px; white-space: nowrap; }
 .check-card .card-body { border-top: 1px solid #eef2f8; padding: 8px 12px 12px; }
+
+.auth-gate { display: flex; align-items: center; justify-content: center; min-height: 70vh; padding: 24px; }
+.auth-gate-card { width: 360px; background: #fff; border: 1px solid #e3e9f3; border-radius: 10px; padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 10px; box-shadow: 0 6px 24px rgba(20, 40, 80, 0.06); }
+.auth-gate-card h2 { margin: 0; font-size: 16px; }
+.auth-gate-card input { border: 1px solid #d6deeb; border-radius: 6px; padding: 8px 10px; font-size: 13px; }

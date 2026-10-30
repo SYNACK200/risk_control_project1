@@ -38,6 +38,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | FE-58 | 本地口令门：请求统一带 Bearer；401/503 弹口令框并保存到 localStorage；银行侧与借款侧共用同一套 | 后端 BE-20a 严格保护后，前端不带口令会白屏 | frontend-admin/src/lib/auth.ts、components/AuthGate.tsx、lib/api.ts；frontend/src/lib/auth.ts、api/client.ts、components/AuthGate.tsx | 无口令→口令门；错口令→「口令不正确」；对口令→列表 15 行、报告页正常 |
 | [x] | FE-57 | 报告页：解析模板下拉 + 重新解析 + 开绿灯；白名单横幅；列表页白名单标签 | 银行要能自己救回解析失败的单子 | components/ReportView.tsx、pages/TaskListPage.tsx | 任务 7 页面显示横幅与 570 笔 |
 | [x] | FE-55 | 客户与账户页：冲突告警、客户选择、7 种合并方式（简约标签）、可展开说明、合并结果与账户明细 | 银行要一眼看客户整体风险，并知道怎么合的 | pages/EntitiesPage.tsx | 页面显示冲突 1 条；切换方式数值随之变化 |
 | [x] | FE-54 | 列表按银行关心维度呈现并支持多维筛选：合格性、信用风险、解析质量、银行、时间、业务号 | 银行不看 status/carrier | TaskListPage.tsx | 11 条筛“中”为 3 条；叠加“不合格”为 0 并提示 |

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
-import { clearToken, getToken } from '../lib/auth';
+import { clearToken, getToken, notifyAuthRequired } from '../lib/auth';
 import { ApiError } from './errors';
 
 export interface ApiEnvelope<T> {
@@ -46,7 +46,7 @@ http.interceptors.response.use(
   response => {
     const body = response.data;
     if (isEnvelope(body)) {
-      if (body.code === 'E_AUTH') clearToken();
+      if (body.code === 'E_AUTH') { clearToken(); notifyAuthRequired(); }
       if (body.code !== 0) {
         throw new ApiError(String(body.code), body.message ?? '请求失败', {
           httpStatus: response.status,
@@ -66,7 +66,10 @@ http.interceptors.response.use(
     }
 
     const { code, message } = parseErrorBody(error.response.data);
-    if (code === 'E_AUTH') clearToken();
+    if (code === 'E_AUTH' || error.response.status === 401 || error.response.status === 503) {
+      clearToken();
+      notifyAuthRequired();
+    }
     return Promise.reject(
       new ApiError(code ?? 'E_UNKNOWN', message ?? error.message, {
         httpStatus: error.response.status,

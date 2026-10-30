@@ -224,3 +224,11 @@
 | 2026-10-30 | 银行侧拆为两个页面：/ 解析结果列表（多维筛选）与 /report/:id 报告详情；前端改用 HashRouter 兼容静态托管 | 银行侧 |
 | 2026-10-30 | 新增 GET /entities（账户/户名/冲突）、GET /entities/methods（7 种合并方式与 3 种重叠算法）、GET /entities/merge?subject=&method=&overlap=（合并结果含口径说明与不支持项） | 后端、银行侧 |
 | 2026-10-31 | 重解析支持 `template_id`（换模板/无模板通用解析）并重建 txn/metric_value；新增 `POST /tasks/{id}/whitelist`（人工开绿灯，写审计）；`GET /tasks` 汇总新增 `whitelisted/whitelist_reason`；受理时按预读银行自动匹配启用模板 | 后端、银行侧 |
+
+## 本地访问口令（BE-20a）
+
+- 后端启动时设置 LOCAL_ACCESS_PASSWORD，否则受保护接口返回 503 E_AUTH（明确提示服务端未配置，不静默放行）。
+- 客户端对受保护接口统一带 Authorization: Bearer <口令>；口令只存浏览器 localStorage（key bs_token），不写日志、不入库、不进审计。
+- 受保护范围：/tasks（列表/创建/详情/重解析/补件/合并）、/reports、/templates、/entities、/audit。
+- 401/503 时两个前端都显示口令门；口令错误提示「口令不正确」。
+- 口令尝试审计只写材料名与结果（password_attempt_ok/cancelled/failed），不记录口令或其派生值。

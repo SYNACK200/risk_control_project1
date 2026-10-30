@@ -11,3 +11,9 @@ export function setToken(token: string) {
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
+
+export const AUTH_REQUIRED_EVENT = 'dsh-auth-required';
+
+export function notifyAuthRequired() {
+  window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+}

@@ -1,3 +1,5 @@
+import { getToken, notifyAuthRequired } from './auth';
+
 export interface PrereadInfo {
   verdict: string; is_statement: boolean; confidence: number;
   bank_name: string | null; bank_code: string | null;
@@ -29,8 +31,16 @@ export interface ReportPayload {
 
 const BASE = '/api/v1';
 
+function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers ?? {});
+  const token = getToken();
+  if (token) headers.set('Authorization', 'Bearer ' + token);
+  return fetch(input, { ...init, headers });
+}
+
 async function json<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => null);
+  if (res.status === 401 || res.status === 503) notifyAuthRequired();
   if (!res.ok) {
     const detail = data?.detail;
     const msg = typeof detail === 'string' ? detail : detail?.message || `请求失败（${res.status}）`;
@@ -93,13 +103,13 @@ export async function listTasks(filters: TaskFilters = {}): Promise<TaskSummaryL
   }
   if (filters.min_income !== undefined) params.set('min_income', String(filters.min_income));
   if (filters.max_income !== undefined) params.set('max_income', String(filters.max_income));
-  return json<TaskSummaryList>(await fetch(BASE + '/tasks?' + params.toString()));
+  return json<TaskSummaryList>(await authFetch(BASE + '/tasks?' + params.toString()));
 }
 
 export async function reanalyzeTask(taskId: number, password?: string): Promise<{ task_id: number; version: number }> {
   const form = new FormData();
   if (password) form.append('password', password);
-  return json<{ task_id: number; version: number }>(await fetch(BASE + '/tasks/' + taskId + '/reanalyze', {
+  return json<{ task_id: number; version: number }>(await authFetch(BASE + '/tasks/' + taskId + '/reanalyze', {
     method: 'POST', body: form,
   }));
 }
@@ -118,18 +128,18 @@ export interface FlowMergeResult {
 }
 
 export async function getMergeModes(): Promise<{ items: FlowMergeMode[] }> {
-  return json<{ items: FlowMergeMode[] }>(await fetch(BASE + '/tasks/merge/modes'));
+  return json<{ items: FlowMergeMode[] }>(await authFetch(BASE + '/tasks/merge/modes'));
 }
 
 export async function mergeTasks(taskIds: number[], mode: string): Promise<FlowMergeResult> {
-  return json<FlowMergeResult>(await fetch(BASE + '/tasks/merge', {
+  return json<FlowMergeResult>(await authFetch(BASE + '/tasks/merge', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ task_ids: taskIds, mode }),
   }));
 }
 
 export async function getReport(taskId: number): Promise<ReportPayload> {
-  return json<ReportPayload>(await fetch(`${BASE}/reports/${taskId}`));
+  return json<ReportPayload>(await authFetch(`${BASE}/reports/${taskId}`));
 }
 
 export interface TxnRow {
@@ -139,7 +149,7 @@ export interface TxnRow {
 }
 
 export async function getTransactions(taskId: number): Promise<TxnRow[]> {
-  return json<TxnRow[]>(await fetch(`${BASE}/tasks/${taskId}/transactions?limit=2000`));
+  return json<TxnRow[]>(await authFetch(`${BASE}/tasks/${taskId}/transactions?limit=2000`));
 }
 
 export interface ReportCheck { code: string; name: string; status: string; detail: string }
@@ -147,7 +157,7 @@ export interface ReportCheck { code: string; name: string; status: string; detai
 export interface VerificationDef { code: string; layer: string; method: string }
 
 export async function getVerificationDefinitions(): Promise<{ items: VerificationDef[] }> {
-  return json<{ items: VerificationDef[] }>(await fetch(BASE + '/verification-definitions'));
+  return json<{ items: VerificationDef[] }>(await authFetch(BASE + '/verification-definitions'));
 }
 
 export interface MetricDef {
@@ -158,27 +168,27 @@ export interface MetricDef {
 export interface MetricDefs { metric_set_version: number; items: MetricDef[] }
 
 export async function getMetricDefinitions(): Promise<MetricDefs> {
-  return json<MetricDefs>(await fetch(BASE + '/metric-definitions'));
+  return json<MetricDefs>(await authFetch(BASE + '/metric-definitions'));
 }
 
 export async function getTask(taskId: number): Promise<TaskRow> {
-  return json<TaskRow>(await fetch(`${BASE}/tasks/${taskId}`));
+  return json<TaskRow>(await authFetch(`${BASE}/tasks/${taskId}`));
 }
 
 export interface TemplateRow { id: number; bank_code: string; version: number; status: string; field_map: Record<string, unknown> }
 
 export async function listTemplates(): Promise<TemplateRow[]> {
-  return json<TemplateRow[]>(await fetch(`${BASE}/templates`));
+  return json<TemplateRow[]>(await authFetch(`${BASE}/templates`));
 }
 
 export async function createTemplate(body: { bank_code: string; field_map: Record<string, unknown>; header_columns?: string[]; version?: number }): Promise<{ id: number }> {
-  return json<{ id: number }>(await fetch(`${BASE}/templates`, {
+  return json<{ id: number }>(await authFetch(`${BASE}/templates`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }));
 }
 
 export async function publishTemplate(id: number): Promise<{ status: string }> {
-  return json<{ status: string }>(await fetch(`${BASE}/templates/${id}/publish`, { method: 'POST' }));
+  return json<{ status: string }>(await authFetch(`${BASE}/templates/${id}/publish`, { method: 'POST' }));
 }
 
 
@@ -194,7 +204,7 @@ export interface InferResult {
 }
 
 export async function inferTemplate(form: FormData): Promise<InferResult> {
-  return json<InferResult>(await fetch(BASE + '/templates/infer', { method: 'POST', body: form }));
+  return json<InferResult>(await authFetch(BASE + '/templates/infer', { method: 'POST', body: form }));
 }
 
 export interface EntityAccount {
@@ -255,27 +265,27 @@ export interface SubjectMergeResult {
 }
 
 export async function getEntities(): Promise<EntitiesPayload> {
-  return json<EntitiesPayload>(await fetch(BASE + '/entities'));
+  return json<EntitiesPayload>(await authFetch(BASE + '/entities'));
 }
 
 export async function getMergeMethods(): Promise<{ methods: SubjectMergeMethod[]; overlap_modes: { id: string; label: string; detail: string }[] }> {
-  return json(await fetch(BASE + '/entities/methods'));
+  return json(await authFetch(BASE + '/entities/methods'));
 }
 
 export async function mergeSubject(subject: string, method: string, overlap: string): Promise<SubjectMergeResult> {
   const params = new URLSearchParams({ subject, method, overlap });
-  return json<SubjectMergeResult>(await fetch(BASE + '/entities/merge?' + params.toString()));
+  return json<SubjectMergeResult>(await authFetch(BASE + '/entities/merge?' + params.toString()));
 }
 
 export async function reanalyzeWithTemplate(taskId: number, templateId: number | null, password?: string): Promise<{ task_id: number; version: number }> {
   const form = new FormData();
   if (password) form.append('password', password);
   if (templateId !== null) form.append('template_id', String(templateId));
-  return json<{ task_id: number; version: number }>(await fetch(BASE + '/tasks/' + taskId + '/reanalyze', { method: 'POST', body: form }));
+  return json<{ task_id: number; version: number }>(await authFetch(BASE + '/tasks/' + taskId + '/reanalyze', { method: 'POST', body: form }));
 }
 
 export async function whitelistTask(taskId: number, reason: string): Promise<{ task_id: number; whitelisted: boolean }> {
   const form = new FormData();
   form.append('reason', reason);
-  return json<{ task_id: number; whitelisted: boolean }>(await fetch(BASE + '/tasks/' + taskId + '/whitelist', { method: 'POST', body: form }));
+  return json<{ task_id: number; whitelisted: boolean }>(await authFetch(BASE + '/tasks/' + taskId + '/whitelist', { method: 'POST', body: form }));
 }
