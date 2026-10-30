@@ -233,3 +233,13 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .tag.unknown, .tag.risk-none { background: #eef2f9; color: #5b6b85; }
 .tag.risk-low { background: #eaf2ff; color: #2f5fbf; }
 .small { font-size: 11px; }
+
+/* 客户与账户 / 合并 */
+.conflict-box { border: 1px solid #f0c2be; background: #fefafa; border-radius: 8px; padding: 12px 14px; margin: 10px 0 16px; }
+.conflict-head { font-weight: 600; color: #b3261e; margin-bottom: 8px; }
+.conflict-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 1px dashed #f0d5d2; }
+.conflict-row:first-of-type { border-top: none; }
+.conflict-msg { color: #7a3330; font-size: 12px; }
+.merge-head { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+.why-box { border: 1px solid #e3e9f3; background: #fbfcff; border-radius: 8px; padding: 10px 14px; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.why-box ul { margin: 4px 0 0 18px; }
