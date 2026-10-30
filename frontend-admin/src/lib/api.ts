@@ -362,3 +362,50 @@ export async function downloadAttachment(path: string, fallbackName: string): Pr
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+export interface TemplateStats {
+  template_id: number; bank_code: string; version: number; status: string;
+  tasks_total: number; tasks_done: number; tasks_failed: number;
+  success_rate: number | null; avg_txn_count: number | null; zero_txn_tasks: number;
+}
+
+export interface TemplatePreview {
+  template_id: number; txn_count: number; page_count: number; warnings: string[];
+  rows: { txn_date: string | null; summary: string | null; direction: string | null;
+          amount: string | null; balance: string | null; page_no: number }[];
+}
+
+export async function updateTemplate(id: number, patch: { bank_code?: string; field_map?: Record<string, unknown>; header_columns?: unknown[] }): Promise<{ id: number; version: number }> {
+  return json(await authFetch(BASE + '/templates/' + id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+  }));
+}
+
+export async function duplicateTemplate(id: number): Promise<{ id: number; version: number }> {
+  return json(await authFetch(BASE + '/templates/' + id + '/duplicate', { method: 'POST' }));
+}
+
+export async function disableTemplate(id: number): Promise<{ id: number; status: string }> {
+  return json(await authFetch(BASE + '/templates/' + id + '/disable', { method: 'POST' }));
+}
+
+export async function deleteTemplate(id: number): Promise<{ deleted: number }> {
+  return json(await authFetch(BASE + '/templates/' + id, { method: 'DELETE' }));
+}
+
+export async function templateStats(id: number): Promise<TemplateStats> {
+  return json(await authFetch(BASE + '/templates/' + id + '/stats'));
+}
+
+export async function previewTemplate(id: number, file: File, password?: string): Promise<TemplatePreview> {
+  const form = new FormData();
+  form.append('file', file);
+  if (password) form.append('password', password);
+  return json(await authFetch(BASE + '/templates/' + id + '/preview', { method: 'POST', body: form }));
+}
+
+export async function importTemplate(payload: { bank_code: string; field_map: Record<string, unknown>; header_columns?: unknown[] }): Promise<{ id: number; version: number }> {
+  return json(await authFetch(BASE + '/templates/import', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }));
+}

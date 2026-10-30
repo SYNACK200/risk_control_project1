@@ -28,6 +28,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | BE-52 | 模板生命周期接口：编辑出新版本、复制、停用、删除（被用过 409）、统计、试跑、导出、导入 | 模板只启用不管理，出错无法修也无法验证 | routers/templates.py | 统计/复制/试跑/导出均 200；试跑 570 笔 |
 | [x] | BE-51 | 导出接口：/tasks/{id}/transactions.csv（UTF-8 BOM+CRLF）与 /tasks/{id}/export.json（报告+明细）；已删除流水 404 | 审批与归档需要离开系统也能看 | routers/tasks.py | CSV 192 行、JSON 191 笔，均 200 |
 | [x] | BE-50 | 流水回收站：deleted_at 软删除 + 幂等迁移补列；recycle/restore/purge 三个批量接口；列表支持 trash=1；实体与合并只看在用 | 流水只增不减会淹没问题记录 | db/models.py、db/migrate.py、routers/tasks.py | 回收 14→12、恢复 12→13、purge 需 confirm 且级联删明细 |
 | [x] | BE-49 | 阈值版本落库 threshold_profile + GET/PUT /thresholds、reset；受理与重解析改用当前生效版本，报告记录 threshold_version | 改参数必须可追溯，旧报告不能变 | db/models.py、services/thresholds.py、routers/thresholds.py、services/analysis.py | v2→v3（DTI 0.65）→v4（默认）；重解析报告 threshold_version=4 |
