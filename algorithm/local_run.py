@@ -19,6 +19,7 @@ from algorithm.algo.external_layer import analyze_external, ExternalContext
 from algorithm.algo.verdict import conclude
 from algorithm.algo.metrics import compute_metrics
 from algorithm.algo.report import build_report, ReportMaterial
+from algorithm.algo.self_check import run_self_check
 
 
 def mask(text: str, keep: int = 4) -> str:
@@ -66,6 +67,10 @@ def main() -> int:
     steps.append(("解析", "成功" if parsed.transactions else "失败",
                   f"{len(parsed.transactions)} 笔；完整率 {parsed.field_completeness}；低置信 {parsed.low_conf_ratio}；警告 {len(parsed.warnings)} 条"))
 
+    # 2b 识别自检 S1~S7：解析值能否在原文里回查到
+    sc = run_self_check(raw, parsed.transactions, getattr(parsed, "footer_count", None))
+    steps.append(("识别自检", sc.status, sc.summary))
+
     # 3 四层 + 结论
     fl = analyze_file(raw, carrier=carrier)
     cl = analyze_content(parsed)
@@ -88,6 +93,7 @@ def main() -> int:
         "覆盖期": [parsed.transactions[0].txn_date, parsed.transactions[-1].txn_date] if parsed.transactions else None,
         "结论": data["verdict"], "理由": data["verdict_reason"],
         "受限": data["limitations"][:10],
+        "自检": [{"项": f"{i.code} {i.name}", "结果": i.status, "说明": i.detail} for i in sc.items],
         "步骤": steps,
     }
     out = pathlib.Path(a.out) if a.out else pathlib.Path(tempfile.gettempdir()) / f"report_{src.stem}.json"
