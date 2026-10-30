@@ -183,6 +183,7 @@ def _facets(items: list[dict]) -> dict:
         banks[name] = banks.get(name, 0) + 1
     return {
         "authenticity": counts("authenticity"),
+        "source": counts("source"),
         "risk": counts("risk"),
         "parse": counts("parse"),
         "bank": banks,
