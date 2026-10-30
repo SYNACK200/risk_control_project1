@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listTasks, type TaskFacets, type TaskFilters, type TaskSummary, type TaskSummaryList } from '../lib/api';
+import { listTasks, purgeTasks, recycleTasks, restoreTasks, type TaskFacets, type TaskFilters, type TaskSummary, type TaskSummaryList } from '../lib/api';
 
 const AUTH: Record<string, string> = { pass: '合格', partial: '部分合格', fail: '不合格', unknown: '无法判定' };
 const SRC: Record<string, string> = { clean: '未见可疑', limited: '受限', suspicious: '来源可疑', unknown: '无法判定' };
@@ -25,16 +25,21 @@ export function TaskListPage() {
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [view, setView] = useState<'live' | 'trash'>('live');
+  const [selected, setSelected] = useState<number[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [pending, setPending] = useState<'recycle' | 'restore' | 'purge' | null>(null);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    listTasks({ ...filters, q: q || undefined })
+    listTasks({ ...filters, trash: view === 'trash' ? 1 : 0, q: q || undefined })
       .then(d => { if (alive) { setData(d); setError(''); } })
       .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [filters, q]);
+  }, [filters, q, view]);
 
   const items: TaskSummary[] = data?.items ?? [];
   const facets: TaskFacets = data?.facets ?? { authenticity: {}, source: {}, risk: {}, parse: {}, bank: {}, total: 0 };
@@ -44,6 +49,39 @@ export function TaskListPage() {
     return Array.from(set).sort();
   }, [items]);
 
+  const allChecked = items.length > 0 && selected.length === items.length;
+  const toggleSelect = (id: number) => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleAll = () => setSelected(allChecked ? [] : items.map(i => i.id));
+
+  const ACTION_LABEL: Record<'recycle' | 'restore' | 'purge', string> = {
+    recycle: '移入回收站', restore: '恢复', purge: '彻底删除（不可恢复）',
+  };
+
+  async function runAction(kind: 'recycle' | 'restore' | 'purge') {
+    if (selected.length === 0) return;
+    const label = ACTION_LABEL[kind];
+    setPending(null);
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const ids = [...selected];
+      const res = kind === 'recycle' ? await recycleTasks(ids)
+        : kind === 'restore' ? await restoreTasks(ids) : await purgeTasks(ids);
+      const done = (res as { moved?: number; restored?: number; purged?: number });
+      const count = done.moved ?? done.restored ?? done.purged ?? ids.length;
+      setMessage(label + '完成：' + count + ' 条');
+      setSelected([]);
+      setFilters(prev => ({ ...prev }));
+      const fresh = await listTasks({ ...filters, trash: view === 'trash' ? 1 : 0, q: q || undefined });
+      setData(fresh);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const set = (patch: TaskFilters) => setFilters(prev => ({ ...prev, ...patch }));
   const toggle = (key: keyof TaskFilters, value: string) =>
     set({ [key]: (filters as Record<string, unknown>)[key] === value ? undefined : value } as TaskFilters);
@@ -52,9 +90,35 @@ export function TaskListPage() {
     <div className="result-wrap">
       <div className="result">
         <div className="result-head">
-          <h2>解析结果</h2>
+          <h2>{view === 'trash' ? '回收站' : '解析结果'}</h2>
+          <div className="tabs-inline">
+            <button type="button" className={'chip-btn' + (view === 'live' ? ' active' : '')} onClick={() => { setView('live'); setSelected([]); }}>流水列表</button>
+            <button type="button" className={'chip-btn' + (view === 'trash' ? ' active' : '')} onClick={() => { setView('trash'); setSelected([]); }}>回收站</button>
+          </div>
           <span className="muted">{loading ? '加载中…' : '共 ' + (data?.total ?? 0) + ' 条'}</span>
         </div>
+        {message && <div className="notice ok">{message}</div>}
+        {selected.length > 0 && (
+          <div className="bulk-bar">
+            <span>已选 {selected.length} 条</span>
+            {view === 'live' ? (
+              <button className="btn" type="button" disabled={busy} onClick={() => setPending('recycle')}>移入回收站</button>
+            ) : (
+              <>
+                <button className="btn" type="button" disabled={busy} onClick={() => setPending('restore')}>恢复</button>
+                <button className="btn danger" type="button" disabled={busy} onClick={() => setPending('purge')}>彻底删除</button>
+              </>
+            )}
+            <button className="link-btn" type="button" onClick={() => setSelected([])}>取消选择</button>
+            {pending && (
+              <span className="bulk-confirm">
+                确定{ACTION_LABEL[pending]} {selected.length} 条？
+                <button className="btn" type="button" disabled={busy} onClick={() => { void runAction(pending); }}>确认</button>
+                <button className="link-btn" type="button" onClick={() => setPending(null)}>再想想</button>
+              </span>
+            )}
+          </div>
+        )}
         {error && <div className="notice error">{error}</div>}
 
         <div className="filter-panel">
@@ -117,11 +181,12 @@ export function TaskListPage() {
         </div>
 
         {items.length === 0 && !loading ? (
-          <p className="muted">没有符合条件的解析结果。</p>
+          <p className="muted">{view === 'trash' ? '回收站是空的。' : '没有符合条件的解析结果。'}</p>
         ) : (
           <table className="mini list-table">
             <thead>
               <tr>
+                <th style={{ width: 32 }}><input type="checkbox" checked={allChecked} onChange={toggleAll} /></th>
                 <th>业务号</th><th>银行</th><th>账期</th><th>笔数</th>
                 <th>期间收入</th><th>月均收入</th><th>DTI</th>
                 <th>流水合格性</th><th>原始文件</th><th>信用风险</th><th>解析质量</th>
@@ -131,6 +196,9 @@ export function TaskListPage() {
             <tbody>
               {items.map(t => (
                 <tr key={t.id} className="list-row" onClick={() => navigate('/report/' + t.id)}>
+                  <td onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggleSelect(t.id)} />
+                  </td>
                   <td className="mono">{t.biz_no}</td>
                   <td>{t.bank_name ?? '未识别'}</td>
                   <td className="muted">{t.period_start ?? '—'} ~ {t.period_end ?? '—'}</td>
