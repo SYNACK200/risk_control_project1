@@ -18,14 +18,36 @@ def get_entities(db: Session = Depends(get_session)):
 
 @router.get("/methods")
 def get_methods():
-    """合并方式与重叠算法的说明（前端只渲染，不重复定义）。"""
-    return {"methods": METHODS, "overlap_modes": OVERLAP_MODES}
+    """合并方式说明：统一取自 algorithm.algo.merge 的 MODES，前端只渲染。"""
+    try:
+        from algorithm.algo.merge import mode_catalog
+
+        items = [
+            {
+                "id": m["key"],
+                "label": m["label"],
+                "short": m["one_line"],
+                "detail": m["when"],
+                "formula": m["formula"],
+                "assumption": m["caveat"],
+                "level": m["level"],
+            }
+            for m in mode_catalog()
+        ]
+    except Exception:  # 引擎不可用时退回本地定义，保证页面可用
+        items = [{"id": m["id"], "label": m["label"], "short": m["short"],
+                  "detail": m["detail"], "formula": m["formula"],
+                  "assumption": m["assumption"], "level": "flow"} for m in METHODS]
+    return {
+        "methods": items,
+        "overlap_modes": [{"id": "auto", "label": "按期间自动处理", "detail": "合并引擎按各账户期间取并集，重叠不重复计数。"}],
+    }
 
 
 @router.get("/merge")
 def get_merge(
     subject: str,
-    method: str = "union",
+    method: str = "net_internal",
     overlap: str = "max",
     db: Session = Depends(get_session),
 ):

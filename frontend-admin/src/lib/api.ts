@@ -52,11 +52,15 @@ export interface TaskSummary {
     failed_checks: string[]; limited_checks: string[];
   };
   risk: { level: string; label: string; count: number; hits: { code: string | null; level: string; value: string }[] };
+  source: { level: string; label: string; file_status: string | null };
+  income: string | null; monthly_income: string | null; dti: string | null; net_inflow: string | null;
+  risk_codes: (string | null)[];
   materials: number; limitations: number; report_version: number | null;
 }
 
 export interface TaskFacets {
   authenticity: Record<string, number>;
+  source: Record<string, number>;
   risk: Record<string, number>;
   parse: Record<string, number>;
   bank: Record<string, number>;
@@ -67,22 +71,28 @@ export interface TaskSummaryList { items: TaskSummary[]; total: number; facets: 
 
 export interface TaskFilters {
   authenticity?: string;
+  source?: string;
   risk?: string;
+  risk_code?: string;
   parse?: string;
   bank?: string;
   date_from?: string;
   date_to?: string;
   q?: string;
+  min_income?: number;
+  max_income?: number;
   limit?: number;
 }
 
 export async function listTasks(filters: TaskFilters = {}): Promise<TaskSummaryList> {
   const params = new URLSearchParams();
   params.set('limit', String(filters.limit ?? 500));
-  for (const key of ['authenticity', 'risk', 'parse', 'bank', 'date_from', 'date_to', 'q'] as const) {
+  for (const key of ['authenticity', 'source', 'risk', 'risk_code', 'parse', 'bank', 'date_from', 'date_to', 'q'] as const) {
     const value = filters[key];
     if (value) params.set(key, value);
   }
+  if (filters.min_income !== undefined) params.set('min_income', String(filters.min_income));
+  if (filters.max_income !== undefined) params.set('max_income', String(filters.max_income));
   return json<TaskSummaryList>(await fetch(BASE + '/tasks?' + params.toString()));
 }
 
