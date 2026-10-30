@@ -1,33 +1,53 @@
 import { useState } from 'react';
+import { Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AnnotatePage } from './pages/Annotate';
-import { TaskList } from './components/TaskList';
+import { TaskListPage } from './pages/TaskListPage';
 import { TemplateAdmin } from './components/TemplateAdmin';
+import { ReportView } from './components/ReportView';
 
-type Tab = 'annotate' | 'tasks' | 'templates';
-
-export default function App() {
-  const [tab, setTab] = useState<Tab>('tasks');
-
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'tasks', label: '任务与报告' },
-    { key: 'annotate', label: '模板标注' },
-    { key: 'templates', label: '模板管理' },
-  ];
-
+function Home() {
+  const [tab, setTab] = useState<'tasks' | 'annotate' | 'templates'>('tasks');
   return (
     <div className="app">
       <div className="topbar">
         <h1>智能风控 · 银行侧</h1>
         <div className="tabs">
-          {tabs.map(t => (
-            <button key={t.key} className={tab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}>{t.label}</button>
-          ))}
+          <button className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}>解析结果</button>
+          <button className={tab === 'annotate' ? 'active' : ''} onClick={() => setTab('annotate')}>模板标注</button>
+          <button className={tab === 'templates' ? 'active' : ''} onClick={() => setTab('templates')}>模板管理</button>
         </div>
       </div>
-      {tab === 'tasks' && <TaskList />}
+      {tab === 'tasks' && <TaskListPage />}
       {tab === 'annotate' && <AnnotatePage />}
       {tab === 'templates' && <TemplateAdmin />}
     </div>
   );
 }
 
+function ReportPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const taskId = Number(id);
+  return (
+    <div className="app">
+      <div className="topbar">
+        <h1>智能风控 · 银行侧</h1>
+        <div className="tabs">
+          <button className="active">报告 · 任务 {Number.isFinite(taskId) ? taskId : '—'}</button>
+          <button onClick={() => navigate('/')}>返回列表</button>
+        </div>
+      </div>
+      {Number.isFinite(taskId) ? <ReportView taskId={taskId} /> : <p className="muted">报告编号无效。</p>}
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/report/:id" element={<ReportPage />} />
+      <Route path="*" element={<Home />} />
+    </Routes>
+  );
+}

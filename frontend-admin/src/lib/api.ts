@@ -40,8 +40,50 @@ async function json<T>(res: Response): Promise<T> {
   return data as T;
 }
 
-export async function listTasks(): Promise<TaskRow[]> {
-  return json<TaskRow[]>(await fetch(`${BASE}/tasks?limit=50`));
+export interface TaskSummary {
+  id: number; biz_no: string; status: string; carrier: string | null; created_at: string | null;
+  bank_name: string | null; bank_code: string | null;
+  period_start: string | null; period_end: string | null;
+  verdict: string | null;
+  authenticity: { level: string; label: string; blocked_layers: string[]; limited_layers: string[] };
+  parse: {
+    level: string; label: string; txn_count: number;
+    metrics_valued: number; metrics_total: number;
+    failed_checks: string[]; limited_checks: string[];
+  };
+  risk: { level: string; label: string; count: number; hits: { code: string | null; level: string; value: string }[] };
+  materials: number; limitations: number; report_version: number | null;
+}
+
+export interface TaskFacets {
+  authenticity: Record<string, number>;
+  risk: Record<string, number>;
+  parse: Record<string, number>;
+  bank: Record<string, number>;
+  total: number;
+}
+
+export interface TaskSummaryList { items: TaskSummary[]; total: number; facets: TaskFacets }
+
+export interface TaskFilters {
+  authenticity?: string;
+  risk?: string;
+  parse?: string;
+  bank?: string;
+  date_from?: string;
+  date_to?: string;
+  q?: string;
+  limit?: number;
+}
+
+export async function listTasks(filters: TaskFilters = {}): Promise<TaskSummaryList> {
+  const params = new URLSearchParams();
+  params.set('limit', String(filters.limit ?? 500));
+  for (const key of ['authenticity', 'risk', 'parse', 'bank', 'date_from', 'date_to', 'q'] as const) {
+    const value = filters[key];
+    if (value) params.set(key, value);
+  }
+  return json<TaskSummaryList>(await fetch(BASE + '/tasks?' + params.toString()));
 }
 
 export async function reanalyzeTask(taskId: number, password?: string): Promise<{ task_id: number; version: number }> {
