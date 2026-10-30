@@ -213,3 +213,23 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 
 .link-btn { background: none; border: none; padding: 0; color: #2f6fed; cursor: pointer; font: inherit; text-decoration: underline; }
 .auth-meta-line { margin: 2px 0 6px; }
+
+/* 解析结果列表：筛选与标签 */
+.result-head-left { display: flex; align-items: center; gap: 14px; }
+.filter-panel { border: 1px solid #e3e9f3; border-radius: 8px; padding: 10px 14px; margin: 10px 0 14px; background: #fbfcff; }
+.filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.filter-label { font-size: 12px; color: #68758a; min-width: 62px; }
+.filter-chip { border: 1px solid #d6deeb; background: #fff; color: #33415c; border-radius: 14px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.filter-chip:hover { border-color: #9db6e0; }
+.filter-chip.active { background: #2f6fed; border-color: #2f6fed; color: #fff; }
+.filter-row input[type="date"], .filter-row input[type="text"] { border: 1px solid #d6deeb; border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+.list-table .list-row { cursor: pointer; }
+.list-table .list-row:hover { background: #f5f8fd; }
+.list-table .num { text-align: right; }
+.tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #eef2f9; color: #3a4a63; white-space: nowrap; }
+.tag.pass, .tag.parse-ok { background: #e7f6ec; color: #1c7a3d; }
+.tag.partial, .tag.risk-medium, .tag.parse-partial { background: #fff4e0; color: #a35b00; }
+.tag.fail, .tag.risk-high, .tag.parse-failed { background: #fdeaea; color: #b3261e; }
+.tag.unknown, .tag.risk-none { background: #eef2f9; color: #5b6b85; }
+.tag.risk-low { background: #eaf2ff; color: #2f5fbf; }
+.small { font-size: 11px; }

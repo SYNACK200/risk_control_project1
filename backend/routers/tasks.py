@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db.models import AuditLog, FileObj, MetricValue, Report, Task, TaskFile, Txn
@@ -137,14 +137,93 @@ def create_task(
             "preread": result.get("preread")}
 
 
+def _latest_report(db: Session, task_id: int) -> Report | None:
+    return db.execute(
+        select(Report).where(Report.task_id == task_id).order_by(Report.version.desc())
+    ).scalars().first()
+
+
+def _summary_rows(db: Session, tasks: list[Task]) -> list[dict]:
+    from services.summary import summarize
+
+    out: list[dict] = []
+    for task in tasks:
+        rep = _latest_report(db, task.id)
+        file_row = db.get(FileObj, task.file_id) if task.file_id else None
+        txn_count = db.execute(
+            select(func.count()).select_from(Txn).where(Txn.task_id == task.id)
+        ).scalar_one()
+        out.append(
+            summarize(
+                task=task,
+                payload=(rep.payload if rep else None),
+                file_row=file_row,
+                txn_count=int(txn_count or 0),
+                report_version=(rep.version if rep else None),
+            )
+        )
+    return out
+
+
+def _facets(items: list[dict]) -> dict:
+    def counts(key: str) -> dict:
+        result: dict[str, int] = {}
+        for item in items:
+            value = (item.get(key) or {}).get("level") if isinstance(item.get(key), dict) else None
+            if value:
+                result[value] = result.get(value, 0) + 1
+        return result
+
+    banks: dict[str, int] = {}
+    for item in items:
+        name = item.get("bank_name") or "未识别"
+        banks[name] = banks.get(name, 0) + 1
+    return {
+        "authenticity": counts("authenticity"),
+        "risk": counts("risk"),
+        "parse": counts("parse"),
+        "bank": banks,
+        "total": len(items),
+    }
+
+
 @router.get("")
-def list_tasks(status: str | None = None, limit: int = 20, db: Session = Depends(get_session)):
-    stmt = select(Task).order_by(Task.id.desc()).limit(min(limit, 100))
+def list_tasks(
+    status: str | None = None,
+    limit: int = 500,
+    authenticity: str | None = None,
+    risk: str | None = None,
+    parse: str | None = None,
+    bank: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    q: str | None = None,
+    db: Session = Depends(get_session),
+):
+    """解析结果列表：按银行关心的维度汇总，并支持合格性/风险/解析质量/银行/时间/关键字筛选。"""
+    stmt = select(Task).order_by(Task.id.desc()).limit(min(limit, 1000))
     if status:
         stmt = stmt.where(Task.status == status)
     rows = db.execute(stmt).scalars().all()
-    return [{"id": t.id, "biz_no": t.biz_no, "status": t.status, "carrier": t.carrier,
-             "created_at": t.created_at.isoformat() if t.created_at else None} for t in rows]
+    items = _summary_rows(db, rows)
+    facets = _facets(items)
+
+    if authenticity:
+        items = [i for i in items if i["authenticity"]["level"] == authenticity]
+    if risk:
+        items = [i for i in items if i["risk"]["level"] == risk]
+    if parse:
+        items = [i for i in items if i["parse"]["level"] == parse]
+    if bank:
+        items = [i for i in items if (i.get("bank_name") or "未识别") == bank]
+    if date_from:
+        items = [i for i in items if (i.get("created_at") or "") >= date_from]
+    if date_to:
+        items = [i for i in items if (i.get("created_at") or "") <= date_to + "T23:59:59"]
+    if q:
+        needle = q.strip().lower()
+        items = [i for i in items if needle in (i.get("biz_no") or "").lower()]
+    return {"items": items, "total": len(items), "facets": facets}
 
 
 @router.post("/{task_id}/reanalyze")

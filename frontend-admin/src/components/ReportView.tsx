@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, listTasks, reanalyzeTask, type MetricDef, type PrereadInfo, type ReportPayload, type TaskRow, type TxnRow } from '../lib/api';
+import { Link } from 'react-router-dom';
+import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, reanalyzeTask, type MetricDef, type PrereadInfo, type ReportPayload, type TxnRow } from '../lib/api';
 import { InsightSection } from './Charts';
 import { MetricExplain } from './MetricExplain';
 import { CheckTable } from './CheckTable';
@@ -27,13 +28,10 @@ function authenticity(layers: { layer: string; status: string }[], carrier: stri
 }
 
 
-export function TaskList() {
-  const [rows, setRows] = useState<TaskRow[]>([]);
-  const [selected, setSelected] = useState<number | null>(null);
+export function ReportView({ taskId }: { taskId: number }) {
   const [report, setReport] = useState<ReportPayload | null>(null);
   const [txns, setTxns] = useState<TxnRow[]>([]);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [defs, setDefs] = useState<Record<string, MetricDef>>({});
   const [openMetric, setOpenMetric] = useState<string | null>(null);
   const [vmethods, setVmethods] = useState<Record<string, string>>({});
@@ -42,41 +40,36 @@ export function TaskList() {
   const layerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [focusLayer, setFocusLayer] = useState<string | null>(null);
 
-  async function refresh() {
-    setLoading(true); setError('');
-    try { setRows(await listTasks()); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setLoading(false); }
-  }
-
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    let alive = true;
+    setReport(null);
+    setError('');
+    Promise.all([getReport(taskId), getTransactions(taskId), getTask(taskId)])
+      .then(([rep, rows, task]) => {
+        if (!alive) return;
+        setReport(rep);
+        setTxns(rows);
+        setPreread(task.check_result?.preread ?? null);
+      })
+      .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { alive = false; };
+  }, [taskId]);
 
   useEffect(() => {
     getVerificationDefinitions()
       .then(d => setVmethods(Object.fromEntries(d.items.map(i => [i.code, i.method]))))
       .catch(() => setVmethods({}));
-  }, []);
-
-  useEffect(() => {
     getMetricDefinitions()
       .then(d => setDefs(Object.fromEntries(d.items.map(i => [i.code, i]))))
       .catch(() => setDefs({}));
   }, []);
 
-  async function open(id: number) {
-    setSelected(id); setReport(null); setTxns([]); setError('');
-    try {
-      const [rep, rows, task] = await Promise.all([getReport(id), getTransactions(id), getTask(id)]);
-      setReport(rep); setTxns(rows); setPreread(task.check_result?.preread ?? null);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }
-
   async function reanalyze() {
-    if (selected === null) return;
     setError('');
     try {
       const password = window.prompt('如果这份文件有打开口令，请输入；没有就点确定留空。') ?? '';
-      await reanalyzeTask(selected, password || undefined);
-      const rep = await getReport(selected);
+      await reanalyzeTask(taskId, password || undefined);
+      const rep = await getReport(taskId);
       setReport(rep);
       setDetailOpen(true);
     } catch (e) {
@@ -97,30 +90,13 @@ export function TaskList() {
     <div className="result-wrap">
       <div className="result">
         <div className="result-head">
-          <h2>任务与报告</h2>
-          <button className="btn" onClick={() => { void refresh(); }}>{loading ? '刷新中…' : '刷新'}</button>
+          <div className="result-head-left">
+            <Link className="link-btn" to="/">← 返回解析结果</Link>
+            <h2>报告详情</h2>
+          </div>
         </div>
         {error && <div className="notice error">{error}</div>}
-        {rows.length === 0 && !loading && <p className="muted">还没有任务。借款人上传后这里会出现。</p>}
-        {rows.length > 0 && (
-          <table className="mini">
-            <thead><tr><th>任务</th><th>业务号</th><th>状态</th><th>载体</th><th>创建时间</th><th></th></tr></thead>
-            <tbody>
-              {rows.map(t => (
-                <tr key={t.id}>
-                  <td className="mono">{t.id}</td>
-                  <td className="mono">{t.biz_no}</td>
-                  <td>{t.status}</td>
-                  <td>{t.carrier ?? '—'}</td>
-                  <td className="muted">{t.created_at ?? '—'}</td>
-                  <td><button className="btn" onClick={() => { void open(t.id); }}>查看报告</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        {selected !== null && !report && !error && <p className="muted">正在读取任务 {selected} 的报告…</p>}
+        {!report && !error && <p className="muted">正在读取报告…</p>}
         {report && (
           <section style={{ marginTop: 22 }}>
             <div className={`verdict-card ${report.verdict === '未发现异常' ? 'ok' : 'bad'}`}>
