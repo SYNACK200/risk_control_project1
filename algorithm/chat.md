@@ -57,6 +57,7 @@
 - [ ] 微信零钱提现（真实样本 8 笔）与零钱通提现目前未命中六类，按普通入账计入收入；是否新增「内部划转/提现」第七类，或按对手方特征识别，待与组长确认。
 - [ ] B06 信用卡还款额目前只认摘要或对手方含「信用卡」；真实样本 4 笔「还款」对手方为支付宝，未计入 B06，是否放宽为「还款且对手方为支付机构」待定。
 - [ ] contract 与 mock 的报告结构不一致：contract 写 `layers` 为数组，mock 样例是对象；contract 报告结构未列 `task_id`，mock 有；`conclusions.level` 未定义取值，当前用 `info`。需 PM/PD 统一后前端才能定稿。
+- [ ] AL-43 结论：跨引擎不一致全部是「切分差异」（重叠文本对象导致 pdfplumber 字符交错），非抽取错误；排查工具 `algorithm/diagnose_s4.py`。待定：S4 判据是否改为按 x 重排的行内比对（改后 102/102，自检由 limited 变 pass），属自检口径变更，需确认；组长那份 191 笔件的 10 处等文件到位再跑。
 - [ ] AL-44 报告新增 `self_check` 字段（2026-10-30）：`{status,summary,items[{code,name,status,detail,ratio}]}`，位置在 `materials` 与 `version` 之间；非 pass 项同时写入 `limitations`，未传自检时写「未执行识别自检」。contract.md 报告结构（:118-128）尚无该字段，需 PM/PD 补契约；后端 `run_analysis()` 已透传 report 故自动带上，前端银行侧报告页尚未渲染。
 - [x] 阈值 v2 复核（2026-10-29）：修三处 — NET_OUTFLOW 连续月改按自然月补零，缺交易月不再跨月累计；BALANCE_DECLINE 期末余额改取最后一个月日期最新一笔，不再依赖文件末行；CRYPTO_HIT 传入 `hits` 时按 CRYPTO 标签计，对手方命中不再漏。另加掩码对手方（`***`/`###`）告警、README 的单月「≥100」文字与口径说明；补 4 项测试，`pytest algorithm/tests -q` 174 passed，真实工行件 3 条提示不变。
 - [ ] 阈值默认值待业务确认：v2 已实施（`threshold_version=2`，共 13 项：设计稿 6 项 + 新增 NET_OUTFLOW / BALANCE_DECLINE / FAST_IN_OUT / COUNTERPARTY_CONCENTRATED / NEW_LOAN / SMALL_LOAN_REPAY / CRYPTO_HIT，全部 `level=info`、不参与五态）。未校准暂定值：FAST_IN_OUT 当日进金额 500 元、NEW_LOAN 放款金额 ≥ 月均收入 30%、CRYPTO_HIT 涉币金额 1000 元、净流出单月下限 100 元、对手方缺失率告警线 20%；HHI 阈值不设默认（未校准不判定，只告警缺失率）。确认顺序：修口径与缺失值 → 样本分布校准（HHI P95 需成批真件）→ 按误报代价定价。SALARY_IRREGULAR 未实施，依赖代发账户识别口径；「当地月供」无数据来源，仍用 B01 月还款近似并写 limitations。
