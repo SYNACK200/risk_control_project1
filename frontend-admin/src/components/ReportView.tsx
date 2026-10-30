@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, listTemplates, reanalyzeTask, reanalyzeWithTemplate, whitelistTask, type MetricDef, type PrereadInfo, type ReportPayload, type TemplateRow, type TxnRow } from '../lib/api';
 import { InsightSection } from './Charts';
@@ -37,8 +37,8 @@ export function ReportView({ taskId }: { taskId: number }) {
   const [vmethods, setVmethods] = useState<Record<string, string>>({});
   const [preread, setPreread] = useState<PrereadInfo | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const layerRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const [focusLayer, setFocusLayer] = useState<string | null>(null);
+  const [openLayers, setOpenLayers] = useState<Record<string, boolean>>({});
+  const [openSelf, setOpenSelf] = useState(false);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
   const [whitelist, setWhitelist] = useState<{ reason: string; at: string } | null>(null);
@@ -115,13 +115,8 @@ export function ReportView({ taskId }: { taskId: number }) {
     }
   }
 
-  function openLayer(layer: string) {
-    setDetailOpen(true);
-    setFocusLayer(layer);
-    window.setTimeout(() => {
-      layerRefs.current[layer]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 80);
-    window.setTimeout(() => setFocusLayer(null), 2200);
+  function toggleLayer(layer: string) {
+    setOpenLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   }
 
   return (
@@ -172,20 +167,17 @@ export function ReportView({ taskId }: { taskId: number }) {
                     <span className="auth-meta">载体 {report.carrier} · 受限 {a.limited} 项 · {a.blocked.length ? '未全通过：' + a.blocked.join('、') : '四层全部通过'}</span>
                   </div>
                   <div className="auth-meta-line">
-                    <button className="link-btn" type="button" onClick={() => openLayer('file')}>查看四层逐项结果（36 项）▸</button>
-                  </div>
-                  <div className="auth-chips">
-                    {report.layers.map(l => (
-                      <button
-                        key={l.layer}
-                        type="button"
-                        className={"chip chip-btn " + l.status}
-                        title="点我展开这一层的逐项检查"
-                        onClick={() => openLayer(l.layer)}
-                      >
-                        {LAYER_NAMES[l.layer] ?? l.layer} {l.status} · {l.checks?.length ?? 0} 项 ▸
-                      </button>
-                    ))}
+                    <button
+                      className="link-btn"
+                      type="button"
+                      onClick={() => setOpenLayers(Object.fromEntries(report.layers.map(l => [l.layer, true])))}
+                    >展开四层逐项（36 项）▸</button>
+                    <button
+                      className="link-btn"
+                      type="button"
+                      style={{ marginLeft: 10 }}
+                      onClick={() => setOpenLayers({})}
+                    >全部收起</button>
                   </div>
                 </div>
               );
@@ -258,7 +250,7 @@ export function ReportView({ taskId }: { taskId: number }) {
               </tbody>
             </table>
 
-            <h3>四层核验（点任一检查点看「怎么验」与本次结果）</h3>
+            <h3>四层核验（点卡片展开，逐项看「怎么验」与本次结果）</h3>
             {!report.layers.some(l => (l.checks?.length ?? 0) > 0) && (
               <p className="me-warn">
                 这份报告生成于逐项明细上线之前（v2.4.0 以前），只有层结论、没有逐项结果。
@@ -269,28 +261,39 @@ export function ReportView({ taskId }: { taskId: number }) {
             {report.layers.map(l => {
               const items = l.checks ?? [];
               const cnt = (st: string) => items.filter(i => i.status === st).length;
+              const open = Boolean(openLayers[l.layer]);
               return (
-                <div
-                  key={l.layer}
-                  ref={el => { layerRefs.current[l.layer] = el; }}
-                  className={"layer-block" + (focusLayer === l.layer ? " layer-focus" : "")}
-                >
-                  <div className="layer-head">
+                <div key={l.layer} className={'check-card' + (open ? ' open' : '')}>
+                  <button type="button" className="card-head" onClick={() => toggleLayer(l.layer)} aria-expanded={open}>
                     <span className={'check-status ' + l.status}>{l.status}</span>
                     <strong>{LAYER_NAMES[l.layer] ?? l.layer}</strong>
-                    <span className="muted">
+                    <span className="muted card-summary">
                       {items.length} 项：通过 {cnt('pass')} · 部分/受限 {cnt('partial') + cnt('limited')} · 未执行 {cnt('skipped')} · 不通过 {cnt('fail') + cnt('inconsistent')}
                     </span>
-                  </div>
-                  <div className="muted layer-detail">{l.detail}</div>
-                  <CheckTable items={items} methods={vmethods} />
+                    <span className="card-caret">{open ? '▾ 收起' : '▸ 展开'}</span>
+                  </button>
+                  {open && (
+                    <div className="card-body">
+                      <div className="muted layer-detail">{l.detail}</div>
+                      <CheckTable items={items} methods={vmethods} />
+                    </div>
+                  )}
                 </div>
               );
             })}
 
-            <h3>识别自检（S0–S8）</h3>
-            <p className="muted">检查「系统有没有把这份文件读对」，与伪造判断分开看。</p>
-            <CheckTable items={report.self_check ?? []} methods={vmethods} />
+            <div className={'check-card' + (openSelf ? ' open' : '')}>
+              <button type="button" className="card-head" onClick={() => setOpenSelf(v => !v)} aria-expanded={openSelf}>
+                <strong>识别自检（S0–S8）</strong>
+                <span className="muted card-summary">检查「系统有没有把这份文件读对」，与伪造判断分开看 · {(report.self_check ?? []).length} 项</span>
+                <span className="card-caret">{openSelf ? '▾ 收起' : '▸ 展开'}</span>
+              </button>
+              {openSelf && (
+                <div className="card-body">
+                  <CheckTable items={report.self_check ?? []} methods={vmethods} />
+                </div>
+              )}
+            </div>
 
             <details className="auth-detail" open={detailOpen} onToggle={e => setDetailOpen((e.target as HTMLDetailsElement).open)}>
               <summary>核验受限与证据（点开看细节）</summary>
