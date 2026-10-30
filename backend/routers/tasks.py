@@ -195,7 +195,11 @@ def list_tasks(
     status: str | None = None,
     limit: int = 500,
     authenticity: str | None = None,
+    source: str | None = None,
     risk: str | None = None,
+    risk_code: str | None = None,
+    min_income: float | None = None,
+    max_income: float | None = None,
     parse: str | None = None,
     bank: str | None = None,
     date_from: str | None = None,
@@ -213,8 +217,21 @@ def list_tasks(
 
     if authenticity:
         items = [i for i in items if i["authenticity"]["level"] == authenticity]
+    if source:
+        items = [i for i in items if i["source"]["level"] == source]
     if risk:
         items = [i for i in items if i["risk"]["level"] == risk]
+    if risk_code:
+        items = [i for i in items if risk_code in (i.get("risk_codes") or [])]
+    def _income(item):
+        try:
+            return float(item.get("income") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    if min_income is not None:
+        items = [i for i in items if _income(i) >= min_income]
+    if max_income is not None:
+        items = [i for i in items if _income(i) <= max_income]
     if parse:
         items = [i for i in items if i["parse"]["level"] == parse]
     if bank:

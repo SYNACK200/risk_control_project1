@@ -311,10 +311,11 @@ def merge_subject(db: Session, holder_key: str, method: str, overlap: str) -> di
             total_w = sum(w) or 1.0
             merged[field] = sum(v * wi for v, wi in zip(per_account[field], w)) / total_w
         else:
+            base = "union" if method == "cvar" else method
             total = 0.0
             for key in all_months:
                 values = month_values[field].get(key, [])
-                total += _combine(values, method, overlap, None)
+                total += _combine(values, base, overlap, None)
             merged[field] = total
 
     months_count = len(all_months)
@@ -322,6 +323,15 @@ def merge_subject(db: Session, holder_key: str, method: str, overlap: str) -> di
     b02 = (merged["repay"] / a02) if a02 else None
     c01 = merged["in"] - merged["out"]
     c02 = (merged["in"] / merged["out"]) if merged["out"] else None
+    if method == "cvar" and all_months:
+        nets = []
+        for key in all_months:
+            inflow = _combine(month_values["in"].get(key, []), "union", overlap, None)
+            outflow = _combine(month_values["out"].get(key, []), "union", overlap, None)
+            nets.append(inflow - outflow)
+        nets.sort()
+        k = max(1, math.ceil(len(nets) * 0.2))
+        c01 = sum(nets[:k]) / k
 
     counts = [len([c for c in (s["report"].get("conclusions") or []) if c.get("code") in RISKY_CODES]) for s in series_list]
     if method == "max":
@@ -369,8 +379,11 @@ def merge_subject(db: Session, holder_key: str, method: str, overlap: str) -> di
          "how": f"{method_meta['label']}：{method_meta['formula']}", "note": "按摘要关键词识别还款/分期/贷款"},
         {"code": "B02", "name": "合并 DTI", "value": round(b02, 4) if b02 is not None else None, "unit": "百分比",
          "how": "B01 ÷ A02（按合并后分量重算）", "note": "比率类指标不相加"},
-        {"code": "C01", "name": "合并净流入", "value": round(c01, 2), "unit": "元",
-         "how": "合并入账 − 合并出账", "note": ""},
+        {"code": "C01",
+         "name": "尾部净流入 ES" if method == "cvar" else "合并净流入",
+         "value": round(c01, 2), "unit": "元",
+         "how": "最差 20% 月份净流入均值（ES）" if method == "cvar" else "合并入账 − 合并出账",
+         "note": "越小说明最坏月份越差" if method == "cvar" else ""},
         {"code": "C02", "name": "合并流入流出比", "value": round(c02, 4) if c02 is not None else None, "unit": "倍",
          "how": "合并入账 ÷ 合并出账", "note": ""},
     ]
