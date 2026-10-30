@@ -238,6 +238,7 @@ export interface MergeResult {
   coverage: { months: number; overlap_months: string[]; from: string | null; to: string | null };
   metrics: { code: string; name: string; value: number | null; unit: string; how: string; note: string }[];
   risk: { level: string; hits: number; per_account: number[] };
+  sync?: { months: number; sync_months: string[]; score: string; lambda: string; amplify_factor: string } | null;
   unsupported: { code: string; name: string; reason: string }[];
   warnings: string[];
   explain: { why_this_method: string; assumption: string; ratio_rule: string; balance_rule: string };
@@ -261,6 +262,7 @@ export interface SubjectMergeResult {
   coverage: { months: number; overlap_months: string[]; from: string | null; to: string | null };
   metrics: { code: string; name: string; value: number | null; unit: string; how: string; note: string }[];
   risk: { level: string; hits: number; per_account: number[] };
+  sync?: { months: number; sync_months: string[]; score: string; lambda: string; amplify_factor: string } | null;
   unsupported: { code: string; name: string; reason: string }[];
   warnings: string[];
   explain: { why_this_method: string; assumption: string; ratio_rule: string; balance_rule: string };
