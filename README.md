@@ -143,7 +143,11 @@ git push -u origin feat/模块-任务号
 | 端 | 地址 | 账号来源 |
 | --- | --- | --- |
 | 借款侧 | http://127.0.0.1:5173 | 页面自助注册 / 登录 |
-| 银行侧 | http://127.0.0.1:5174 | 首次启动自动创建 admin（ADMIN_PASSWORD，默认 admin123），登录后请改密 |
+| 银行侧 | http://127.0.0.1:5174 | 首次启动自动创建 admin（ADMIN_PASSWORD 或随机写入 backend/.admin_password），登录后请改密 |
 
 - 令牌 12 小时有效；密码 PBKDF2-SHA256 存储；借款侧只看自己的流水。
 - 生产必须设置 \`AUTH_SECRET\`（否则用默认密钥）并启用 HTTPS。
+## 部署与运行
+
+见 [部署与运行.md](部署与运行.md)。
+一句话：复制 .env.example 为 .env 填好 MySQL 密码，Windows 跑 scripts/start_windows.bat，Linux 跑 ./scripts/start_unix.sh；一个后端进程同时托管 API 与两个前端（/ 借款侧，/bank/ 银行侧）。
