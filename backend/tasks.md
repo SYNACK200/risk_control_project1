@@ -28,6 +28,8 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | BE-54 | 数据隔离：task.user_id 归属；列表/详情/报告/导出按角色过滤；回收站/模板/阈值/实体/审计仅银行侧 | 借款侧不能看到别人的流水 | routers/tasks.py、reports.py、各管理路由 | 借款侧 3 条 / 银行侧 15 条；借款侧 /entities 403 |
+| [x] | BE-53 | 账号体系：app_user 表、PBKDF2 密码、HMAC 令牌（12h）、/auth/register|login|me|change-password|users；首次启动种 admin | 之前只有共享口令，无法区分用户与角色 | db/models.py、helpers/security.py、routers/auth.py | 注册/登录 200；错令牌 401 |
 | [x] | BE-52 | 模板生命周期接口：编辑出新版本、复制、停用、删除（被用过 409）、统计、试跑、导出、导入 | 模板只启用不管理，出错无法修也无法验证 | routers/templates.py | 统计/复制/试跑/导出均 200；试跑 570 笔 |
 | [x] | BE-51 | 导出接口：/tasks/{id}/transactions.csv（UTF-8 BOM+CRLF）与 /tasks/{id}/export.json（报告+明细）；已删除流水 404 | 审批与归档需要离开系统也能看 | routers/tasks.py | CSV 192 行、JSON 191 笔，均 200 |
 | [x] | BE-50 | 流水回收站：deleted_at 软删除 + 幂等迁移补列；recycle/restore/purge 三个批量接口；列表支持 trash=1；实体与合并只看在用 | 流水只增不减会淹没问题记录 | db/models.py、db/migrate.py、routers/tasks.py | 回收 14→12、恢复 12→13、purge 需 confirm 且级联删明细 |
