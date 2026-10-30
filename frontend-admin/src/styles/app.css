@@ -205,3 +205,11 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .preread-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .preread-title { font-weight: 600; color: #22314f; }
 .preread-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 18px; }
+
+/* 层标签可点 */
+.chip-btn { cursor: pointer; border: 1px dashed transparent; font: inherit; }
+.chip-btn:hover { border-color: currentColor; }
+.layer-focus { outline: 2px solid #2f6fed; outline-offset: 4px; border-radius: 6px; transition: outline-color .2s; }
+
+.link-btn { background: none; border: none; padding: 0; color: #2f6fed; cursor: pointer; font: inherit; text-decoration: underline; }
+.auth-meta-line { margin: 2px 0 6px; }

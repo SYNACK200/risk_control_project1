@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useState } from 'react';
-import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, listTasks, type MetricDef, type PrereadInfo, type ReportPayload, type TaskRow, type TxnRow } from '../lib/api';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { getMetricDefinitions, getReport, getTask, getTransactions, getVerificationDefinitions, listTasks, reanalyzeTask, type MetricDef, type PrereadInfo, type ReportPayload, type TaskRow, type TxnRow } from '../lib/api';
 import { InsightSection } from './Charts';
 import { MetricExplain } from './MetricExplain';
 import { CheckTable } from './CheckTable';
@@ -38,6 +38,9 @@ export function TaskList() {
   const [openMetric, setOpenMetric] = useState<string | null>(null);
   const [vmethods, setVmethods] = useState<Record<string, string>>({});
   const [preread, setPreread] = useState<PrereadInfo | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const layerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [focusLayer, setFocusLayer] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true); setError('');
@@ -65,6 +68,29 @@ export function TaskList() {
       const [rep, rows, task] = await Promise.all([getReport(id), getTransactions(id), getTask(id)]);
       setReport(rep); setTxns(rows); setPreread(task.check_result?.preread ?? null);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+  }
+
+  async function reanalyze() {
+    if (selected === null) return;
+    setError('');
+    try {
+      const password = window.prompt('如果这份文件有打开口令，请输入；没有就点确定留空。') ?? '';
+      await reanalyzeTask(selected, password || undefined);
+      const rep = await getReport(selected);
+      setReport(rep);
+      setDetailOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function openLayer(layer: string) {
+    setDetailOpen(true);
+    setFocusLayer(layer);
+    window.setTimeout(() => {
+      layerRefs.current[layer]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    window.setTimeout(() => setFocusLayer(null), 2200);
   }
 
   return (
@@ -112,9 +138,20 @@ export function TaskList() {
                     <span className="auth-title">真实性校验：{a.label}</span>
                     <span className="auth-meta">载体 {report.carrier} · 受限 {a.limited} 项 · {a.blocked.length ? '未全通过：' + a.blocked.join('、') : '四层全部通过'}</span>
                   </div>
+                  <div className="auth-meta-line">
+                    <button className="link-btn" type="button" onClick={() => openLayer('file')}>查看四层逐项结果（36 项）▸</button>
+                  </div>
                   <div className="auth-chips">
                     {report.layers.map(l => (
-                      <span key={l.layer} className={"chip " + l.status}>{LAYER_NAMES[l.layer] ?? l.layer} {l.status}</span>
+                      <button
+                        key={l.layer}
+                        type="button"
+                        className={"chip chip-btn " + l.status}
+                        title="点我展开这一层的逐项检查"
+                        onClick={() => openLayer(l.layer)}
+                      >
+                        {LAYER_NAMES[l.layer] ?? l.layer} {l.status} · {l.checks?.length ?? 0} 项 ▸
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -188,25 +225,42 @@ export function TaskList() {
               </tbody>
             </table>
 
-            <details className="auth-detail">
-              <summary>真实性校验明细（默认收起，点开看四层检查、受限说明与证据）</summary>
-              <h3>四层核验（点开任一检查点看「怎么验」和本次结果）</h3>
-              {report.layers.map(l => (
-                <div key={l.layer} className="layer-block">
+            <h3>四层核验（点任一检查点看「怎么验」与本次结果）</h3>
+            {!report.layers.some(l => (l.checks?.length ?? 0) > 0) && (
+              <p className="me-warn">
+                这份报告生成于逐项明细上线之前（v2.4.0 以前），只有层结论、没有逐项结果。
+                点「重算逐项结果」用原文件补齐；加密件重算需要再输一次口令。
+                <button className="link-btn" type="button" onClick={() => { void reanalyze(); }}>重算逐项结果 ▸</button>
+              </p>
+            )}
+            {report.layers.map(l => {
+              const items = l.checks ?? [];
+              const cnt = (st: string) => items.filter(i => i.status === st).length;
+              return (
+                <div
+                  key={l.layer}
+                  ref={el => { layerRefs.current[l.layer] = el; }}
+                  className={"layer-block" + (focusLayer === l.layer ? " layer-focus" : "")}
+                >
                   <div className="layer-head">
                     <span className={'check-status ' + l.status}>{l.status}</span>
                     <strong>{LAYER_NAMES[l.layer] ?? l.layer}</strong>
-                    <span className="muted">{l.detail}</span>
+                    <span className="muted">
+                      {items.length} 项：通过 {cnt('pass')} · 部分/受限 {cnt('partial') + cnt('limited')} · 未执行 {cnt('skipped')} · 不通过 {cnt('fail') + cnt('inconsistent')}
+                    </span>
                   </div>
-                  <CheckTable items={l.checks ?? []} methods={vmethods} />
+                  <div className="muted layer-detail">{l.detail}</div>
+                  <CheckTable items={items} methods={vmethods} />
                 </div>
-              ))}
+              );
+            })}
 
-              <h3>识别自检（S0–S7）</h3>
-              <p className="muted">检查「系统有没有把这份文件读对」，与伪造判断分开看。</p>
-              <CheckTable items={report.self_check ?? []} methods={vmethods} />
+            <h3>识别自检（S0–S8）</h3>
+            <p className="muted">检查「系统有没有把这份文件读对」，与伪造判断分开看。</p>
+            <CheckTable items={report.self_check ?? []} methods={vmethods} />
 
-
+            <details className="auth-detail" open={detailOpen} onToggle={e => setDetailOpen((e.target as HTMLDetailsElement).open)}>
+              <summary>核验受限与证据（点开看细节）</summary>
             <h3>核验受限（{report.limitations.length}）</h3>
             <ul className="muted">{report.limitations.map((x, i) => <li key={i}>{x}</li>)}</ul>
 
