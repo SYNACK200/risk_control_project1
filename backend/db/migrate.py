@@ -18,4 +18,8 @@ def ensure_columns() -> list[str]:
         if "deleted_at" not in columns:
             conn.execute(text("ALTER TABLE task ADD COLUMN deleted_at DATETIME NULL"))
             done.append("task.deleted_at")
+        if "user_id" not in columns:
+            conn.execute(text("ALTER TABLE task ADD COLUMN user_id INT NULL"))
+            conn.execute(text("CREATE INDEX ix_task_user_id ON task (user_id)"))
+            done.append("task.user_id")
     return done

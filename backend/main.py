@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from db.session import init_db
 from helpers.logging_config import configure_logging
-from routers import audit, entities, reports, tasks, templates, thresholds
+from routers import audit, auth, entities, reports, tasks, templates, thresholds
 
 logger = logging.getLogger("risk_control")
 
@@ -18,6 +18,14 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
     init_db()
     ensure_columns()
+    from db.session import SessionLocal
+    from routers.auth import seed_admin
+
+    session = SessionLocal()
+    try:
+        seed_admin(session)
+    finally:
+        session.close()
     logger.info("服务启动；数据库已就绪（缺表自动创建）。")
     try:
         yield
@@ -42,6 +50,7 @@ app.include_router(reports.router, prefix=settings.api_prefix)
 app.include_router(templates.router, prefix=settings.api_prefix)
 app.include_router(entities.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
+app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(thresholds.router, prefix=settings.api_prefix)
 
 

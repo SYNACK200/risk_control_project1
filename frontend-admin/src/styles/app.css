@@ -324,3 +324,6 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .tpl-pre { background: #fff; border: 1px solid #e3e9f3; border-radius: 6px; padding: 8px; font-size: 12px; overflow: auto; }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .link-btn.danger-text { color: #b3261e; }
+
+.user-bar { position: fixed; right: 16px; top: 10px; z-index: 50; display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.92); border: 1px solid #e3e9f3; border-radius: 999px; padding: 4px 12px; }
