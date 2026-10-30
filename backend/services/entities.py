@@ -495,6 +495,8 @@ def merge_subject(db: Session, holder_key: str, method: str = "net_internal", ov
         })
 
     counts = [a["risk_hits"] for a in account_meta]
+    sync_info = result.get("sync") or None
+    factor = Decimal(sync_info["amplify_factor"]) if sync_info else Decimal(1)
     if mode == "worst_case":
         hits = max(counts) if counts else 0
     elif mode in ("convex", "weighted"):
@@ -503,6 +505,8 @@ def merge_subject(db: Session, holder_key: str, method: str = "net_internal", ov
         hits = max(counts) if counts else 0
     else:
         hits = min(3, sum(counts)) if counts else 0
+    if factor > 1 and hits:
+        hits = min(3, int((Decimal(hits) * factor).to_integral_value(rounding="ROUND_CEILING")))
     risk_level = "high" if hits >= 3 else "medium" if hits == 2 else "low" if hits == 1 else "none"
 
     months = sorted({_month_key(str(r.txn_date)) for _t, rows in [] for r in rows} - {None}) if False else []
@@ -516,6 +520,12 @@ def merge_subject(db: Session, holder_key: str, method: str = "net_internal", ov
     overlap_months = [k for k, owners in month_owner.items() if len(owners) > 1]
 
     warnings: list[str] = list(result.get("notes") or [])
+    if sync_info and sync_info.get("sync_months"):
+        warnings.append(
+            "同步放大生效：同步月 {} 个 / 共 {} 个月，系数 x{}（合并风险高于简单相加）".format(
+                len(sync_info["sync_months"]), sync_info["months"], sync_info["amplify_factor"]
+            )
+        )
     if overlap_months:
         warnings.append(f"{len(overlap_months)} 个月份存在多账户重叠，已由合并引擎按期间并集处理")
     if result.get("overlap_days"):
@@ -549,6 +559,7 @@ def merge_subject(db: Session, holder_key: str, method: str = "net_internal", ov
         },
         "metrics": metrics,
         "risk": {"level": risk_level, "hits": hits, "per_account": counts},
+        "sync": sync_info,
         "unsupported": [{"code": c, "name": n, "reason": r} for c, n, r in MERGE_UNSUPPORTED],
         "warnings": warnings,
         "explain": {

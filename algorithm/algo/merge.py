@@ -86,6 +86,14 @@ MODES: dict[str, MergeMode] = {
         "主账户权重高时，小账户的异常容易被稀释",
         "score",
     ),
+    "sync_amplify": MergeMode(
+        "sync_amplify", "同步放大（超可加）",
+        "两笔流水在同一个月份同时抽走资金时，合并风险按 Σ × (1 + λ·同步率) 放大",
+        "M = Σ mᵢ × (1 + λ · 同步月数/总月数)",
+        "多账户时间上同步（同月大额流出/净流出），合并风险可能大于各自之和",
+        "同步判定依赖月份粒度与「大额」阈值（月均流出的 80%）；λ 默认 0.5，可用 MERGE_SYNC_LAMBDA 调整",
+        "flow",
+    ),
     "evidence": MergeMode(
         "evidence", "证据合成（真实性）",
         "把各账户真实性当作证据在对数几率空间相加",
@@ -252,11 +260,31 @@ def merge_accounts(accounts: list[AccountInput], mode: str = "net_internal") -> 
     metric_sets = [compute_metrics(account.transactions) for account in accounts]
     merged_metrics = compute_metrics(merged_txns)
     codes = [m.code for m in merged_metrics.metrics]
+    sync = _sync_profile(accounts) if mode == "sync_amplify" else None
+    amplify_factor = Decimal(1)
+    if sync is not None:
+        amplify_factor = Decimal(1) + sync["lambda"] * sync["score"]
+        if sync["sync_months"]:
+            notes.append(
+                "同步放大：{} 个月里有 {} 个月出现多账户同时大额流出/净流出，"
+                "同步率 {:.0%}，放大系数 ×{:.2f}（超可加：合并风险大于各自之和）".format(
+                    sync["months"], len(sync["sync_months"]), float(sync["score"]), float(amplify_factor)
+                )
+            )
     metrics = []
     for code in codes:
         if definition.level == "flow":
             value = next((m.value for m in merged_metrics.metrics if m.code == code), None)
             basis = "由合并后的明细重算"
+            if sync is not None and code in SYNC_AMPLIFY_CODES:
+                per_account = [
+                    next((m.value for m in ms.metrics if m.code == code), None)
+                    for ms in metric_sets
+                ]
+                total = sum((v for v in per_account if v is not None), Decimal(0))
+                if total:
+                    value = total * amplify_factor
+                    basis = "Σ 各账户该指标 × (1 + λ·同步率)（超可加）"
         else:
             values = []
             for ms in metric_sets:
@@ -296,5 +324,82 @@ def merge_accounts(accounts: list[AccountInput], mode: str = "net_internal") -> 
         "internal_transfers": internal_pairs,
         "metrics": metrics,
         "notes": notes,
+        "sync": None if sync is None else {
+            "months": sync["months"],
+            "sync_months": sync["sync_months"],
+            "score": str(sync["score"]),
+            "lambda": str(sync["lambda"]),
+            "amplify_factor": str(amplify_factor),
+        },
     }
 
+
+# 风险型指标（越高越差）：同步放大时按「Σ mᵢ × (1 + λ·同步率)」合成，
+# 用来表达「两笔时间上同步的流水，合起来的风险大于各自之和」（超可加）。
+SYNC_AMPLIFY_CODES = frozenset({
+    "A04", "B02", "B03", "B04", "B05", "B06", "B07", "B08",
+    "C05", "C06", "C07", "C08", "D02", "D03", "D05", "D07",
+    "E01", "E02", "E03", "E05", "E07",
+})
+
+# 同步放大的默认强度；可用环境变量 MERGE_SYNC_LAMBDA 覆盖（0 表示不放大）。
+import os as _os
+SYNC_LAMBDA = Decimal(_os.getenv("MERGE_SYNC_LAMBDA", "0.5"))
+
+
+def _month_bucket(txn) -> str | None:
+    text = str(txn.txn_date or "")
+    if len(text) >= 7 and text[4] == "-":
+        return text[:7]
+    return None
+
+
+def _sync_profile(accounts: list[AccountInput]) -> dict:
+    """检测「同步压力」：同一月份里 ≥2 个账户同时出现大额流出或净流出。
+
+    这不是线性相加：两笔流水各自单独看都没问题，但同一个月一起抽走资金，
+    对还款能力的冲击大于两者之和，所以合并时给一个放大系数。
+    """
+    monthly: dict[str, dict[str, dict[str, Decimal]]] = {}
+    for account in accounts:
+        for txn in account.transactions:
+            month = _month_bucket(txn)
+            if month is None:
+                continue
+            bucket = monthly.setdefault(month, {}).setdefault(account.account_id, {"in": Decimal(0), "out": Decimal(0)})
+            if txn.direction == "in":
+                bucket["in"] += txn.amount or Decimal(0)
+            elif txn.direction == "out":
+                bucket["out"] += txn.amount or Decimal(0)
+
+    if not monthly:
+        return {"months": 0, "sync_months": [], "score": Decimal(0), "lambda": SYNC_LAMBDA}
+
+    # 每个账户的月均流出，用来判断「大额」
+    per_account_totals: dict[str, Decimal] = {}
+    per_account_months: dict[str, int] = {}
+    for month, accounts_in_month in monthly.items():
+        for account_id, bucket in accounts_in_month.items():
+            per_account_totals[account_id] = per_account_totals.get(account_id, Decimal(0)) + bucket["out"]
+            per_account_months[account_id] = per_account_months.get(account_id, 0) + 1
+    averages = {
+        account_id: (per_account_totals[account_id] / per_account_months[account_id])
+        for account_id in per_account_totals
+        if per_account_months[account_id]
+    }
+
+    sync_months: list[str] = []
+    for month, accounts_in_month in sorted(monthly.items()):
+        stressed = 0
+        for account_id, bucket in accounts_in_month.items():
+            average = averages.get(account_id, Decimal(0))
+            net = bucket["in"] - bucket["out"]
+            heavy = average > 0 and bucket["out"] >= average * Decimal("0.8")
+            if heavy or net < 0:
+                stressed += 1
+        if stressed >= 2:
+            sync_months.append(month)
+
+    months_count = len(monthly)
+    score = Decimal(len(sync_months)) / Decimal(months_count) if months_count else Decimal(0)
+    return {"months": months_count, "sync_months": sync_months, "score": score, "lambda": SYNC_LAMBDA}
