@@ -28,6 +28,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | BE-51 | 导出接口：/tasks/{id}/transactions.csv（UTF-8 BOM+CRLF）与 /tasks/{id}/export.json（报告+明细）；已删除流水 404 | 审批与归档需要离开系统也能看 | routers/tasks.py | CSV 192 行、JSON 191 笔，均 200 |
 | [x] | BE-50 | 流水回收站：deleted_at 软删除 + 幂等迁移补列；recycle/restore/purge 三个批量接口；列表支持 trash=1；实体与合并只看在用 | 流水只增不减会淹没问题记录 | db/models.py、db/migrate.py、routers/tasks.py | 回收 14→12、恢复 12→13、purge 需 confirm 且级联删明细 |
 | [x] | BE-49 | 阈值版本落库 threshold_profile + GET/PUT /thresholds、reset；受理与重解析改用当前生效版本，报告记录 threshold_version | 改参数必须可追溯，旧报告不能变 | db/models.py、services/thresholds.py、routers/thresholds.py、services/analysis.py | v2→v3（DTI 0.65）→v4（默认）；重解析报告 threshold_version=4 |
 | [x] | BE-20a | 本地口令保护：/bank 与写接口要求口令（先做单口令，不做完整 RBAC） | 现在任何能访问 8000 的人都能看报告 | `helpers/security.py`、路由依赖 | `cd backend && py -m pytest tests -q`（Bearer 缺失 401、正确口令 200） |

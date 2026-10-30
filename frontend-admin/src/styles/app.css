@@ -305,3 +305,12 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
   padding: 8px 12px; background: #f3f7ff; border: 1px solid #dbe6f7; border-radius: 8px; }
 .btn.danger { background: #fff; color: #b3261e; border: 1px solid #f0c2be; }
 .btn.danger:hover { background: #fefafa; }
+
+@media print {
+  .topbar, .reanalyze-bar, .auth-meta-line, .link-btn, .btn, .filter-panel, .bulk-bar { display: none !important; }
+  .result-wrap, .result { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; }
+  .check-card { break-inside: avoid; }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; }
+  body { background: #fff !important; }
+}
