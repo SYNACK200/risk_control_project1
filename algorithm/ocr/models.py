@@ -20,6 +20,7 @@ class Transaction(BaseModel):
     page_no: int
     row_no: int
     txn_date: str | None = None
+    trade_time: str | None = None  # HH:MM:SS；原件未印时分时为 None
     summary: str | None = None
     counterparty_name: str | None = None
     direction: Direction | None = None

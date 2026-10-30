@@ -48,6 +48,7 @@ def test_bank_statement_single_page():
 
     first, second = result.transactions[0], result.transactions[1]
     assert first.txn_date == "2026-01-05"
+    assert first.trade_time is None
     assert first.amount == Decimal("12500.00")
     assert first.balance == Decimal("13200.00")
     assert first.direction == "in"
@@ -162,11 +163,39 @@ def test_icbc_like_layout_signed_amount_and_page_footer():
     first, second = result.transactions
     assert first.direction == "in"
     assert first.amount == Decimal("13.31")
+    assert first.trade_time == "09:41:20"
     assert first.summary == "零钱通提现"
     assert first.counterparty_name == "财付通支付科技有限公司"
     assert second.direction == "out"
     assert second.amount == Decimal("29.00")
+    assert second.trade_time == "09:46:05"
     assert second.balance == Decimal("8.89")
+
+
+def test_trade_time_on_date_line_and_normalized():
+    header = ["交易日期", "时间", "摘要", "借贷标志", "交易金额", "余额"]
+    xs = [40, 150, 250, 420, 520, 600]
+    rows = [
+        ["2026-10-01", "9:41:20", "消费", "借", "12.50", "100.00"],
+        ["2026-10-02", "15:39", "转账", "借", "8.00", "92.00"],
+    ]
+    result = parse(make_pdf([rows], header, xs))
+
+    assert [txn.trade_time for txn in result.transactions] == ["09:41:20", "15:39:00"]
+    assert result.transactions[0].txn_date == "2026-10-01"
+    assert result.transactions[0].summary == "消费"
+
+
+def test_parse_clock_rejects_non_time():
+    from algorithm.ocr.parse import parse_clock
+
+    assert parse_clock("15:39:23") == "15:39:23"
+    assert parse_clock("23:59") == "23:59:00"
+    assert parse_clock("9:05:03") == "09:05:03"
+    assert parse_clock("2026-05-01") is None
+    assert parse_clock("24:00:00") is None
+    assert parse_clock("12:60:00") is None
+    assert parse_clock("") is None
 
 
 def test_encrypted_pdf_returns_e_encrypt_hint():

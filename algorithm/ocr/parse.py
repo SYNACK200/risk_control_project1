@@ -22,6 +22,7 @@ DATE_RE = re.compile(r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})")
 MONEY_RE = re.compile(r"[-+]?[¥￥]?\d[\d,]*(?:\.\d+)?")
 FOOTER_RE = re.compile(r"(?:共|合计|总计)\s*(\d+)\s*笔")
 TIME_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
+CLOCK_RE = re.compile(r"(?<![\d.:])(\d{1,2}):([0-5]\d)(?::([0-5]\d))?(?!\d)")
 PAGE_COUNT_RE = re.compile(r"(?<![\d.])(\d+)\s*$")
 PAGE_COUNT_LABEL_RE = re.compile(r"本页交易笔数[:：]?\s*(\d+)")
 PAGE_IN_RE = re.compile(r"(?:本页)?收入(?:算术)?合计[:：]?\s*([-+]?[¥￥]?[\d,]+\.\d{2})")
@@ -36,6 +37,7 @@ MIN_BODY_SIZE = 5.0
 MAX_BODY_SIZE = 12.0
 WORD_X_TOLERANCE = 4.0
 LINE_Y_TOLERANCE = 4.0
+CLOCK_JOIN_GAP = 6.0
 
 
 class OcrUnavailable(RuntimeError):
@@ -50,6 +52,40 @@ def parse_date(text: str) -> str | None:
     if not (1 <= month <= 12 and 1 <= day <= 31):
         return None
     return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def parse_clock(text: str) -> str | None:
+    """整串是时间时归一为 HH:MM:SS；原件只印到分时秒位补 00。"""
+    raw = re.sub(r"\s+", "", text or "")
+    match = CLOCK_RE.fullmatch(raw)
+    if not match:
+        return None
+    return _clock_text(*match.groups())
+
+
+def _clock_text(hour: str, minute: str, second: str | None) -> str | None:
+    h, m, s = int(hour), int(minute), int(second or 0)
+    if not 0 <= h <= 23:
+        return None
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _line_clock(line: Line) -> str | None:
+    """按 x 合并相邻字块后取首个时间，兼容逐字抽取的 PDF。"""
+    runs: list[str] = []
+    prev: Word | None = None
+    for word in line.words:
+        if prev is not None and word.x0 - prev.x1 <= CLOCK_JOIN_GAP:
+            runs[-1] += word.text
+        else:
+            runs.append(word.text)
+        prev = word
+    for run in runs:
+        match = CLOCK_RE.search(run)
+        clock = _clock_text(*match.groups()) if match else None
+        if clock is not None:
+            return clock
+    return None
 
 
 def parse_money(text: str) -> Decimal | None:
@@ -311,6 +347,8 @@ def _transactions_from_pages(
                 extra_cp = _cell_text(cells.get("counterparty", []))
                 if extra_cp and extra_cp not in (current.counterparty_name or ""):
                     current.counterparty_name = f"{current.counterparty_name or ''}{extra_cp}"
+                if current.trade_time is None:
+                    current.trade_time = _line_clock(line)
                 _assign_money(current, cells)
                 current.confidence = min(current.confidence, _line_confidence(line))
                 continue
@@ -325,6 +363,7 @@ def _transactions_from_pages(
                 page_no=page_no,
                 row_no=len(transactions) + 1,
                 txn_date=txn_date,
+                trade_time=_line_clock(line),
                 summary=summary or None,
                 counterparty_name=_cell_text(cells.get("counterparty", [])) or None,
                 direction=parse_direction(direction_text, None),
