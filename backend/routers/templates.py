@@ -168,8 +168,18 @@ def probe_template(file: UploadFile = File(...), password: str | None = Form(Non
             break
 
     header = detect_header_row({0: words})
-    headers = [{"text": w["text"], "x": round((w["x0"] + w["x1"]) / 2, 1),
+    headers = [{"text": w["text"], "x0": round(w["x0"], 1), "x1": round(w["x1"], 1),
+                "x": round((w["x0"] + w["x1"]) / 2, 1),
                 "y": round((w["top"] + w["bottom"]) / 2, 1)} for w in header]
+
+    # 列边界：相邻表头词之间如果留有空隙（>6pt），取空隙中点作分界；
+    # 没有空隙说明表头被拆成多个词（如「收入 支出 金额」），按两词中心均值切。
+    boundaries = []
+    for left, right in zip(header, header[1:]):
+        gap = right["x0"] - left["x1"]
+        mid = (left["x1"] + right["x0"]) / 2 if gap > 6 else (left["x1"] + right["x0"]) / 2
+        boundaries.append({"after": left["text"], "before": right["text"],
+                           "gap": round(gap, 1), "x": round(mid, 1)})
 
     suggestions: list[dict] = []
     used: set[str] = set()
@@ -185,7 +195,8 @@ def probe_template(file: UploadFile = File(...), password: str | None = Form(Non
     meta = _extract_meta(full_text, words, page_size["width"], page_size["height"])
     return {"bank_name": bank_name, "bank_code": bank_code, "rotation": rotation,
             "page_size": page_size, "header_found": len(header) > 0,
-            "headers": headers, "suggestions": suggestions, "meta": meta}
+            "headers": headers, "suggestions": suggestions, "meta": meta,
+            "boundaries": boundaries}
 
 
 @router.post("/infer")

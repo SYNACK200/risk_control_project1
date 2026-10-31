@@ -157,8 +157,8 @@ export function AnnotatePage() {
     } catch (err) {
       setProbeResult(null);
       const msg = err instanceof Error ? err.message : String(err);
+      // 只在一处提示（预读卡），避免同一句话出现两遍
       setProbeNote('预读失败：' + msg + '（当前页面 ' + window.location.origin + '）');
-      setNotice({ level: 'warning', text: '预读失败（不影响手动标注）：' + msg + ' · ' + window.location.origin });
     } finally {
       setProbing(false);
     }
