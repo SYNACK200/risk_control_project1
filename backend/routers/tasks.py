@@ -11,6 +11,7 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+from starlette.datastructures import Headers
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -89,6 +90,80 @@ def _record_password_attempt(
         object_id=file_id,
         detail=f"file={file_name}; result={outcome}",
     ))
+
+
+def _compose_pdf(items: list[tuple[str, bytes]], password: str | None = None) -> bytes:
+    """把多份材料按顺序合成一个 PDF。
+
+    - PDF：原页拼接（有口令先解密）
+    - 图片（JPG/PNG/WebP）：等比缩放进 A4 页，居中，四周留 12pt
+    """
+    import pymupdf
+
+    out = pymupdf.open()
+    try:
+        for name, data in items:
+            if data[:4] == b"%PDF":
+                src = pymupdf.open(stream=data, filetype="pdf")
+                if src.needs_pass:
+                    if not password or src.authenticate(password) <= 0:
+                        raise HTTPException(400, detail={"code": "E_ENCRYPT",
+                                                         "message": f"{name} 需要打开口令"})
+                out.insert_pdf(src)
+                src.close()
+                continue
+            # 图片：按 A4 摆放
+            img = pymupdf.open(stream=data)
+            page = out.new_page(width=595, height=842)
+            rect = page.rect
+            margin = 12.0
+            target = pymupdf.Rect(margin, margin, rect.width - margin, rect.height - margin)
+            page.insert_image(target, stream=data, keep_proportion=True)
+            img.close()
+        return out.tobytes()
+    finally:
+        out.close()
+
+
+@router.post("/compose", status_code=status.HTTP_202_ACCEPTED)
+def compose_task(
+    files: list[UploadFile] = File(..., description="按顺序拼接的多份材料"),
+    password: str | None = Form(None),
+    period_start: str | None = Form(None),
+    period_end: str | None = Form(None),
+    source_ref: str | None = Form(None),
+    bank_code: str | None = Form(None),
+    db: Session = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """同一份流水的多张照片 / 多页扫描件：按顺序合成一个 PDF 再受理。"""
+    if not files:
+        raise HTTPException(400, "至少选择一份文件")
+    if len(files) > 20:
+        raise HTTPException(400, detail={"code": "E_PARAM", "message": "一次最多合成 20 份材料"})
+
+    items: list[tuple[str, bytes]] = []
+    total = 0
+    for f in files:
+        data = f.file.read()
+        if not data:
+            raise HTTPException(400, f"{f.filename or '文件'} 为空")
+        total += len(data)
+        items.append((_safe_file_name(f.filename) or "材料", data))
+    if total > 80 * 1024 * 1024:
+        raise HTTPException(400, detail={"code": "E_PARAM", "message": "合成材料总大小超过 80MB"})
+
+    pdf = _compose_pdf(items, password=password)
+    upload = UploadFile(
+        filename="composed.pdf",
+        file=io.BytesIO(pdf),
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+    return create_task(
+        file=upload, password=password, period_start=period_start,
+        period_end=period_end, source_ref=source_ref, bank_code=bank_code,
+        db=db, user=user,
+    )
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
