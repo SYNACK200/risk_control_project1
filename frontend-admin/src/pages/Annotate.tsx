@@ -151,19 +151,42 @@ export function AnnotatePage() {
   }
 
   /** 一键采用预读建议：写入第一张表的列（没有表就先建一张覆盖整页的表）。 */
+  function prev2Meta() {
+    return (prev: FieldMapV1) => {
+      if (!probeResult || !probeResult.meta) return prev.meta_boxes;
+      const boxes = [...prev.meta_boxes];
+      for (const [field, info] of Object.entries(probeResult.meta)) {
+        if (!info || !info.rect) continue;
+        const rect = info.rect;
+        const exist = boxes.findIndex(b => b.field === field);
+        const box = { id: uid('m'), field, page: 1, rect: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } };
+        if (exist >= 0) boxes[exist] = { ...boxes[exist], rect: box.rect };
+        else boxes.push(box);
+      }
+      return boxes;
+    };
+  }
+
+  const metaFilled = probeResult && probeResult.meta
+    ? Object.entries(probeResult.meta).filter(([, v]) => v && v.rect).map(([k]) => k)
+    : [];
+
   function adoptProbe() {
     if (!probeResult || !probeResult.suggestions.length) return;
     const w = map.page_size.w || probeResult.page_size.width || 1;
     const h = map.page_size.h || probeResult.page_size.height || 1;
     const cols = probeResult.suggestions.map(s => ({ field: s.field, x: s.x / w, w: 0.07 }));
     const headerY = probeResult.headers[0] ? probeResult.headers[0].y / h : 0.1;
+    // 预读到的页眉 metadata（账号/户名/期间/币种）直接落成 meta_boxes，补齐必填字段
+    const metaBoxes = prev2Meta();
     setMap(prev => {
       const tables = prev.tables.length
         ? prev.tables.map((tb, i) => (i === 0 ? { ...tb, columns: cols, headerY } : tb))
         : [{ id: uid('t'), page: 1, area: { x: 0.02, y: 0.02, w: 0.96, h: 0.96 }, headerY, columns: cols }];
-      return { ...prev, bank_code: probeResult.bank_code || prev.bank_code, tables };
+      return { ...prev, bank_code: probeResult.bank_code || prev.bank_code, tables, meta_boxes: metaBoxes(prev) };
     });
-    setNotice({ level: 'info', text: '已采用预读建议：' + cols.length + ' 列，可在画布上微调' });
+    setNotice({ level: 'info', text: '已采用预读建议：' + cols.length + ' 列' +
+      (metaFilled.length ? '，并自动填入 ' + metaFilled.join('、') : '') + '；请在画布上核对' });
   }
 
   /** 收件：压缩包先解开（可能要口令），再按 PDF/图片打开。 */
@@ -518,6 +541,11 @@ export function AnnotatePage() {
               <span className="probe-item muted small">
                 {probeResult.headers.slice(0, 8).map(h => h.text).join(' / ')}
               </span>
+              {probeResult.meta && Object.keys(probeResult.meta).length > 0 && (
+                <span className="probe-item small">
+                  识别到 {Object.entries(probeResult.meta).map(([k, v]) => k + '=' + v.value).join(' · ')}
+                </span>
+              )}
             </>
           )}
           {probeResult && probeResult.suggestions.length > 0 && (
