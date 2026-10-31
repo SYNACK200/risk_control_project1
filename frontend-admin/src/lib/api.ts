@@ -404,7 +404,9 @@ export async function disableTemplate(id: number): Promise<{ id: number; status:
   return json(await authFetch(BASE + '/templates/' + id + '/disable', { method: 'POST' }));
 }
 
-export async function deleteTemplate(id: number): Promise<{ deleted: number }> {
+export interface DeleteTemplateResult { deleted: number; soft: boolean; used: number; message: string }
+
+export async function deleteTemplate(id: number): Promise<DeleteTemplateResult> {
   return json(await authFetch(BASE + '/templates/' + id, { method: 'DELETE' }));
 }
 

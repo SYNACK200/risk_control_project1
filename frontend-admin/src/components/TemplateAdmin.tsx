@@ -46,8 +46,8 @@ export function TemplateAdmin() {
   async function act(label: string, fn: () => Promise<unknown>) {
     setBusy(true); setMsg(''); setError('');
     try {
-      await fn();
-      setMsg(label);
+      const out = await fn();
+      setMsg(typeof out === 'string' && out ? out : label);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -138,7 +138,7 @@ export function TemplateAdmin() {
                     <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已复制为新草稿', () => duplicateTemplate(t.id)); }}>复制</button>
                     <button className="link-btn" type="button" onClick={() => { setPreviewTarget(t); setPreview(null); setMsg('试跑目标：#' + t.id + ' ' + t.bank_code + ' v' + t.version); }}>试跑</button>
                     <button className="link-btn" type="button" onClick={() => { void downloadAttachment('/templates/' + t.id + '/export', 'template-' + t.bank_code + '-v' + t.version + '.json').catch(e => setError(String(e))); }}>导出</button>
-                    <button className="link-btn danger-text" type="button" disabled={busy} onClick={() => { void act('已删除 #' + t.id, () => deleteTemplate(t.id)); }}>删除</button>
+                    <button className="link-btn danger-text" type="button" disabled={busy} onClick={() => { void act('已删除 #' + t.id, async () => { const r = await deleteTemplate(t.id); return r.message || ('已删除 #' + t.id); }); }}>删除</button>
                   </td>
                 </tr>
               );
