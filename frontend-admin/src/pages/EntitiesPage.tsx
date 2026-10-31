@@ -15,7 +15,10 @@ export function EntitiesPage() {
   const [subject, setSubject] = useState<string | null>(null);
   const [method, setMethod] = useState('net_internal');
   const [overlap, setOverlap] = useState('max');
-  const [result, setResult] = useState<SubjectMergeResult | null>(null);
+  const [results, setResults] = useState<{ subject: string; data: SubjectMergeResult }[]>([]);
+  const [active, setActive] = useState(0);
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const result = results[active]?.data ?? null;
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [defs, setDefs] = useState<Record<string, MetricDef>>({});
@@ -47,12 +50,36 @@ export function EntitiesPage() {
     let alive = true;
     setLoading(true);
     mergeSubject(subject, method, overlap)
-      .then(r => { if (alive) { setResult(r); setError(''); } })
-      .catch(e => { if (alive) { setResult(null); setError(e instanceof Error ? e.message : String(e)); } })
+      .then(r => { if (alive) { setResults([{ subject: subject as string, data: r }]); setActive(0); setError(''); } })
+      .catch(e => { if (alive) { setResults([]); setError(e instanceof Error ? e.message : String(e)); } })
       .finally(() => { if (alive) setLoading(false); });
 
   return () => { alive = false; };
   }, [subject, method, overlap]);
+
+  const suggestionList = (data?.subjects ?? []).filter(
+    s => s.holder_masked && Object.keys(s.accounts).length >= 2,
+  );
+
+  async function mergeMany(subjects: string[]) {
+    if (!subjects.length) return;
+    setLoading(true);
+    setError('');
+    const acc: { subject: string; data: SubjectMergeResult }[] = [];
+    for (const name of subjects) {
+      try {
+        const r = await mergeSubject(name, method, overlap);
+        acc.push({ subject: name, data: r });
+      } catch (e) {
+        setError((e instanceof Error ? e.message : String(e)) + '（' + name + '）');
+      }
+    }
+    setResults(acc);
+    setActive(0);
+    setLoading(false);
+  }
+
+  const pickedNames = Object.entries(picked).filter(([, v]) => v).map(([k]) => k);
 
     const setOpenAll = (open: boolean) => {
     if (!result) return;
@@ -104,21 +131,23 @@ export function EntitiesPage() {
         )}
 
         <h3>系统建议合并的客户</h3>
-        <p className="muted">同名下有多份流水时，系统先给出合并建议；合并后指标才不会把收入/负债重复或漏算。</p>
-        {(() => {
-          const list = (data?.subjects ?? []).filter(s => s.holder_masked && Object.keys(s.accounts).length >= 2);
-          if (!list.length) {
-            return <p className="muted">没有发现需要合并的同名多账户。若确有同一人的不同户名，请展开下方「特殊情况」手动处理。</p>;
-          }
-          return (
+        <p className="muted">系统把「同名下有多份流水」的客户列为怀疑对象；可以一次选多个一起合并，再逐个查看结果。</p>
+        {suggestionList.length === 0 ? (
+          <p className="muted">没有发现需要合并的同名多账户。若确有同一人的不同户名，请展开下方「特殊情况」手动处理。</p>
+        ) : (
+          <>
             <div className="suggest-list">
-              {list.map(s => {
+              {suggestionList.map(s => {
                 const entries = Object.entries(s.accounts);
-                const active = subject === s.holder_masked;
+                const name = s.holder_masked as string;
                 return (
-                  <div className={"suggest-card" + (active ? " active" : "")} key={s.key}>
+                  <div className={"suggest-card" + (picked[name] ? " active" : "")} key={s.key}>
                     <div className="suggest-head">
-                      <strong>{s.holder_masked}</strong>
+                      <label className="suggest-pick">
+                        <input type="checkbox" checked={Boolean(picked[name])}
+                          onChange={e => setPicked(prev => ({ ...prev, [name]: e.target.checked }))} />
+                        <strong>{name}</strong>
+                      </label>
                       <span className="tag pass">{entries.length} 个账户</span>
                       <span className="muted small">共 {s.tasks.length} 份流水</span>
                       <span className="muted small">{entries.map(([k]) => k).join("、")}</span>
@@ -127,17 +156,21 @@ export function EntitiesPage() {
                       同一户名下有多份流水，建议合并成一份画像后再评价；不合并时，收入、负债与余额会被重复计算或低估。
                     </div>
                     <div className="suggest-actions">
-                      <button className="pill-btn pill-btn-primary" type="button" onClick={() => setSubject(s.holder_masked!)}>
-                        合并并查看（默认抵消内部转账）
-                      </button>
-                      <span className="muted small">如需其它口径或只想合并其中部分账户，展开下方「特殊情况」</span>
+                      <button className="pill-btn" type="button" onClick={() => { void mergeMany([name]); }}>只看这一个</button>
                     </div>
                   </div>
                 );
               })}
             </div>
-          );
-        })()}
+            <div className="suggest-bulk">
+              <button className="pill-btn pill-btn-primary" type="button" disabled={loading}
+                onClick={() => { void mergeMany(pickedNames.length ? pickedNames : suggestionList.map(s => s.holder_masked as string)); }}>
+                {pickedNames.length ? "合并选中的 " + pickedNames.length + " 个" : "合并全部建议（" + suggestionList.length + " 个）"}
+              </button>
+              <span className="muted small">合并后会用上方「口径」逐个计算，可在结果区切换查看</span>
+            </div>
+          </>
+        )}
 
         <details className="manual-merge">
         <summary>特殊情况：手动选择客户与合并方式</summary>
@@ -208,6 +241,19 @@ export function EntitiesPage() {
 
         {error && <div className="notice error">{error}</div>}
         {loading && <p className="muted">正在合并…</p>}
+
+        {results.length > 1 && (
+          <div className="merge-result-tabs">
+            <span className="muted small">已合并 {results.length} 个对象：</span>
+            {results.map((r, i) => (
+              <button key={r.subject + i} type="button"
+                className={'pill-btn' + (i === active ? ' pill-btn-primary' : '')}
+                onClick={() => setActive(i)}>
+                {r.subject} · 风险 {RISK_TEXT[r.data.risk.level] ?? r.data.risk.level}
+              </button>
+            ))}
+          </div>
+        )}
 
         {result && !loading && (
           <section style={{ marginTop: 16 }}>

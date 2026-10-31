@@ -459,3 +459,9 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .more-methods[open] > summary::before { content: "▾ "; }
 .method-explain { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid #e9eef6; border-radius: 12px; background: #fbfdff; margin-bottom: 8px; }
 .method-explain > div { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font-size: 13px; }
+
+/* ---- 账户合并：多对象 ---- */
+.suggest-pick { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.suggest-pick input { width: 16px; height: 16px; }
+.suggest-bulk { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+.merge-result-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 14px 0 6px; }
