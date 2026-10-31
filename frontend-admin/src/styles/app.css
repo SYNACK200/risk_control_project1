@@ -442,3 +442,20 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .manual-merge > summary::-webkit-details-marker { display: none; }
 .manual-merge > summary::before { content: "▸ "; }
 .manual-merge[open] > summary::before { content: "▾ "; }
+
+/* ---- 合并口径：业务问题卡片 ---- */
+.method-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 8px 0 10px; }
+.method-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px;
+  border: 1px solid #e2e9f3; border-radius: 12px; background: #fff; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, background .15s; }
+.method-card:hover { border-color: #b9cbe4; box-shadow: 0 2px 8px rgba(31,45,61,.06); }
+.method-card.active { border-color: #7aa7e8; background: #f2f8ff; box-shadow: 0 0 0 1px #cfe0f8 inset; }
+.method-label { font-weight: 600; font-size: 13.5px; color: #1f2d3d; }
+.method-question { font-size: 12.5px; color: #5b6b80; line-height: 1.5; }
+.more-methods { margin: 6px 0 10px; border: 1px dashed #dbe3ee; border-radius: 12px; padding: 6px 12px 10px; background: #fcfdff; }
+.more-methods > summary { cursor: pointer; font-size: 13px; color: #2a5db0; list-style: none; padding: 4px 0; }
+.more-methods > summary::-webkit-details-marker { display: none; }
+.more-methods > summary::before { content: "▸ "; }
+.more-methods[open] > summary::before { content: "▾ "; }
+.method-explain { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid #e9eef6; border-radius: 12px; background: #fbfdff; margin-bottom: 8px; }
+.method-explain > div { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font-size: 13px; }

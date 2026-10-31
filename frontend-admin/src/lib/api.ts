@@ -261,6 +261,7 @@ export interface EntitiesPayload {
 
 export interface SubjectMergeMethod {
   id: string; label: string; short: string; detail: string; formula: string; assumption: string;
+  question?: string; approach?: string; impact?: string; when_to_use?: string; tier?: 'primary' | 'advanced';
 }
 
 export interface SubjectMergeResult {

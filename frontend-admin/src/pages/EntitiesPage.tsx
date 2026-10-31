@@ -16,7 +16,6 @@ export function EntitiesPage() {
   const [method, setMethod] = useState('net_internal');
   const [overlap, setOverlap] = useState('max');
   const [result, setResult] = useState<SubjectMergeResult | null>(null);
-  const [showWhy, setShowWhy] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [defs, setDefs] = useState<Record<string, MetricDef>>({});
@@ -162,29 +161,46 @@ export function EntitiesPage() {
           })}
         </div>
 
-        <h3>合并方式</h3>
-        <div className="filter-row">
-          {methods.map(m => (
-            <button key={m.id} type="button" className={'filter-chip' + (method === m.id ? ' active' : '')} onClick={() => setMethod(m.id)}>
-              {m.label}
+        <h3>按什么口径评价（先想清楚要回答哪个问题）</h3>
+        <div className="method-cards">
+          {methods.filter(m => (m.tier ?? 'advanced') === 'primary').map(m => (
+            <button key={m.id} type="button"
+              className={'method-card' + (method === m.id ? ' active' : '')}
+              onClick={() => setMethod(m.id)}>
+              <span className="method-label">{m.label}</span>
+              <span className="method-question">{m.question ?? m.short}</span>
             </button>
           ))}
-          {overlaps.length > 1 && (<>
-            <span className="filter-label" style={{ marginLeft: 14 }}>重叠月份</span>
-            <select value={overlap} onChange={e => setOverlap(e.target.value)}>
-              {overlaps.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
-          </>)}
-          <button className="link-btn" type="button" onClick={() => setShowWhy(v => !v)}>{showWhy ? '收起说明' : '这个方式怎么算？'}</button>
         </div>
-        {current && <p className="muted">当前：<strong>{current.label}</strong> —— {current.short}</p>}
-        {showWhy && current && (
-          <div className="why-box">
-            <div><span className="me-k">做法</span><span className="me-v">{current.detail}</span></div>
-            <div><span className="me-k">公式</span><code className="me-formula">{current.formula}</code></div>
-            <div><span className="me-k">假设</span><span className="me-v">{current.assumption}</span></div>
-            <div><span className="me-k">比率类</span><span className="me-v">月均、DTI、流入流出比不直接相加，按合并后的分子分母重算。</span></div>
-            <div><span className="me-k">余额类</span><span className="me-v">余额不跨账户相加：同一时点同一笔钱只存在一个账户里。</span></div>
+
+        <details className="more-methods">
+          <summary>更多口径（特殊情况才用）</summary>
+          <div className="method-cards">
+            {methods.filter(m => (m.tier ?? 'advanced') !== 'primary').map(m => (
+              <button key={m.id} type="button"
+                className={'method-card' + (method === m.id ? ' active' : '')}
+                onClick={() => setMethod(m.id)}>
+                <span className="method-label">{m.label}</span>
+                <span className="method-question">{m.question ?? m.short}</span>
+              </button>
+            ))}
+          </div>
+          {overlaps.length > 1 && (
+            <div className="filter-row" style={{ marginTop: 8 }}>
+              <span className="filter-label">重叠月份处理</span>
+              <select value={overlap} onChange={e => setOverlap(e.target.value)}>
+                {overlaps.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
+          )}
+        </details>
+
+        {current && (
+          <div className="method-explain">
+            <div><span className="me-k">回答的问题</span><span className="me-v">{current.question ?? current.short}</span></div>
+            <div><span className="me-k">会怎么做</span><span className="me-v">{current.approach ?? current.detail}</span></div>
+            <div><span className="me-k">对结论的影响</span><span className="me-v">{current.impact ?? current.formula}</span></div>
+            <div><span className="me-k">什么时候选它</span><span className="me-v">{current.when_to_use ?? current.assumption}</span></div>
           </div>
         )}
 

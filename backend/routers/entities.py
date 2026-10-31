@@ -27,6 +27,12 @@ def get_methods():
             {
                 "id": m["key"],
                 "label": m["label"],
+                "question": m.get("question", m["one_line"]),
+                "approach": m.get("approach", m["formula"]),
+                "impact": m.get("impact", m["when"]),
+                "when_to_use": m.get("when_to_use", m["caveat"]),
+                "tier": m.get("tier", "advanced"),
+                # 兼容旧字段（报告/其它页面仍在用）
                 "short": m["one_line"],
                 "detail": m["when"],
                 "formula": m["formula"],
