@@ -69,6 +69,7 @@ def infer_template_api(
     bank_code: str = Form("UNKNOWN"),
     password: str | None = Form(None),
     save_draft: bool = Form(False),
+    allow_invalid: bool = Form(False, description="反验未通过时是否仍保存为草稿"),
     db: Session = Depends(get_session),
 ):
     """少量标注 → 外推整张表的模板；返回字段映射、来源与置信度。"""
@@ -116,7 +117,8 @@ def infer_template_api(
         layout = None
     payload["layout"] = layout
 
-    if save_draft and result["valid"]:
+    payload["valid"] = result["valid"]
+    if save_draft:
         file_id = None
         try:
             file_id = _store_sample(db, file.filename or "template_sample.pdf", data)
@@ -128,6 +130,7 @@ def infer_template_api(
                        sample_file_id=file_id, layout=layout)
         db.add(row); db.commit(); db.refresh(row)
         payload["template_id"] = row.id
+        payload["saved_invalid"] = not result["valid"]
     return payload
 
 class TemplatePatch(BaseModel):

@@ -156,7 +156,7 @@ def infer_from_marks(file_bytes: bytes, marks: list[dict], bank_code: str = "UNK
     res = _infer_template(file_bytes, parsed, bank_code=bank_code)
     return {
         "valid": res.valid,
-        "field_map": res.template.field_map if res.template else {},
+        "field_map": res.template.field_map if res.template else getattr(res, "draft_map", {}) or {},
         "provenance": [
             {"field": p.field, "column": p.column, "source": p.source,
              "confidence": p.confidence, "why": p.why}
