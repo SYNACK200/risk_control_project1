@@ -174,6 +174,11 @@ export interface MetricDef {
 
 export interface MetricDefs { metric_set_version: number; items: MetricDef[] }
 
+
+export async function getThresholdDefinitions(): Promise<{ items: ThresholdDef[] }> {
+  return json<{ items: ThresholdDef[] }>(await authFetch(BASE + '/thresholds/definitions'));
+}
+
 export async function getMetricDefinitions(): Promise<MetricDefs> {
   return json<MetricDefs>(await authFetch(BASE + '/metric-definitions'));
 }

@@ -18,6 +18,12 @@ class ThresholdPayload(BaseModel):
     note: str | None = None
 
 
+@router.get("/definitions")
+def get_definitions():
+    """阈值定义（标签/分组/说明/默认值），用于前端展示「标准参考」。"""
+    return {"items": svc.definitions()}
+
+
 @router.get("")
 def get_thresholds(db: Session = Depends(get_session)):
     version, values = svc.active_version(db)
