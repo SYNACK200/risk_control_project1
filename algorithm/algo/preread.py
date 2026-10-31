@@ -64,9 +64,12 @@ class PrereadResult:
     date_hits: int = 0
     sample_rows: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
+    # 预读只看第 1 页的元数据（封面信息），不解析全文
+    scope: str = "first_page"
 
     def to_dict(self) -> dict:
         return {
+            "scope": self.scope,
             "verdict": self.verdict,
             "is_statement": self.is_statement,
             "confidence": round(self.confidence, 3),
@@ -113,7 +116,7 @@ def _mask_name(name: str) -> str:
 
 
 def run_preread(raw: bytes, password: str | None = None) -> PrereadResult:
-    """全文预读；不解密以外的任何猜测都写进 reasons，不静默。"""
+    """首页预读：只读第 1 页的元数据与版式，不做全文解析；任何猜测都写进 reasons。"""
     try:
         doc = pymupdf.open(stream=raw, filetype="pdf")
     except Exception as exc:
@@ -125,10 +128,12 @@ def run_preread(raw: bytes, password: str | None = None) -> PrereadResult:
             return PrereadResult(verdict="review", is_statement=False, confidence=0.0,
                                  reasons=["文件已加密且未提供有效口令，预读未执行"])
     pages = doc.page_count
-    texts = [page.get_text() or "" for page in doc]
+    # 预读取只看第 1 页：流水首页通常有户名、账号、期间、页数等元数据
+    first_page = doc[0]
+    texts = [first_page.get_text() or ""]
     # 版面重组：按 y 坐标聚行，避免每个单元格被拆成独立一行
     rebuilt: list[str] = []
-    for page in doc:
+    for page in [first_page]:
         words = page.get_text("words") or []
         buckets: dict[int, list[tuple[float, str]]] = {}
         for x0, y0, _x1, _y1, word, *_rest in words:
@@ -186,6 +191,8 @@ def run_preread(raw: bytes, password: str | None = None) -> PrereadResult:
         p_start = p_end = None
 
     reasons: list[str] = []
+    if pages > 1:
+        reasons.append(f"预读只取第 1 页元数据（全件共 {pages} 页），后续页不参与预读判断")
     is_statement = (len(keyword_hits) >= 3) or (rows >= 10 and ("余额" in joined or "金额" in joined))
     if not has_text:
         reasons.append("无文字层，预读只能依据文件名与页数，需 OCR 后才能判断")

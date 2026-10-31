@@ -104,6 +104,44 @@ export function EntitiesPage() {
           </div>
         )}
 
+        <h3>系统建议合并的客户</h3>
+        <p className="muted">同名下有多份流水时，系统先给出合并建议；合并后指标才不会把收入/负债重复或漏算。</p>
+        {(() => {
+          const list = (data?.subjects ?? []).filter(s => s.holder_masked && Object.keys(s.accounts).length >= 2);
+          if (!list.length) {
+            return <p className="muted">没有发现需要合并的同名多账户。若确有同一人的不同户名，请展开下方「特殊情况」手动处理。</p>;
+          }
+          return (
+            <div className="suggest-list">
+              {list.map(s => {
+                const entries = Object.entries(s.accounts);
+                const active = subject === s.holder_masked;
+                return (
+                  <div className={"suggest-card" + (active ? " active" : "")} key={s.key}>
+                    <div className="suggest-head">
+                      <strong>{s.holder_masked}</strong>
+                      <span className="tag pass">{entries.length} 个账户</span>
+                      <span className="muted small">共 {s.tasks.length} 份流水</span>
+                      <span className="muted small">{entries.map(([k]) => k).join("、")}</span>
+                    </div>
+                    <div className="suggest-reason">
+                      同一户名下有多份流水，建议合并成一份画像后再评价；不合并时，收入、负债与余额会被重复计算或低估。
+                    </div>
+                    <div className="suggest-actions">
+                      <button className="pill-btn pill-btn-primary" type="button" onClick={() => setSubject(s.holder_masked!)}>
+                        合并并查看（默认抵消内部转账）
+                      </button>
+                      <span className="muted small">如需其它口径或只想合并其中部分账户，展开下方「特殊情况」</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        <details className="manual-merge">
+        <summary>特殊情况：手动选择客户与合并方式</summary>
         <h3>选择客户</h3>
         <p className="muted">同一户名下的多个账户会合并成一份风险画像；合并方式不同，结果含义不同。</p>
         <div className="filter-row">
@@ -149,6 +187,8 @@ export function EntitiesPage() {
             <div><span className="me-k">余额类</span><span className="me-v">余额不跨账户相加：同一时点同一笔钱只存在一个账户里。</span></div>
           </div>
         )}
+
+        </details>
 
         {error && <div className="notice error">{error}</div>}
         {loading && <p className="muted">正在合并…</p>}
