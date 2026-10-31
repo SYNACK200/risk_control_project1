@@ -26,14 +26,11 @@ export function EntitiesPage() {
   const [tdefs, setTdefs] = useState<ThresholdDef[]>([]);
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     getEntities()
-      .then(d => {
-        setData(d);
-        setError('');
-        const first = d.subjects.find(s => Object.keys(s.accounts).length > 1) ?? d.subjects[0];
-        if (first?.holder_masked) setSubject(first.holder_masked);
-      })
+      .then(d => { setData(d); setError(''); })
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
     getMetricDefinitions()
       .then(d => setDefs(Object.fromEntries(d.items.map(i => [i.code, i]))))
@@ -44,7 +41,17 @@ export function EntitiesPage() {
     getMergeMethods()
       .then(d => { setMethods(d.methods); setOverlaps(d.overlap_modes); })
       .catch(() => undefined);
-  }, []);
+  }, [reloadKey]);
+
+  function refreshAll() {
+    // 重新拉取实体，并清空上一次的合并结果与勾选（数据可能已被删除）
+    setResults([]);
+    setActive(0);
+    setPicked({});
+    setAcctOpen({});
+    setSubject('');
+    setReloadKey(k => k + 1);
+  }
 
   useEffect(() => {
     if (!subject) return;
@@ -113,7 +120,11 @@ export function EntitiesPage() {
     <div className="result-wrap">
       <div className="result">
         <div className="result-head">
-          <h2>客户与账户</h2>
+          <div className="page-head-row">
+        <h2>客户与账户</h2>
+        <button className="pill-btn" type="button" onClick={refreshAll}>刷新数据</button>
+        <span className="muted small">回收站里的流水不参与统计；删除后请点刷新</span>
+      </div>
           <span className="muted">账户 {data?.summary.accounts ?? 0} 个 · 户名 {data?.summary.subjects ?? 0} 个 · 多账户客户 {data?.summary.multi_account_subjects ?? 0} 个</span>
         </div>
 
