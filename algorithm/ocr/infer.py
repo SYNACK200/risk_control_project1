@@ -165,6 +165,23 @@ def _cluster_columns(anchors: list[dict], pages: dict[int, list[dict]], tol: flo
     return cols
 
 
+def detect_header_row(pages: dict[int, list[dict]]) -> list[dict]:
+    """找表头行：词数最多、且多为短中文的一行。返回该行的词（按 x 升序）。"""
+    best_row: list[dict] = []
+    for ws in pages.values():
+        rows: dict[int, list[dict]] = {}
+        for w in ws:
+            rows.setdefault(int(round(w["top"] / 3)), []).append(w)
+        for row in rows.values():
+            if len(row) < 3 or len(row) <= len(best_row):
+                continue
+            short_cn = sum(1 for w in row
+                           if 1 <= len(w["text"]) <= 10 and re.search(r"[\u4e00-\u9fff]", w["text"]))
+            if short_cn >= len(row) * 0.6:
+                best_row = row
+    return sorted(best_row, key=lambda w: (w["x0"] + w["x1"]) / 2)
+
+
 def _augment_columns(cols: list[dict], pages: dict[int, list[dict]]) -> list[dict]:
     """把锚点没覆盖到的列补进来（按表头分段对齐，避免把同一列切碎）。
 
@@ -174,22 +191,11 @@ def _augment_columns(cols: list[dict], pages: dict[int, list[dict]]) -> list[dic
     if not cols:
         return cols
 
-    # 找表头行：按 y 聚行，取词数最多、短词占比高的一行
-    best_row: list[dict] = []
-    for ws in pages.values():
-        rows: dict[int, list[dict]] = {}
-        for w in ws:
-            rows.setdefault(int(round(w["top"] / 3)), []).append(w)
-        for row in rows.values():
-            if len(row) < 3 or len(row) <= len(best_row):
-                continue
-            short_cn = sum(1 for w in row if 1 <= len(w["text"]) <= 10 and re.search(r"[\u4e00-\u9fff]", w["text"]))
-            if short_cn >= len(row) * 0.6:
-                best_row = row
+    best_row = detect_header_row(pages)
     if len(best_row) < 2:
         return cols
 
-    anchor_words = sorted(best_row, key=lambda w: (w["x0"] + w["x1"]) / 2)
+    anchor_words = best_row
     edges = [((a["x1"] + b["x0"]) / 2) for a, b in zip(anchor_words, anchor_words[1:])]
 
     import bisect

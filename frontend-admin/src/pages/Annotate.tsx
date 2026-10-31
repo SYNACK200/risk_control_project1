@@ -11,7 +11,7 @@ import { PdfPasswordError, openSampleFile } from '../lib/pdf';
 import { ArchiveError, extractStatement, isArchive } from '../lib/archive';
 import { PasswordDialog, type PasswordRequest } from '../components/PasswordDialog';
 import { createDemoPage } from '../lib/sample';
-import { inferTemplate, type InferResult } from '../lib/api';
+import { inferTemplate, probeTemplate, type InferResult, type ProbeResult } from '../lib/api';
 import type { FieldMapV1, Issue, Rect, SamplePage, Selection, Tool } from '../lib/types';
 
 type Notice = { level: 'info' | 'error' | 'warning'; text: string } | null;
@@ -66,6 +66,8 @@ export function AnnotatePage() {
   const [notice, setNotice] = useState<Notice>(null);
   const [source, setSource] = useState<{ file: File; password?: string } | null>(null);
   const [inference, setInference] = useState<InferResult | null>(null);
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
+  const [probing, setProbing] = useState(false);
   const [inferring, setInferring] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [events, setEvents] = useState<SpecialEvent[]>([]);
@@ -113,6 +115,41 @@ export function AnnotatePage() {
     }));
     setNotice({ level: 'info', text: `已载入 ${file.name}（${opened.pageCount} 页）。样例在本机读取；点“试解析”时才会上传到本机后端。` });
     logEvent(file.name, '打开材料', `${opened.pageCount} 页，可标注`, 'info');
+    void runProbe(file, password);
+  }
+
+  /** 标注前预读：识别银行/表头，给出建议标注（只读第 1 页）。 */
+  async function runProbe(file: File, password?: string) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) { setProbeResult(null); return; }
+    setProbing(true);
+    setProbeResult(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      if (password) form.append('password', password);
+      const res = await probeTemplate(form);
+      setProbeResult(res);
+    } catch {
+      setProbeResult(null);
+    } finally {
+      setProbing(false);
+    }
+  }
+
+  /** 一键采用预读建议：写入第一张表的列（没有表就先建一张覆盖整页的表）。 */
+  function adoptProbe() {
+    if (!probeResult || !probeResult.suggestions.length) return;
+    const w = map.page_size.w || probeResult.page_size.width || 1;
+    const h = map.page_size.h || probeResult.page_size.height || 1;
+    const cols = probeResult.suggestions.map(s => ({ field: s.field, x: s.x / w, w: 0.07 }));
+    const headerY = probeResult.headers[0] ? probeResult.headers[0].y / h : 0.1;
+    setMap(prev => {
+      const tables = prev.tables.length
+        ? prev.tables.map((tb, i) => (i === 0 ? { ...tb, columns: cols, headerY } : tb))
+        : [{ id: uid('t'), page: 1, area: { x: 0.02, y: 0.02, w: 0.96, h: 0.96 }, headerY, columns: cols }];
+      return { ...prev, bank_code: probeResult.bank_code || prev.bank_code, tables };
+    });
+    setNotice({ level: 'info', text: '已采用预读建议：' + cols.length + ' 列，可在画布上微调' });
   }
 
   /** 收件：压缩包先解开（可能要口令），再按 PDF/图片打开。 */
@@ -414,6 +451,29 @@ export function AnnotatePage() {
       />
 
       {notice && <div className={`notice ${notice.level}`}>{notice.text}</div>}
+
+      {(probing || probeResult) && (
+        <div className="probe-card">
+          {probing ? (
+            <span className="muted">正在识别银行与表头…</span>
+          ) : probeResult && (
+            <>
+              <span className="probe-item">银行：<strong>{probeResult.bank_name ?? '未识别'}</strong>
+                {probeResult.bank_code ? '（' + probeResult.bank_code + '）' : ''}</span>
+              <span className="probe-item">旋转：{probeResult.rotation}° · 表头 <strong>{probeResult.headers.length}</strong> 列</span>
+              <span className="probe-item muted small">
+                {probeResult.headers.slice(0, 8).map(h => h.text).join(' / ')}
+              </span>
+            </>
+          )}
+          {probeResult && probeResult.suggestions.length > 0 && (
+            <button className="pill-btn pill-btn-primary" type="button" onClick={adoptProbe}>
+              采用建议标注（{probeResult.suggestions.length} 列）
+            </button>
+          )}
+        </div>
+      )}
+
 
       <div className="toolbar2">
         <button className="btn" onClick={() => { void runInfer(); }} disabled={inferring}>
