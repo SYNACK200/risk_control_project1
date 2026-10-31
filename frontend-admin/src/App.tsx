@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Route, Routes, useNavigate, useParams } from 'react-router-dom';
+
+import { Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AnnotatePage } from './pages/Annotate';
 import { TaskListPage } from './pages/TaskListPage';
 import { EntitiesPage } from './pages/EntitiesPage';
@@ -7,8 +7,15 @@ import { ThresholdsPage } from './pages/ThresholdsPage';
 import { TemplateAdmin } from './components/TemplateAdmin';
 import { ReportView } from './components/ReportView';
 
+const TABS = ['tasks', 'entities', 'thresholds', 'annotate', 'templates'] as const;
+
 function Home() {
-  const [tab, setTab] = useState<'tasks' | 'entities' | 'thresholds' | 'annotate' | 'templates'>('tasks');
+  // tab 跟着 URL 走：刷新后仍停留在当前页
+  const location = useLocation();
+  const navigate = useNavigate();
+  const current = location.pathname.replace(/^\//, '');
+  const tab = (TABS as readonly string[]).includes(current) ? current : 'tasks';
+  const setTab = (next: string) => navigate('/' + next);
   return (
     <div className="app">
       <div className="topbar">
@@ -52,6 +59,7 @@ export default function App() {
   return (
     <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/:tab" element={<Home />} />
         <Route path="/report/:id" element={<ReportPage />} />
       <Route path="*" element={<Home />} />
     </Routes>
