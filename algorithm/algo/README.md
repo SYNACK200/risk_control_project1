@@ -5,7 +5,7 @@
 | 文件 | 内容 | 状态 |
 | --- | --- | --- |
 | file_layer.py | 文件层 11 项：生成器、创建修改时间、增量更新、结构指纹、字体、隐藏文字、覆盖图元、签名、版面、体量、图像混排 | 已实现（AL-07；F4/F10 需真件基线） |
-| content_layer.py | 内容层 10 项：已实现 C1 余额链、C2 每页合计、C3 笔数、C4 期初期末；跨页、参考号、时间分布、金额形态、语义、重复待做 | 部分实现（AL-04） |
+| content_layer.py | 内容层 10 项：C1 余额链、C2 每页合计、C3 笔数、C4 期初期末、C5 表头跨页一致、C6 参考号连续性、C7 时间分布、C8 金额形态、C9 语义匹配、C10 重复记录 | 已实现（AL-04；C6–C9 依 v1 判据） |
 | ledger_layer.py | 账务层 7 项：A1 结息反算、A2 结息日、A3 利息税、A4 费用、A5 到账时延、A6 期末余额、A7 透支冻结 | 已实现（AL-06） |
 | external_layer.py | 外部层 7 项：回单验真、调证、征信、社保个税、行内代发、多份互证、签章；适配器接口 + 占位实现 | 已实现（AL-08/14；需授权与接口） |
 | verdict.py | 五态合成与证据组装；file/content/ledger/external 缺失时按未执行降级 | 已实现（AL-09） |
@@ -16,7 +16,7 @@
 | hits.py | 摘要/对手方词库：精确词、正则、标签、行级位置与证据 | 已实现（AL-12；词库待业务评审） |
 | thresholds.py | 默认阈值、阈值版本、提示结论、整版导出 | 已实现（AL-13；v2 共 13 项，未校准项待业务确认） |
 | report.py | contract 报告聚合：五态、四层、指标、趋势、阈值结论、证据 | 已实现（AL-13） |
-| samples.py | AL-15 合成样本：四类版式 + 两类伪造、manifest 清单、加载与校验 | 已实现（AL-15） |
+| samples.py | AL-15 合成样本：四类版式 + 四类伪造、manifest 清单、加载与校验 | 已实现（AL-15） |
 | eval.py | AL-16 样本回归：五态/笔数/失败码比对、抽错归因、JSON 报告 | 已实现（AL-16） |
 | perf.py | AL-17 性能压测：三千笔造数、全链路计时、P50/P95/P99 与 SLA 判定 | 已实现（AL-17） |
 
@@ -28,8 +28,18 @@
 | C2 每页合计 | 本页印的收入/支出合计 vs 本页明细求和 | 0.01 元 | 同上，证据挂页脚坐标 |
 | C3 笔数 | 本页印笔数 vs 本页解析笔数；页脚总数 vs 全量 | 0 笔 | 同上 |
 | C4 期初期末 | 期初 + 收入 - 支出 = 期末 | 0.01 元 | 同上；文件未印期初/期末则跳过 |
+| C5 表头跨页一致 | 账号/户名/期间逐字段跨页比对；掩码只比未掩码位 | 精确一致 | 可比字段对不上 → 数据断（停止）；有字段掩码/缺失但其余一致 → partial；整页抬头缺失 → skipped |
+| C6 参考号连续性 | 需一笔一号：≥3 笔、去重后不同值 >1；同号出现在两笔完整明细 → fail；跳号/格式不一致 → hint | 精确一致 | 同号两笔完整明细 → 数据断（停止）；相邻同号且缺日期/金额 → hint「疑似续行未合并」 |
+| C7 时间分布 | 夜间 22:00–06:00、同日同 HH:MM:SS ≥2 笔 → hint；时间非法/有 time 无 date → skipped+识别归因 | 仅提示 | 不改内容层状态；缺交易时间 → skipped |
+| C8 金额形态 | 整数金额占比、同额重复 TOP3、分位尾数 0–9 分布；样本 <10 笔注明 | 仅统计 | 恒为 `hint`，不设阈值、不判 fail |
+| C9 语义匹配 | 8 条明确矛盾规则（利息/工资/退款/手续费/还款/放款/工资给个人/消费），全部 hint | 仅提示 | 规则跑不了写 skipped 原因；全不可执行 → skipped，不写通过 |
+| C10 重复记录 | 日期/金额/方向/摘要/对手方全同（去空格）→ `hint`；同组参考号也相同且有效 → fail | 仅提示/同号重复 | 同号两笔全同 → 数据断（停止）；参考号不足 → 只 hint |
 
 低置信阈值取 `ocr.parse.LOW_CONF = 0.8`。因低置信跳过或字段缺失导致未核对时，记为 `skipped/partial`，不判数据断。
+
+C5–C10 的 v1 判据见 `design.md` 第四节：只有 C5 表头不一致、C6 同一参考号两次、C10 同组且同参考号判 fail；C6 跳号/格式、C7 夜间与同秒、C8 金额形态、C9 语义矛盾只出提示或统计；缺字段一律 `skipped` 写原因，不写通过。C5–C10 已于 2026-10-31 按 v1 全部实现，`reference_no` 与页眉字段已随解析抽取。
+
+`hint` 是新增的检查状态：只写入 limitations 并带回行号，不改变内容层 `pass/limited/inconsistent/undetermined`，也不进入报告 evidence；有 `hint` 的报告结论仍按其余检查合成。
 
 # 文件层当前口径
 
@@ -211,6 +221,9 @@ file_layer → content_layer → ledger_layer → external_layer
 - `layers` 按 contract 输出数组；mock 样例是对象，二者不一致，已记入待处理。
 - 阈值结论带可回指证据（每条最多 20 笔）：`DTI_HIGH` 取还款类出账，`INCOME_UNSTABLE` 取各月最后一笔未剔除入账，`LOW_BALANCE` 取近 30 天最低余额行，`MULTI_LOAN` 取各放款对手方首笔，`GAMBLING_HIT`/`NIGHT_TRADING`/`CRYPTO_HIT` 取命中行，`NET_OUTFLOW` 取净流出月最后一笔，`BALANCE_DECLINE` 取期末月最后一笔余额行，`FAST_IN_OUT` 取当日进出日的全部行，`COUNTERPARTY_CONCENTRATED` 取金额最大对手方的行，`NEW_LOAN` 取近六个月放款行，`SMALL_LOAN_REPAY` 取小贷出账行。证据只用于回指原文，不把线索升级为证明。
 - 整列缺失在 limitations 各写一次并列出不可算的指标组：无对手方名称 → E01/E02、无余额 → C03–C06/B07、无日期 → A02–A08/D01/D06/D08、无方向、无金额。
+- 有低置信明细（`Transaction.confidence < 0.80`）时，limitations 写明笔数与涉及页，相关行仍按识别值计入指标与结论，不静默采信；电子件通常为 1.0，不触发。
+- 触发的阈值结论若仍在使用未校准默认值（NET_OUTFLOW 单月下限 / FAST_IN_OUT 金额下限 / NEW_LOAN 占比 / CRYPTO_HIT 金额下限），limitations 注明「仅作线索」；银行改过值则不再标注。数值本身未变。
+- 跨引擎不一致逐笔排查用 `algorithm/diagnose_s4.py`，同时接受旧版 `field_map` 与 v2 箱体模板；输出页/行/金额/余额/余额链/定性。
 - 真实样本结果（icbc_desensitized.pdf，threshold_version=2）：未发现异常（核验受限），4 条阈值提示（INCOME_UNSTABLE 1.1851、LOW_BALANCE 21.65 vs 110.92、NIGHT_TRADING 0.1961、BALANCE_DECLINE −15.54% 期末 21.67）；NET_OUTFLOW 不触发（7 月 −209.68 之后 8 月 −2.70 被单月 100 元下限拦住，未达连续 2 月）；对手方整列为空（0/102 有名称），E01/E02 不可算并写入 limitations；趋势 6 个月；evidence 27 条，坐标均非 0。
 
 # 样本集当前口径
@@ -230,9 +243,14 @@ AL-15 的样本全部是造数，不含真实客户信息；生成到 `algorithm
 | clean_wechat | 微信账单 | 收/支 + 金额，无余额列 | 未发现异常；C1/C2 跳过，C3 通过 |
 | forged_amount_icbc | 内容篡改 | 改金额不改余额 | 存在不一致；C1 fail，证据定位到行 |
 | forged_overlay_icbc | 文件伪造 | 增量更新 + 白底覆盖后重写金额 | 来源可疑；F3、F7 fail |
+| forged_row_deleted_icbc | 内容篡改 | 删一笔但保留原页脚 | 存在不一致；C1、C2、C3 fail |
+| forged_page_splice_icbc | 内容伪造 | 两时段拼页，页内各自闭合 | 存在不一致；接缝处 C1 fail |
+
+换利率与整份重排暂不造样：前者需要银行挂牌利率表，后者需要同版式真件基线，缺参数时造出来也无法判定。
 
 - `manifest.json` 每项含 `id、path、layout、carrier、forgery、expectation{verdict,txn_count,fail_codes}、notes`；`path` 相对样本目录。
-- `build_sample_set()` 生成并回读；`load_samples()` 校验 id 唯一、路径不越界、文件存在、四类版式与两类伪造齐全；`load_manifest()` 只读清单。
+- `build_sample_set()` 生成并回读；`load_samples()` 校验 id 唯一、路径不越界、文件存在、四类版式与四类伪造齐全；`load_manifest()` 只读清单。
+- 样本集 v2（2026-10-31）新增删行、拼页两类伪造；换利率、整份重排仍缺利率表与同版式基线。
 - 样本 PDF 嵌入 Droid Sans Fallback 子集，固定元数据与页脚；F1/F2/F5 可通过，F4/F10 仍因无真件基线跳过。
 - 干净样本只覆盖解析与算术链，不冒充真件：文件层结论仍是 limited，内容层因缺期初期末为 limited。
 
@@ -261,7 +279,7 @@ CI 严格模式：python -m algorithm.algo.eval --strict
 - 抽错归因：`recognition` 识别问题、`parsing` 版式/行列问题、`rule_gap` 规则未命中、`parameter_missing` 缺基线/利率/授权、`false_positive` 干净件误报、`verdict_logic` 五态合成偏差。
 - 内容层失败若已归因为识别问题，评测继承为 `recognition`，不判成材料问题（对应 V3）。
 - 报告不含时间戳，同一输入两次输出一致（对应 V5）；失败样本带页码、行号与坐标（对应 V6）。
-- 当前样本 6 份：通过 6，五态/笔数/失败码召回/伪造检出均 100%，干净件误判 0%；仅代表合成样本，不代表真实客群分布（V2 的十份真件尚未具备）。
+- 当前样本 8 份（样本集 v2）：通过 8，五态/笔数/失败码召回/伪造检出均 100%，干净件误判 0%；仅代表合成样本，不代表真实客群分布（V2 的十份真件尚未具备）。
 
 # 性能压测当前口径
 

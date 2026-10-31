@@ -251,6 +251,33 @@ def test_missing_balance_column_declared_in_limitations():
     assert any("明细无余额" in item and "C03–C06" in item for item in report.limitations)
 
 
+def test_low_confidence_rows_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "消费", direction="out", amount="10", row=1),
+        _txn("2026-01-06", "消费", direction="out", amount="20", row=2).model_copy(
+            update={"confidence": 0.5}
+        ),
+    ]
+    report = _report(transactions=txns)
+    assert any(
+        "1 笔明细置信度低于 0.80" in item and "第 1 页" in item
+        for item in report.limitations
+    )
+
+
+def test_uncalibrated_threshold_trigger_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "转账", direction="in", amount="600", row=1),
+        _txn("2026-01-05", "转账", direction="out", amount="600", row=2),
+        _txn("2026-01-05", "消费", direction="out", amount="50", row=3),
+        _txn("2026-01-05", "消费", direction="in", amount="100", row=4),
+    ]
+    report = _report(transactions=txns)
+    assert any(
+        "FAST_IN_OUT" in item and "未校准" in item for item in report.limitations
+    )
+
+
 def test_evidence_without_coordinates_declared_in_limitations():
     evidence = [Evidence(rule_code="F1", page_no=1, x=0.0, y=0.0)]
     report = build_report(

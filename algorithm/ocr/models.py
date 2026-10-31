@@ -21,6 +21,7 @@ class Transaction(BaseModel):
     row_no: int
     txn_date: str | None = None
     trade_time: str | None = None  # HH:MM:SS；原件未印时分时为 None
+    reference_no: str | None = None  # 银行流水号/凭证号；原件未印时为 None
     summary: str | None = None
     counterparty_name: str | None = None
     direction: Direction | None = None
@@ -40,6 +41,31 @@ class PageSummary(BaseModel):
     footer_bbox: tuple[float, float, float, float] | None = None
 
 
+class HeaderField(BaseModel):
+    """页眉字段值；原值保留掩码，比较时再按未掩码位对齐。"""
+
+    value: str
+    bbox: tuple[float, float, float, float] | None = None
+    confidence: float = 1.0
+
+
+class PageHeader(BaseModel):
+    """单页页眉中可跨页比对的字段；未识别到的字段为 None，不猜。"""
+
+    page_no: int
+    account_no: HeaderField | None = None
+    account_name: HeaderField | None = None
+    period_start: HeaderField | None = None
+    period_end: HeaderField | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        return all(
+            getattr(self, field) is None
+            for field in ("account_no", "account_name", "period_start", "period_end")
+        )
+
+
 class ParseResult(BaseModel):
     transactions: list[Transaction] = Field(default_factory=list)
     field_completeness: float = 0.0
@@ -48,4 +74,5 @@ class ParseResult(BaseModel):
     page_count: int = 0
     footer_count: int | None = None
     page_summaries: list[PageSummary] = Field(default_factory=list)
+    headers: list[PageHeader] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

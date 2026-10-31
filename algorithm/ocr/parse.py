@@ -9,7 +9,15 @@ from decimal import Decimal, InvalidOperation
 import fitz
 import pdfplumber
 
-from .models import Direction, PageSummary, ParseResult, Template, Transaction
+from .models import (
+    Direction,
+    HeaderField,
+    PageHeader,
+    PageSummary,
+    ParseResult,
+    Template,
+    Transaction,
+)
 from .table import (
     Line,
     Word,
@@ -31,6 +39,17 @@ PAGE_OUT_RE = re.compile(r"(?:本页)?支出(?:算术)?合计[:：]?\s*([-+]?[¥
 TOTAL_LINE_RE = re.compile(r"[-+]?[\d,]+\.\d{2}\s*$")
 DECIMAL_MONEY_RE = re.compile(r"[-+]?[¥￥]?\d[\d,]*\.\d{2}")
 PAGE_MARK_RE = re.compile(r"(第\s*\d+\s*页|page\s*\d+|共\s*\d+\s*页)", re.IGNORECASE)
+ACCOUNT_LABEL_RE = re.compile(
+    r"(?:卡号|账号|帐号|账\s*号)\s*[:：]?\s*([0-9*＊xX×][0-9*＊xX×\s\-]{2,})"
+)
+NAME_LABEL_RE = re.compile(r"(?:户\s*名|账户名|客户名称|户主|姓名)\s*[:：]\s*([^\s:：]+)")
+PERIOD_LABEL_RE = re.compile(r"(?:期间|时段|时间段|日期范围)")
+_DATE_PATTERN = r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})日?"
+PERIOD_RE = re.compile(
+    _DATE_PATTERN
+    + r"(?:\s*\d{1,2}:\d{2}(?::\d{2})?)?\s*(?:--|—|－|~|～|至|到|-)\s*"
+    + _DATE_PATTERN
+)
 
 REQUIRED_FIELDS = ("txn_date", "amount", "direction")
 LOW_CONF = 0.8
@@ -40,6 +59,7 @@ WORD_X_TOLERANCE = 4.0
 LINE_Y_TOLERANCE = 4.0
 CLOCK_JOIN_GAP = 6.0
 CONT_MAX_GAP = 24.0
+HEADER_ZONE_BOTTOM = 220.0
 
 
 class OcrUnavailable(RuntimeError):
@@ -260,7 +280,7 @@ def _parse_pdf_pages(
     pdf: pdfplumber.PDF,
     template: Template | None,
     warnings: list[str],
-) -> tuple[list[Transaction], int | None, list[PageSummary]]:
+) -> tuple[list[Transaction], int | None, list[PageSummary], list[PageHeader]]:
     def pages() -> Iterable[tuple[int, list[Word]]]:
         for page_no, page in enumerate(pdf.pages, start=1):
             body = page.filter(_is_body_char)
@@ -274,18 +294,76 @@ def _line_confidence(line: Line) -> float:
     return min((word.confidence for word in line.words), default=1.0)
 
 
+def _clean_account(text: str) -> str:
+    compact = re.sub(r"[\s\-]", "", text)
+    return re.sub(r"[xX×＊]", "*", compact)
+
+
+def _clean_name(text: str) -> str:
+    return re.sub(r"\s", "", text).replace("＊", "*")
+
+
+def _page_header(
+    page_no: int,
+    lines: list[Line],
+    header_top: float,
+    has_table_header: bool,
+) -> PageHeader:
+    """抽取表头上方的页眉字段；没有标签的续页不靠猜，字段留空。"""
+    header = PageHeader(page_no=page_no)
+    for line in lines:
+        if line.top > HEADER_ZONE_BOTTOM:
+            break
+        if has_table_header and line.top >= header_top:
+            continue
+        text = line.text.strip()
+        if not text:
+            continue
+        # 逐字抽取的 PDF 会把数字拆成「2 0 2 6」，去空白后再匹配
+        compact = re.sub(r"\s+", "", text)
+        bbox = _bbox(line.words)
+        confidence = _line_confidence(line)
+        if header.account_no is None:
+            match = ACCOUNT_LABEL_RE.search(compact)
+            if match:
+                header.account_no = HeaderField(
+                    value=_clean_account(match.group(1)), bbox=bbox, confidence=confidence
+                )
+        if header.account_name is None:
+            # 户名后可能紧跟日期/期间，按原文本取到下一个空白为止
+            match = NAME_LABEL_RE.search(text)
+            if match:
+                header.account_name = HeaderField(
+                    value=_clean_name(match.group(1)), bbox=bbox, confidence=confidence
+                )
+        if header.period_start is None:
+            match = PERIOD_RE.search(compact)
+            if match and (has_table_header or PERIOD_LABEL_RE.search(text)):
+                start = parse_date(f"{match.group(1)}-{match.group(2)}-{match.group(3)}")
+                end = parse_date(f"{match.group(4)}-{match.group(5)}-{match.group(6)}")
+                if start and end:
+                    header.period_start = HeaderField(
+                        value=start, bbox=bbox, confidence=confidence
+                    )
+                    header.period_end = HeaderField(
+                        value=end, bbox=bbox, confidence=confidence
+                    )
+    return header
+
+
 def _transactions_from_pages(
     pages: Iterable[tuple[int, list[Word]]],
     template: Template | None,
     warnings: list[str],
     allow_date_in_line: bool = False,
     strip_date_from_summary: bool = False,
-) -> tuple[list[Transaction], int | None, list[PageSummary]]:
+) -> tuple[list[Transaction], int | None, list[PageSummary], list[PageHeader]]:
     transactions: list[Transaction] = []
     columns = None
     footer_count: int | None = None
     page_footer_total = 0
     summaries: list[PageSummary] = []
+    headers: list[PageHeader] = []
     has_direction_column = False
     has_split_amount = False
 
@@ -294,8 +372,6 @@ def _transactions_from_pages(
         page_summary = PageSummary(page_no=page_no)
         summaries.append(page_summary)
         lines = group_lines(words, y_tol=LINE_Y_TOLERANCE)
-        if not lines:
-            continue
 
         header = find_header(lines, template.field_map if template else None)
         if header is not None:
@@ -307,9 +383,13 @@ def _transactions_from_pages(
             has_split_amount = has_split_amount or bool({"amount_in", "amount_out"} & fields)
         elif columns is None:
             warnings.append(f"第 {page_no} 页未识别到表头，跳过该页")
+            headers.append(PageHeader(page_no=page_no))
             continue
         else:
             header_top = -1.0
+        headers.append(_page_header(page_no, lines, header_top, header is not None))
+        if not lines:
+            continue
 
         current: Transaction | None = None
         for line in lines:
@@ -372,6 +452,8 @@ def _transactions_from_pages(
                     current.counterparty_name = f"{current.counterparty_name or ''}{extra_cp}"
                 if current.trade_time is None:
                     current.trade_time = _line_clock(line)
+                if current.reference_no is None:
+                    current.reference_no = _cell_text(cells.get("reference_no", [])) or None
                 _assign_money(current, cells)
                 current.confidence = min(current.confidence, _line_confidence(line))
                 continue
@@ -387,6 +469,7 @@ def _transactions_from_pages(
                 row_no=len(transactions) + 1,
                 txn_date=txn_date,
                 trade_time=_line_clock(line),
+                reference_no=_cell_text(cells.get("reference_no", [])) or None,
                 summary=summary or None,
                 counterparty_name=_cell_text(cells.get("counterparty", [])) or None,
                 direction=parse_direction(direction_text, None),
@@ -407,7 +490,7 @@ def _transactions_from_pages(
         has_direction_column=has_direction_column,
         has_split_amount=has_split_amount,
     )
-    return transactions, footer_count, summaries
+    return transactions, footer_count, summaries, headers
 
 
 def _fill_signed_directions(
@@ -459,7 +542,7 @@ def _parse_ocr(file_bytes: bytes, template: Template | None) -> ParseResult:
         return _build_result([], None, 0, warnings)
 
     pages = [(page.page_no, _ocr_to_words(page)) for page in ocr.pages]
-    transactions, footer_count, summaries = _transactions_from_pages(
+    transactions, footer_count, summaries, headers = _transactions_from_pages(
         pages,
         template,
         warnings,
@@ -470,14 +553,16 @@ def _parse_ocr(file_bytes: bytes, template: Template | None) -> ParseResult:
         warnings.append("未解析到交易明细")
     if footer_count is not None and footer_count != len(transactions):
         warnings.append(f"页脚笔数 {footer_count} 与解析笔数 {len(transactions)} 不一致")
-    return _build_result(transactions, footer_count, len(ocr.pages), warnings, summaries)
+    return _build_result(
+        transactions, footer_count, len(ocr.pages), warnings, summaries, headers
+    )
 
 
 def _parse_with_plumber(
     file_bytes: bytes,
     template: Template | None,
     warnings: list[str],
-) -> tuple[list[Transaction], int | None, int, list[PageSummary]] | None:
+) -> tuple[list[Transaction], int | None, int, list[PageSummary], list[PageHeader]] | None:
     try:
         pdf = pdfplumber.open(io.BytesIO(file_bytes))
     except Exception as exc:  # 加密或结构损坏
@@ -487,8 +572,10 @@ def _parse_with_plumber(
         if not pdf.pages:
             warnings.append("PDF 无页面")
             return None
-        transactions, footer_count, summaries = _parse_pdf_pages(pdf, template, warnings)
-        return transactions, footer_count, len(pdf.pages), summaries
+        transactions, footer_count, summaries, headers = _parse_pdf_pages(
+            pdf, template, warnings
+        )
+        return transactions, footer_count, len(pdf.pages), summaries, headers
 
 
 def _build_result(
@@ -497,6 +584,7 @@ def _build_result(
     page_count: int,
     warnings: list[str],
     page_summaries: list[PageSummary] | None = None,
+    headers: list[PageHeader] | None = None,
 ) -> ParseResult:
     total = len(transactions)
     if total:
@@ -515,6 +603,7 @@ def _build_result(
         page_count=page_count,
         footer_count=footer_count,
         page_summaries=page_summaries or [],
+        headers=headers or [],
         warnings=warnings,
     )
 
@@ -552,17 +641,17 @@ def parse(file_bytes: bytes, template: Template | None = None) -> ParseResult:
         return _parse_ocr(file_bytes, template)
 
     if pages is not None:
-        transactions, footer_count, page_summaries = _transactions_from_pages(
+        transactions, footer_count, page_summaries, headers = _transactions_from_pages(
             iter(pages), template, warnings
         )
     else:
-        transactions, footer_count, page_summaries = [], None, []
+        transactions, footer_count, page_summaries, headers = [], None, [], []
 
     if not transactions:
         warnings.append("PyMuPDF 未解析到明细，回退 pdfplumber")
         fallback = _parse_with_plumber(file_bytes, template, warnings)
         if fallback is not None:
-            transactions, footer_count, fallback_pages, page_summaries = fallback
+            transactions, footer_count, fallback_pages, page_summaries, headers = fallback
             if page_count and fallback_pages != page_count:
                 warnings.append(
                     f"引擎页数不一致：PyMuPDF {page_count} vs pdfplumber {fallback_pages}"
@@ -578,4 +667,6 @@ def parse(file_bytes: bytes, template: Template | None = None) -> ParseResult:
             f"正文日期数与解析笔数差异较大：{body_dates} vs {len(transactions)}，需人工核对"
         )
 
-    return _build_result(transactions, footer_count, page_count, warnings, page_summaries)
+    return _build_result(
+        transactions, footer_count, page_count, warnings, page_summaries, headers
+    )

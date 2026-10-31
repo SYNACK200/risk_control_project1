@@ -47,7 +47,10 @@ def _layer(name: str, provided: LayerConclusion | None) -> LayerConclusion:
 
 
 def _content_layer(content: ContentLayerResult) -> LayerConclusion:
-    detail = "；".join(f"{check.code} {check.name}{check.status}" for check in content.checks)
+    detail = "；".join(
+        f"{check.code} {check.name}{'提示' if check.status == 'hint' else check.status}"
+        for check in content.checks
+    )
     status_map = {
         "pass": "pass",
         "limited": "limited",
@@ -138,6 +141,14 @@ def conclude(
         )
 
     if content.status == "undetermined":
+        if "未解析到交易明细，无法核对" in content.limitations:
+            return VerdictResult(
+                verdict="无法判定",
+                verdict_reason="未解析到交易明细，无法核对",
+                limitations=limitations,
+                layers=layers,
+                evidence=[],
+            )
         failure = _first_failure(content) or next(
             (check for check in content.checks if check.status == "skipped"), None
         )

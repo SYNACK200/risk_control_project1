@@ -35,6 +35,62 @@ BANK_ROWS = [
 ]
 
 
+def make_pdf_with_page_headers(header_lines, pages):
+    """表头上方按行插入页眉，用于验证账号/户名/期间抽取。"""
+    doc = fitz.open()
+    for page_index, rows in enumerate(pages):
+        page = doc.new_page(width=800, height=1000)
+        for offset, text in enumerate(header_lines[page_index]):
+            page.insert_text((40, 30 + 12 * offset), text, fontsize=9, fontname="china-s")
+        page.insert_text((40, 60), "银行账户交易明细", fontsize=12, fontname="china-s")
+        y = 90
+        for label, x in zip(BANK_HEADER, BANK_XS):
+            page.insert_text((x, y), label, fontsize=7, fontname="china-s")
+        for row_index, row in enumerate(rows, start=1):
+            for value, x in zip(row, BANK_XS):
+                page.insert_text((x, y + 18 * row_index), value, fontsize=7, fontname="china-s")
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_page_header_fields_extracted_per_page():
+    lines = ["卡号 6222 **** **** 1234 户名： 张三", "期间： 2026-01-01 至 2026-12-31"]
+    pdf = make_pdf_with_page_headers([lines, lines], [BANK_ROWS[:2], BANK_ROWS[2:]])
+    result = parse(pdf)
+
+    assert len(result.headers) == 2
+    for header in result.headers:
+        assert header.account_no.value == "6222********1234"
+        assert header.account_name.value == "张三"
+        assert (header.period_start.value, header.period_end.value) == (
+            "2026-01-01",
+            "2026-12-31",
+        )
+        assert header.account_no.bbox is not None
+
+
+def test_page_header_period_with_time_component():
+    line = "交易明细对应时间段 2026-07-29 00:00:00 至 2026-10-29 14:33:31"
+    result = parse(make_pdf_with_page_headers([[line]], [BANK_ROWS]))
+
+    header = result.headers[0]
+    assert (header.period_start.value, header.period_end.value) == (
+        "2026-07-29",
+        "2026-10-29",
+    )
+    assert header.account_no is None and header.account_name is None
+
+
+def test_page_without_header_is_recorded_empty():
+    line = "卡号 6222 **** **** 1234 户名： 张三"
+    pdf = make_pdf_with_page_headers([[line], []], [BANK_ROWS[:2], BANK_ROWS[2:]])
+    result = parse(pdf)
+
+    assert result.headers[0].account_no.value == "6222********1234"
+    assert result.headers[1].is_empty
+
+
 def test_bank_statement_single_page():
     pdf = make_pdf([BANK_ROWS], BANK_HEADER, BANK_XS, footer="共 3 笔记录")
     result = parse(pdf)
@@ -184,6 +240,21 @@ def test_trade_time_on_date_line_and_normalized():
     assert [txn.trade_time for txn in result.transactions] == ["09:41:20", "15:39:00"]
     assert result.transactions[0].txn_date == "2026-10-01"
     assert result.transactions[0].summary == "消费"
+
+
+def test_reference_number_column_extracted():
+    header = ["交易日期", "摘要", "借贷标志", "交易金额", "余额", "交易流水号"]
+    xs = [40, 140, 300, 400, 500, 620]
+    rows = [
+        ["2026-01-05", "工资", "贷", "100.00", "1100.00", "202601050001"],
+        ["2026-01-06", "消费", "借", "50.00", "1050.00", "202601060002"],
+    ]
+    result = parse(make_pdf([rows], header, xs))
+
+    assert [txn.reference_no for txn in result.transactions] == [
+        "202601050001",
+        "202601060002",
+    ]
 
 
 def test_parse_clock_rejects_non_time():

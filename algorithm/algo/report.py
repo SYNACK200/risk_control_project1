@@ -6,13 +6,16 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..ocr.models import Transaction
+from ..ocr.parse import LOW_CONF
 from .hits import HitResult
 from .self_check import SelfCheckResult
 from .metrics import MetricSet, MetricValue, MonthlyFlow
 from .models import Evidence, LayerStatus
 from .thresholds import (
+    DEFAULT_THRESHOLDS,
     Conclusion,
     ThresholdConfig,
+    ThresholdResult,
     evaluate_thresholds,
 )
 from .verdict import Verdict, VerdictResult
@@ -158,6 +161,53 @@ def _column_limitations(transactions: list[Transaction]) -> list[str]:
     return limits
 
 
+def _low_confidence_limitation(transactions: list[Transaction]) -> list[str]:
+    """低置信行照常计入，但必须在报告里留痕，不能让人误以为是确定读数。"""
+    low = [txn for txn in transactions if txn.confidence < LOW_CONF]
+    if not low:
+        return []
+    pages = sorted({txn.page_no for txn in low})
+    shown = "、".join(str(page) for page in pages[:5])
+    if len(pages) > 5:
+        shown += " 等"
+    return [
+        f"{len(low)} 笔明细置信度低于 {LOW_CONF:.2f}（第 {shown} 页），"
+        "相关行按识别值计入，核对原页后再采信"
+    ]
+
+
+def _uses_uncalibrated_default(conclusion: Conclusion, config: ThresholdConfig) -> bool:
+    if conclusion.code == "NET_OUTFLOW":
+        return (
+            "单月≥" in conclusion.threshold
+            and config.net_outflow_month_floor == DEFAULT_THRESHOLDS.net_outflow_month_floor
+        )
+    if conclusion.code == "FAST_IN_OUT":
+        return config.fast_in_out_min_amount == DEFAULT_THRESHOLDS.fast_in_out_min_amount
+    if conclusion.code == "NEW_LOAN":
+        return config.new_loan_min_income_ratio == DEFAULT_THRESHOLDS.new_loan_min_income_ratio
+    if conclusion.code == "CRYPTO_HIT":
+        return config.crypto_min_amount == DEFAULT_THRESHOLDS.crypto_min_amount
+    return False
+
+
+def _uncalibrated_limitations(
+    threshold_result: ThresholdResult, config: ThresholdConfig
+) -> list[str]:
+    """未校准默认值一旦触发结论，必须在报告里注明，不能当作已定稿阈值。"""
+    codes = [
+        conclusion.code
+        for conclusion in threshold_result.conclusions
+        if _uses_uncalibrated_default(conclusion, config)
+    ]
+    if not codes:
+        return []
+    return [
+        f"{'、'.join(dict.fromkeys(codes))} 使用了未校准默认值，"
+        "仅作线索，待样本校准或业务确认后再定稿"
+    ]
+
+
 def build_report(
     verdict: VerdictResult,
     metrics: MetricSet,
@@ -183,6 +233,7 @@ def build_report(
         monthly_payment=monthly_payment,
         transactions=transactions,
     )
+    active_thresholds = thresholds if thresholds is not None else DEFAULT_THRESHOLDS
     position_ids = _position_ids(transactions, txn_ids)
     evidence, missing, no_coord = _evidence(
         list(verdict.evidence) + list(threshold_result.evidence),
@@ -194,6 +245,8 @@ def build_report(
     report_self_check: ReportSelfCheck | None = None
     limitations = list(verdict.limitations) + list(threshold_result.notes) + list(metrics.notes)
     limitations.extend(_column_limitations(transactions or []))
+    limitations.extend(_low_confidence_limitation(transactions or []))
+    limitations.extend(_uncalibrated_limitations(threshold_result, active_thresholds))
     if self_check is None:
         limitations.append("未执行识别自检，报告无法说明解析结果能否回查到原件")
     else:

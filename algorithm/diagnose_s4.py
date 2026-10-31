@@ -6,7 +6,9 @@
 判据（只用原文事实）：
 1. pdfplumber 按 y 聚行、行内按 x 排序后，金额数字仍是行内数字的子序列
    → 切分差异（字符交错，数字齐全）；
-2. 行内数字不齐 → 抽取错误（该行缺字符）。
+2. 行内数字不齐 → 抽取错误（该行缺字符）；
+3. 余额链（上一笔余额 ± 本笔金额 = 本笔余额）作为旁证：闭合说明解析值本身正确，
+   不闭合则该行需人工复核。
 
 用法：python algorithm/diagnose_s4.py <pdf路径> [--password 口令] [--template 模板json]
 """
@@ -14,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import io
-import json
 import pathlib
 import sys
 import tempfile
@@ -26,7 +27,7 @@ import pdfplumber
 import pymupdf
 
 from algorithm.algo.self_check import _norm, _page_text, _plumber_page_texts
-from algorithm.ocr.models import Template
+from algorithm.local_run import load_template
 from algorithm.ocr.parse import parse
 
 DIGITS = str.maketrans("", "", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -109,14 +110,7 @@ def main() -> int:
         doc.save(tmp, encryption=pymupdf.PDF_ENCRYPT_NONE)
         raw = tmp.read_bytes()
 
-    tpl = None
-    if a.template:
-        data = json.loads(pathlib.Path(a.template).read_text(encoding="utf-8"))
-        tpl = Template(
-            bank_code=data.get("bank_code", "UNKNOWN"),
-            version=data.get("version", 1),
-            field_map=data["field_map"],
-        )
+    tpl = load_template(pathlib.Path(a.template)) if a.template else None
 
     parsed = parse(raw, tpl)
     texts = _page_text(raw)
@@ -125,14 +119,25 @@ def main() -> int:
         pages = list(pdf.pages[: len(texts)])
 
     found = []
+    previous = None
     for index, txn in enumerate(parsed.transactions):
         amount = getattr(txn, "amount", None)
+        balance = getattr(txn, "balance", None)
+        direction = getattr(txn, "direction", None)
+        prev_balance = getattr(previous, "balance", None) if previous is not None else None
         if amount is None:
+            previous = txn
             continue
         token = _token(amount)
         kind, why = classify(token, txn, texts, plumber, pages)
         if kind == "一致":
+            previous = txn
             continue
+        chain = "无法校验（缺方向/余额）"
+        if prev_balance is not None and balance is not None and direction in ("in", "out"):
+            signed = Decimal(str(amount)) * (1 if direction == "in" else -1)
+            delta = Decimal(str(balance)) - Decimal(str(prev_balance))
+            chain = f"{prev_balance}→{balance} {'通过' if delta == signed else '不符'}"
         found.append(
             {
                 "序号": index + 1,
@@ -140,12 +145,14 @@ def main() -> int:
                 "行": getattr(txn, "row_no", None),
                 "日期": str(getattr(txn, "txn_date", "") or ""),
                 "金额": token,
-                "余额": None if getattr(txn, "balance", None) is None else str(txn.balance),
-                "方向": getattr(txn, "direction", None),
+                "余额": None if balance is None else str(balance),
+                "方向": direction,
+                "余额链": chain,
                 "定性": kind,
                 "依据": why,
             }
         )
+        previous = txn
 
     tally: dict[str, int] = {}
     for row in found:
@@ -156,7 +163,7 @@ def main() -> int:
     for row in found:
         print(
             f"  第 {row['序号']} 笔｜第 {row['页']} 页 行 {row['行']}｜{row['日期']}｜"
-            f"{row['方向']} {row['金额']}｜余额 {row['余额']}｜{row['定性']}：{row['依据']}"
+            f"{row['方向']} {row['金额']}｜余额 {row['余额']}｜链 {row['余额链']}｜{row['定性']}：{row['依据']}"
         )
     return 0
 
