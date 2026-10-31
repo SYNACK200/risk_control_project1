@@ -104,6 +104,30 @@ def _extract_meta(page_text: str, words: list[dict], page_w: float, page_h: floa
     return out
 
 
+@router.post("/decrypt")
+def decrypt_pdf(file: UploadFile = File(...), password: str | None = Form(None)):
+    """把带口令的 PDF 解密后原样返回，供标注/预读/试解析统一使用解密件。"""
+    from fastapi.responses import Response
+    from starlette.concurrency import run_in_threadpool
+
+    import pymupdf
+
+    data = file.file.read()
+    if not data:
+        raise HTTPException(400, "文件为空")
+    if data[:4] != b"%PDF":
+        raise HTTPException(422, detail={"code": "E_PARAM", "message": "只支持 PDF"})
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    try:
+        if doc.needs_pass and (not password or doc.authenticate(password) <= 0):
+            raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "口令不正确"})
+        plain = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_NONE)
+    finally:
+        doc.close()
+    return Response(content=plain, media_type="application/pdf",
+                    headers={"X-Decrypted": "1"})
+
+
 @router.post("/probe")
 def probe_template(file: UploadFile = File(...), password: str | None = Form(None)):
     """标注前的 OCR 预读：识别银行、表头词，并直接给出建议标注（只读第 1 页，不落库）。"""

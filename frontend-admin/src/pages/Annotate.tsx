@@ -11,7 +11,7 @@ import { PdfPasswordError, openSampleFile } from '../lib/pdf';
 import { ArchiveError, extractStatement, isArchive } from '../lib/archive';
 import { PasswordDialog, type PasswordRequest } from '../components/PasswordDialog';
 import { createDemoPage } from '../lib/sample';
-import { inferTemplate, probeTemplate, type InferResult, type ProbeResult } from '../lib/api';
+import { decryptPdf, inferTemplate, probeTemplate, type InferResult, type ProbeResult } from '../lib/api';
 import type { FieldMapV1, Issue, Rect, SamplePage, Selection, Tool } from '../lib/types';
 import { FIELD_DICT } from '../lib/fields';
 
@@ -107,10 +107,23 @@ export function AnnotatePage() {
   }
 
   async function openPage(file: File, password?: string) {
-    const opened = await openSampleFile(file, password);
+    // 带口令的 PDF：先解密一次，后续标注/预读/试解析统一用解密件（不再反复传口令）
+    let workFile = file;
+    let workPassword: string | undefined = password;
+    if (password && /\.pdf$/i.test(file.name)) {
+      try {
+        const blob = await decryptPdf(file, password);
+        workFile = new File([blob], file.name, { type: 'application/pdf' });
+        workPassword = undefined;
+        logEvent(file.name, '已解密', '后续标注与预读使用解密件', 'info');
+      } catch {
+        logEvent(file.name, '解密失败', '继续用原文件＋口令', 'warn');
+      }
+    }
+    const opened = await openSampleFile(workFile, workPassword);
     setSample(opened);
     setSampleName(file.name);
-    setSource({ file, password });
+    setSource({ file: workFile, password: workPassword });
     setInference(null);
     setPage(1);
     setSel(null);
@@ -121,7 +134,7 @@ export function AnnotatePage() {
     }));
     setNotice({ level: 'info', text: `已载入 ${file.name}（${opened.pageCount} 页）。样例在本机读取；点“试解析”时才会上传到本机后端。` });
     logEvent(file.name, '打开材料', `${opened.pageCount} 页，可标注`, 'info');
-    void runProbe(file, password);
+    void runProbe(workFile, workPassword);
   }
 
   /** 标注前预读：识别银行/表头，给出建议标注（只读第 1 页）。 */
