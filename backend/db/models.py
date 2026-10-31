@@ -142,6 +142,9 @@ class Template(Base):
     status: Mapped[str] = mapped_column(String(16), default="draft")  # draft/enabled/disabled
     field_map: Mapped[dict | None] = mapped_column(JSON)
     header_columns: Mapped[list | None] = mapped_column(JSON)
+    # 建模板时用的样本文件与当时的框选（供事后可视化回看）
+    sample_file_id: Mapped[int | None] = mapped_column(Integer)
+    layout: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

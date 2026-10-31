@@ -407,3 +407,18 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .metric-ref-list li { font-size: 12.5px; line-height: 1.5; }
 .metric-ref-list .me-k { margin-right: 6px; }
 .me-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 18px; margin-bottom: 4px; }
+
+/* ---- 模板：当时的框选回看 ---- */
+.layout-view { display: flex; flex-direction: column; gap: 10px; }
+.layout-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.layout-pager { display: inline-flex; gap: 6px; margin-left: auto; }
+.layout-pager .pill-btn { padding: 3px 10px; font-size: 12px; }
+.layout-body { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px; align-items: start; }
+.layout-image { background: #f7f9fc; border: 1px solid #e9eef6; border-radius: 10px; padding: 8px; overflow: auto; max-height: 520px; }
+.layout-image img { display: block; max-width: 100%; height: auto; border-radius: 6px; background: #fff; }
+.layout-legend { list-style: none; margin: 0; padding: 8px 10px; border: 1px solid #e9eef6; border-radius: 10px; display: flex; flex-direction: column; gap: 6px; }
+.layout-legend li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.legend-field { font-weight: 600; }
+.layout-empty { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed #d9e2ee; border-radius: 10px; background: #fbfcfe; }
+.card-head-static { display: flex; align-items: baseline; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #eef2f8; flex-wrap: wrap; }
