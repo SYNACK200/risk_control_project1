@@ -94,6 +94,74 @@ function buildNarrative(report: ReportPayload, authLabel: string, limited: numbe
   return lines;
 }
 
+function SummaryPanel({ report, txnCount }: { report: ReportPayload; txnCount: number }) {
+  const a = authenticity(report.layers, report.carrier, report.limitations);
+  const m: Record<string, string | null> = {};
+  for (const x of report.metrics) m[x.code] = x.value;
+  const num = (code: string) => {
+    const v = m[code];
+    if (v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const money = (v: number | null) => (v === null ? '—' : v.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + ' 元');
+  const dti = num('B02');
+  const kpi = [
+    { k: '交易笔数', v: (txnCount || '—') + ' 笔' },
+    { k: '统计月份', v: (report.trend?.length ?? 0) + ' 个月' },
+    { k: '月均收入', v: money(num('A02')) },
+    { k: '月均支出', v: money(num('B01')) },
+    { k: '期间净流入', v: money(num('C01')) },
+    { k: '月供/收入', v: dti === null ? '—' : (dti * 100).toFixed(1) + '%' },
+  ];
+  const hits = (report.conclusions ?? []).slice(0, 3);
+  const extra = Math.max(0, (report.conclusions?.length ?? 0) - hits.length);
+  return (
+    <section className="summary-panel">
+      <div className="summary-hero">
+        <div>
+          <div className="summary-label">合格性结论</div>
+          <div className={'summary-level ' + a.level}>{a.label}</div>
+        </div>
+        <div className="summary-score-box">
+          <div className="summary-score">{report.scores ? report.scores.overall.toFixed(1) : '—'}<span className="muted small"> /100</span></div>
+          <div className="muted small">{report.scores ? report.scores.grade_label : '未评分'}</div>
+        </div>
+      </div>
+      <p className="summary-line">
+        本件为{report.carrier === 'electronic' ? '电子版流水' : report.carrier === 'image' ? '图片件' : '截图件'}，
+        真实性{a.label}；{hits.length === 0 ? '未命中主要风险提示' : '命中 ' + (report.conclusions?.length ?? 0) + ' 项风险提示'}。
+      </p>
+      <div className="summary-kpi">
+        {kpi.map(item => (
+          <div className="summary-kpi-item" key={item.k}>
+            <div className="summary-kpi-k">{item.k}</div>
+            <div className="summary-kpi-v">{item.v}</div>
+          </div>
+        ))}
+      </div>
+      <div className="summary-block">
+        <div className="summary-block-title">主要风险提示</div>
+        {hits.length === 0
+          ? <p className="muted">负债、异常行为、集中度方面未见提示。</p>
+          : <ul className="summary-risks">{hits.map(c => <li key={c.code}>{c.code}（阈值 {c.threshold}，本次 {c.value}）</li>)}</ul>}
+        {extra > 0 && <div className="muted small">另有 {extra} 条，切「明细版」查看</div>}
+      </div>
+      <div className="summary-block">
+        <div className="summary-block-title">建议</div>
+        <ul className="summary-risks">
+          <li>{a.level === 'grant' ? '材料与账务核验通过，可进入授信流程。'
+            : a.level === 'supplement' ? '需补充材料（见受限项）后重评。'
+            : a.level === 'fail' ? '不建议据此授信，需人工核查。'
+            : '证据不足，需人工复核后使用。'}</li>
+          {report.limitations.slice(0, 3).map((x, i) => <li key={i} className="muted small">{x}</li>)}
+        </ul>
+      </div>
+      <div className="muted small">需要看四层核验、40 项指标与证据，切「明细版」。</div>
+    </section>
+  );
+}
+
 export function ReportView({ taskId }: { taskId: number }) {
   const [report, setReport] = useState<ReportPayload | null>(null);
   const [txns, setTxns] = useState<TxnRow[]>([]);
@@ -212,7 +280,7 @@ export function ReportView({ taskId }: { taskId: number }) {
   }
 
   return (
-    <div className="result-wrap">
+    <div className={"result-wrap " + (view === "summary" ? "view-summary" : "view-detail")}>
       <div className="result">
         <div className="result-head sticky-head">
           <div className="result-head-left">
@@ -319,8 +387,10 @@ export function ReportView({ taskId }: { taskId: number }) {
             <div className="view-switch">
               <button type="button" className={'pill-btn' + (view === 'summary' ? ' pill-btn-primary' : '')} onClick={() => setView('summary')}>结论版</button>
               <button type="button" className={'pill-btn' + (view === 'detail' ? ' pill-btn-primary' : '')} onClick={() => setView('detail')}>明细版</button>
-              <span className="muted small">结论版给不需要看指标的人；明细版保留全部指标、核验与证据</span>
+              <span className="muted small">结论版是一页概要；明细版才是完整报告</span>
             </div>
+
+            {view === 'summary' && <SummaryPanel report={report} txnCount={txns.length} />}
 
             <div className="report-narrative">
               <div className="report-narrative-title">结论摘要</div>
