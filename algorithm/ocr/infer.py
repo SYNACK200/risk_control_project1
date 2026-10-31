@@ -165,6 +165,88 @@ def _cluster_columns(anchors: list[dict], pages: dict[int, list[dict]], tol: flo
     return cols
 
 
+def _augment_columns(cols: list[dict], pages: dict[int, list[dict]]) -> list[dict]:
+    """把锚点没覆盖到的列补进来（按表头分段对齐，避免把同一列切碎）。
+
+    思路：先找「表头行」（词数最多且多为短中文的行），以相邻表头词的中点为分界，
+    把整页词按 x 分到各个列区间；凡是没有对应锚点列的区间，补一列。
+    """
+    if not cols:
+        return cols
+
+    # 找表头行：按 y 聚行，取词数最多、短词占比高的一行
+    best_row: list[dict] = []
+    for ws in pages.values():
+        rows: dict[int, list[dict]] = {}
+        for w in ws:
+            rows.setdefault(int(round(w["top"] / 3)), []).append(w)
+        for row in rows.values():
+            if len(row) < 3 or len(row) <= len(best_row):
+                continue
+            short_cn = sum(1 for w in row if 1 <= len(w["text"]) <= 10 and re.search(r"[\u4e00-\u9fff]", w["text"]))
+            if short_cn >= len(row) * 0.6:
+                best_row = row
+    if len(best_row) < 2:
+        return cols
+
+    anchor_words = sorted(best_row, key=lambda w: (w["x0"] + w["x1"]) / 2)
+    edges = [((a["x1"] + b["x0"]) / 2) for a, b in zip(anchor_words, anchor_words[1:])]
+
+    import bisect
+
+    def seg(cx: float) -> int:
+        return bisect.bisect_left(edges, cx)
+
+    buckets: dict[int, list[dict]] = {}
+    for ws in pages.values():
+        for w in ws:
+            buckets.setdefault(seg((w["x0"] + w["x1"]) / 2), []).append(w)
+
+    existing = [c["center"] for c in cols]
+    for words in buckets.values():
+        if not words:
+            continue
+        cx = sum((w["x0"] + w["x1"]) / 2 for w in words) / len(words)
+        if any(abs(cx - c) <= 40 for c in existing):
+            continue
+        cols.append({
+            "center": cx, "words": words, "fields": [],
+            "x0": min(w["x0"] for w in words), "x1": max(w["x1"] for w in words),
+            "samples": [w["text"] for w in words][:200],
+        })
+        existing.append(cx)
+
+    cols.sort(key=lambda c: c["center"])
+    return cols
+
+
+# 表头文字 → 模板字段名（银行版式常识，比纯数值特征更可靠）
+FIELD_BY_HEADER: dict[str, str] = {
+    "交易日期": "txn_date", "日期": "txn_date", "记账日期": "txn_date", "交易时间": "txn_date",
+    "摘要": "summary", "交易摘要": "summary", "用途": "summary", "备注": "summary",
+    "收入/支出金额": "amount", "金额": "amount", "交易金额": "amount", "发生额": "amount",
+    "收入金额": "amount", "支出金额": "amount",
+    "余额": "balance", "账户余额": "balance", "可用余额": "balance",
+    "账号": "account_no", "卡号": "account_no", "账户": "account_no", "本方账号": "account_no",
+    "币种": "currency", "货币": "currency",
+    "渠道": "channel", "交易渠道": "channel", "交易方式": "channel",
+    "对方户名": "counterparty_name", "对方名称": "counterparty_name",
+    "对方账户": "counterparty_name", "对手方": "counterparty_name", "收款人": "counterparty_name",
+    "借贷标志": "direction", "收支方向": "direction", "收付标志": "direction",
+}
+
+
+def _map_by_header_name(cols: list[dict], aliases: dict[int, str], out: dict) -> None:
+    """按表头文字补全字段映射（只补未占用的字段）。"""
+    used = {p.field for p in out.values()}
+    for idx, alias in aliases.items():
+        field = FIELD_BY_HEADER.get(str(alias).strip())
+        if not field or field in used:
+            continue
+        out[idx] = Provenance(field, idx, "header", 0.85, f"表头「{alias}」直接对应字段")
+        used.add(field)
+
+
 def _column_stats(samples: list[str]) -> dict:
     n = max(1, len(samples))
     nums = [s for s in samples if NUM_RE.match(s.replace(" ", ""))]
@@ -324,6 +406,7 @@ def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNO
         raise ValueError("没有任何有效标注，无法外推")
 
     cols = _cluster_columns(anchors, use_pages)
+    cols = _augment_columns(cols, use_pages)
     labeled: dict[int, str] = {}
     for idx, c in enumerate(cols):
         for f in c["fields"]:
@@ -331,6 +414,7 @@ def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNO
     prov = _guess_fields(cols, labeled)
 
     aliases = _header_aliases(cols, use_pages)
+    _map_by_header_name(cols, aliases, prov)
     field_map: dict[str, str | int] = {}
     for pr in prov.values():
         if pr.column is None:

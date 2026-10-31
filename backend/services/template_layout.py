@@ -50,8 +50,12 @@ def build_layout(pdf_bytes: bytes, marks: list[dict], columns: list[dict], field
         y0 = float(mark.get("y", 0)) - 12
         y1 = float(mark.get("y", 0)) + 12
         if target is not None and str(target):
-            for rect in page.search_for(str(target))[:1]:
-                y0, y1 = rect.y0 - 6, rect.y1 + 6
+            # search_for 返回的是「未旋转」坐标，必须乘 rotation_matrix 才能和列坐标（显示坐标）对齐
+            matrix = page.rotation_matrix
+            for found in page.search_for(str(target))[:1]:
+                rect = found * matrix
+                y0 = max(0.0, rect.y0 - 6)
+                y1 = max(rect.y1 + 6, page.rect.height - 24)
         boxes.append({
             "field": field,
             "column": str(target) if target is not None else "",
