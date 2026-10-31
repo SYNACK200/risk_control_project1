@@ -397,3 +397,13 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .auth-detail > summary:hover { background: #f4f8fe; border-color: #b9cbe4; }
 .auth-detail > summary::before { content: "▸"; font-size: 11px; opacity: .8; }
 .auth-detail[open] > summary::before { content: "▾"; }
+
+/* ---- 客户与账户：指标展开与标准参考 ---- */
+.metric-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 2px; }
+.metric-toolbar .pill-btn { padding: 4px 12px; font-size: 12.5px; }
+.metric-ref { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e6e9ef; }
+.metric-ref-title { font-size: 12.5px; font-weight: 600; color: #33455c; margin-bottom: 6px; }
+.metric-ref-list { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 6px; }
+.metric-ref-list li { font-size: 12.5px; line-height: 1.5; }
+.metric-ref-list .me-k { margin-right: 6px; }
+.me-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 18px; margin-bottom: 4px; }
