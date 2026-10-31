@@ -23,7 +23,7 @@ python -m pip install -q -r backend/requirements.txt
 echo "[3/4] 检查前端构建产物 ..."
 if [ ! -f frontend/dist/index.html ]; then
   echo "  构建借款侧前端（需要 Node.js）..."
-  (cd frontend && npm ci && npm run build)
+  (cd frontend && npm ci && npm run build:app)
 fi
 if [ ! -f frontend-admin/dist/index.html ]; then
   echo "  构建银行侧前端（需要 Node.js）..."

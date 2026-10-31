@@ -325,5 +325,33 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .link-btn.danger-text { color: #b3261e; }
 
-.user-bar { position: fixed; right: 16px; top: 10px; z-index: 50; display: flex; align-items: center; gap: 10px;
-  background: rgba(255,255,255,0.92); border: 1px solid #e3e9f3; border-radius: 999px; padding: 4px 12px; }
+.user-bar { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  background: #f8fafc; border-bottom: 1px solid #e3e9f3; padding: 6px 16px; z-index: 5; }
+
+/* ---- 报告页：返回按钮 / 粘性头 / 真实性展开 / 分区评分 ---- */
+.result-head.sticky-head { position: sticky; top: 0; background: #fff; z-index: 8; padding: 8px 0; border-bottom: 1px solid #eef1f5; }
+.back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid #d7dfea; background: #fff; color: #1f2d3d; text-decoration: none; font-size: 13px; }
+.back-btn:hover { background: #f3f6fb; border-color: #b9c6d8; }
+.auth-toggle { cursor: pointer; user-select: none; }
+.auth-caret { margin-right: 6px; color: #6b7a90; font-size: 12px; }
+.scores-section { margin: 14px 0 18px; padding: 14px 16px; border: 1px solid #e3e9f3; border-radius: 12px; background: #fbfcfe; }
+.scores-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.scores-title { font-weight: 600; font-size: 15px; }
+.score-total { margin-left: auto; font-size: 22px; font-weight: 700; }
+.score-grade { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid #cfd8e3; color: #3a4a5f; }
+.score-grade.good { background: #e8f6ee; border-color: #b6e2c6; color: #1f7a45; }
+.score-grade.fair { background: #eef4fb; border-color: #c3d7ef; color: #23578f; }
+.score-grade.watch { background: #fdf3e4; border-color: #f0d3a4; color: #8a5a12; }
+.score-grade.risk { background: #fdeaea; border-color: #f0b4b4; color: #9b1c1c; }
+.scores-domains { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.score-card { background: #fff; border: 1px solid #edf1f7; border-radius: 10px; padding: 10px 12px; }
+.score-card-head { display: flex; justify-content: space-between; align-items: baseline; }
+.score-name { font-weight: 600; font-size: 13px; }
+.score-val { font-size: 16px; font-weight: 700; }
+.score-bar { height: 6px; background: #eef2f7; border-radius: 999px; overflow: hidden; margin: 6px 0; }
+.score-fill { height: 100%; background: #4c7dd8; }
+.score-fill.income, .score-fill.debt, .score-fill.cash { background: #4c7dd8; }
+.score-fill.abnormal { background: #d88a3a; }
+.score-fill.counterparty { background: #7a5bd8; }
+.score-detail { font-size: 12px; color: #56657a; margin: 4px 0; }
