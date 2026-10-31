@@ -46,27 +46,48 @@ export function UploadPage() {
     const isImage = ['image/jpeg', 'image/png'].includes(candidate.type) && /\.(jpe?g|png)$/i.test(candidate.name);
     if (!isPdf && !isImage) return '仅支持 PDF、JPG、JPEG、PNG 文件。';
     if (candidate.size === 0) return '文件为空，请重新选择。';
-    if (candidate.size > (isPdf ? 20 : 10) * MB) return isPdf ? 'PDF 不能超过 20MB。' : '图片不能超过 10MB。';
+    if (candidate.size > (isPdf ? 20 : 20) * MB) return isPdf ? 'PDF 不能超过 20MB。' : '图片单张不能超过 20MB。';
     if (isImage) {
       let image: ImageBitmap;
       try { image = await createImageBitmap(candidate); } catch { return '图片无法读取，请重新导出或选择其他文件。'; }
       const shortSide = Math.min(image.width, image.height);
       image.close();
-      if (shortSide < 1000) return '图片短边不足 1000 像素，请重新拍摄或导出。';
+      if (shortSide < 480) return 'LOW_QUALITY';
     }
     return null;
+  }
+
+  function naturalSort(items: File[]): File[] {
+    return [...items].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
   }
 
   async function selectFiles(list: FileList | File[] | null) {
     const arr = Array.from(list ?? []);
     if (!arr.length) return;
     setError(''); setMultiTasks([]); setNeedPassword(false); setPassword('');
+    let lowQuality = 0;
     for (const f of arr) {
       const problem = await checkOne(f);
+      if (problem === 'LOW_QUALITY') { lowQuality += 1; continue; }
       if (problem) { setError(f.name + '：' + problem); setFiles([]); setFile(null); return; }
     }
-    setFiles(arr);
-    setFile(arr[0] ?? null);
+    const sorted = naturalSort(arr);
+    setFiles(sorted);
+    setFile(sorted[0] ?? null);
+    if (lowQuality > 0) {
+      setError('有 ' + lowQuality + ' 张图片清晰度偏低（短边 <480 像素），已允许提交，但可能影响识别。');
+    }
+  }
+
+  function moveFile(index: number, delta: number) {
+    setFiles(prev => {
+      const next = [...prev];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   }
 
   async function selectFile(candidate?: File) {
@@ -80,13 +101,13 @@ export function UploadPage() {
       const isImage = ['image/jpeg', 'image/png'].includes(candidate.type) && /\.(jpe?g|png)$/i.test(candidate.name);
       if (!isPdf && !isImage) throw new Error('仅支持 PDF、JPG、JPEG、PNG 文件。');
       if (candidate.size === 0) throw new Error('文件为空，请重新选择。');
-      if (candidate.size > (isPdf ? 20 : 10) * MB) throw new Error(isPdf ? 'PDF 不能超过 20MB。' : '图片不能超过 10MB。');
+      if (candidate.size > (isPdf ? 20 : 20) * MB) throw new Error(isPdf ? 'PDF 不能超过 20MB。' : '图片单张不能超过 20MB。');
       if (isImage) {
         let image: ImageBitmap;
         try { image = await createImageBitmap(candidate); } catch { throw new Error('图片无法读取，请重新导出或选择其他文件。'); }
         const shortSide = Math.min(image.width, image.height);
         image.close();
-        if (shortSide < 1000) throw new Error('图片短边不足 1000 像素，请重新拍摄或导出。');
+
       }
       if (selection.current === current) setFile(candidate);
     } catch (cause) {
@@ -203,7 +224,7 @@ export function UploadPage() {
           <h2>选择材料</h2>
           <ul className="material-help">
             <li>电子 PDF：推荐从手机银行直接导出，最大 20MB。</li>
-            <li>拍照或扫描图片：JPG/PNG，最大 10MB，短边至少 1000 像素；处理后需人工复核。</li>
+            <li>拍照或扫描图片：JPG/PNG，单张 ≤20MB；清晰度低也能提交，但可能影响识别，建议重拍。</li>
             <li>截图：可以选择，但来源难以核验，可能无法作为授信依据。</li>
           </ul>
           <p className="muted">实际载体类型、清晰度和文件完整性以后端检查为准。</p>
@@ -220,6 +241,10 @@ export function UploadPage() {
                       <span className="muted small">{i + 1}.</span>
                       <span className="multi-name">{f.name}</span>
                       <span className="muted small">{formatSize(f.size)}</span>
+                      <button type="button" className="link-btn" title="上移"
+                        onClick={() => moveFile(i, -1)}>↑</button>
+                      <button type="button" className="link-btn" title="下移"
+                        onClick={() => moveFile(i, 1)}>↓</button>
                       <button type="button" className="link-btn"
                         onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}>移除</button>
                     </li>
@@ -227,7 +252,7 @@ export function UploadPage() {
                 </ol>
                 <p className="muted small">
                   {files.every(f => !/\.pdf$/i.test(f.name))
-                    ? '都是图片：会按顺序合成一份材料再解析（适合同一份流水的多张照片）。'
+                    ? '都是图片：会按列表顺序合成一份材料（第 1 项在最前）。请按时间先后排列，可用 ↑↓ 调整。'
                     : '包含 PDF：每个文件分别受理，生成多条记录。'}
                 </p>
               </div>
