@@ -454,6 +454,7 @@ export interface ProbeResult {
   header_found: boolean;
   headers: { text: string; x: number; y: number }[];
   suggestions: ProbeSuggestion[];
+  meta: Record<string, { value: string; rect: { x: number; y: number; w: number; h: number } | null }>;
 }
 
 export async function probeTemplate(form: FormData): Promise<ProbeResult> {

@@ -65,6 +65,45 @@ class InferApply(BaseModel):
     template_id: int
 
 
+_META_PATTERNS = [
+    ("account_no", r"(?:卡号|账号|账户|本方账号)\s*[:：]?\s*([0-9*]{8,})"),
+    ("account_name", r"(?:户名|姓名|账户名)\s*[:：]?\s*([^\s，,；;]{2,20})"),
+    ("period", r"(?:起止日期|交易期间|对账期间)\s*[:：]?\s*"
+               r"(20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2})\s*(?:至|—|－|~|到)\s*"
+               r"(20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2})"),
+    ("currency", r"(人民币|美元|欧元|港币|CNY|USD|EUR|HKD)"),
+]
+
+
+def _extract_meta(page_text: str, words: list[dict], page_w: float, page_h: float) -> dict:
+    """从首页文本里抽账号/户名/期间/币种，并给出命中文字的位置（归一化）。"""
+    import re as _re
+
+    out: dict[str, dict] = {}
+    flat = _re.sub(r"[ \t]+", " ", page_text)
+    for field, pattern in _META_PATTERNS:
+        m = _re.search(pattern, flat)
+        if not m:
+            continue
+        value = m.group(1) if field != "period" else f"{m.group(1)} ~ {m.group(2)}"
+        key = m.group(0)[:24]
+        spot = None
+        for w in words:
+            if w["text"] and (w["text"][:6] in key or key[:6] in w["text"]):
+                spot = w
+                break
+        rect = None
+        if spot and page_w and page_h:
+            rect = {
+                "x": round(spot["x0"] / page_w, 4),
+                "y": round(spot["top"] / page_h, 4),
+                "w": round(max(0.02, (spot["x1"] - spot["x0"]) / page_w), 4),
+                "h": round(max(0.015, (spot["bottom"] - spot["top"]) / page_h), 4),
+            }
+        out[field] = {"value": value.strip(), "rect": rect}
+    return out
+
+
 @router.post("/probe")
 def probe_template(file: UploadFile = File(...), password: str | None = Form(None)):
     """标注前的 OCR 预读：识别银行、表头词，并直接给出建议标注（只读第 1 页，不落库）。"""
@@ -119,9 +158,10 @@ def probe_template(file: UploadFile = File(...), password: str | None = Form(Non
                             "x": round((w["x0"] + w["x1"]) / 2, 1),
                             "y": round((w["top"] + w["bottom"]) / 2, 1)})
 
+    meta = _extract_meta(full_text, words, page_size["width"], page_size["height"])
     return {"bank_name": bank_name, "bank_code": bank_code, "rotation": rotation,
             "page_size": page_size, "header_found": len(header) > 0,
-            "headers": headers, "suggestions": suggestions}
+            "headers": headers, "suggestions": suggestions, "meta": meta}
 
 
 @router.post("/infer")
