@@ -414,9 +414,13 @@ def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNO
     cols = _cluster_columns(anchors, use_pages)
     cols = _augment_columns(cols, use_pages)
     labeled: dict[int, str] = {}
+    extra_fields: dict[int, list[str]] = {}
     for idx, c in enumerate(cols):
         for f in c["fields"]:
             labeled.setdefault(idx, f)
+            extra_fields.setdefault(idx, [])
+            if f not in extra_fields[idx]:
+                extra_fields[idx].append(f)
     prov = _guess_fields(cols, labeled)
 
     aliases = _header_aliases(cols, use_pages)
@@ -427,6 +431,13 @@ def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNO
             continue
         alias = aliases.get(pr.column)
         field_map[pr.field] = alias if alias else pr.column
+    # 同一列可以承载多个属性（例如金额列同时给 direction 用），全部写进 field_map
+    for idx, fields in extra_fields.items():
+        alias = aliases.get(idx)
+        for f in fields:
+            if f not in field_map:
+                field_map[f] = alias if alias else idx
+
     missing = [f for f in ("txn_date", "amount", "balance") if f not in field_map]
     if missing:
         warnings.append(f"未能推断出必需字段：{', '.join(missing)}，需补充标注")
