@@ -25,6 +25,7 @@ from algorithm.ocr.models import Transaction
 from datetime import date as _date
 from helpers.security import current_user, require_banker
 from services import thresholds as threshold_service
+from services import worker
 from services.analysis import EncryptedFile, is_password_protected, run_analysis
 from services.workflow import transition
 
@@ -163,42 +164,10 @@ def create_task(
             "preread": preread.to_dict(),
         })
 
-    try:
-        result = run_analysis(
-            data, password=password, template=template, preread=preread,
-            thresholds=threshold_service.build_config(db),
-        )
-    except EncryptedFile as exc:
-        if password_file is not None and password:
-            _record_password_attempt(
-                db, file_id=password_file.id, file_name=file_name, outcome="failed",
-            )
-            db.commit()
-        raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": str(exc)}) from exc
-    except Exception as exc:  # 解析失败也要留任务与审计
-        task = Task(
-            biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
-            user_id=user.id,
-            status="PENDING",
-            failure_code="E_PARSE",
-            created_at=datetime.now(),
-            period_start=period_start,
-            period_end=period_end,
-        )
-        db.add(task); db.flush()
-        transition(task, "FAILED")
-        db.commit(); db.refresh(task)
-        db.add(AuditLog(action="create_task_failed", object_type="task", object_id=task.id, detail=str(exc)[:200]))
-        db.commit()
-        raise HTTPException(500, detail={"code": "E_PARSE", "message": str(exc)[:200]}) from exc
-
     file_obj = password_file or _find_or_create_file(
         db, digest=digest, mime=file.content_type, storage_path=path,
     )
     file_obj.mime = file.content_type
-    file_obj.carrier = result["carrier"]
-    file_obj.pages = result["pages"]
-    file_obj.has_text_layer = result["has_text_layer"]
     if not file_obj.storage_path:
         file_obj.storage_path = str(path)
 
@@ -206,61 +175,25 @@ def create_task(
         biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
         user_id=user.id,
         task_type="credit", channel="upload", file_id=file_obj.id,
-        carrier=result["carrier"], status="PENDING",
+        status="PENDING",
         template_id=template_row.id if template_row else None,
         template_version=template_row.version if template_row else None,
         period_start=period_start, period_end=period_end,
-        check_result={
-            "warnings": result["warnings"],
-            "self_check": result.get("self_check"),
-            "preread": result.get("preread"),
-            "matched_template": matched_template,
-        },
-        finished_at=datetime.now(),
+        check_result={"matched_template": matched_template, "preread": preread.to_dict()},
     )
     db.add(task); db.flush()
     db.add(TaskFile(task_id=task.id, file_id=file_obj.id, role="original", seq=1))
-
-    # 现阶段仍同步执行分析；每次状态推进仍必须满足统一状态机。
-    transition(task, "CHECKING")
-    transition(task, "PARSING")
-    transition(task, "VERIFYING")
-    transition(task, "REPORTING")
-
-    for i, t in enumerate(result["transactions"], start=1):
-        db.add(Txn(
-            task_id=task.id, txn_date=t["txn_date"], direction=t["direction"],
-            amount=None if t["amount"] is None else Decimal(t["amount"]),
-            balance=None if t["balance"] is None else Decimal(t["balance"]),
-            summary=t["summary"], counterparty_name=t["counterparty_name"], page_no=t["page_no"],
-            confidence=None if t["confidence"] is None else Decimal(t["confidence"]),
-        ))
-    for m in result["metrics"]:
-        db.add(MetricValue(
-            task_id=task.id, metric_code=m["code"], metric_name=m["name"],
-            value_num=None if m["value"] is None else Decimal(m["value"]),
-            unit=m["unit"], note=m["note"], caliber_version=m["caliber_version"],
-        ))
-    rep = result["report"]
-    db.add(Report(
-        task_id=task.id, version=1, carrier=rep["carrier"], verdict=rep["verdict"],
-        verdict_reason=rep["verdict_reason"], layers=rep["layers"], limitations=rep["limitations"],
-        evidence=rep["evidence"], materials=rep["materials"],
-        metric_set_version=rep["metric_set_version"], threshold_version=rep["threshold_version"],
-        payload=rep,
-    ))
+    transition(task, "QUEUED")
+    if protected and password:
+        _record_password_attempt(db, file_id=file_obj.id, file_name=file_name, outcome="success")
     db.add(AuditLog(action="create_task", object_type="task", object_id=task.id,
-                   detail=f"source_ref={source_ref or '-'} carrier={rep['carrier']}"))
-    if result["password_protected"] and password:
-        _record_password_attempt(
-            db, file_id=file_obj.id, file_name=file_name, outcome="success",
-        )
-    transition(task, "DONE")
+                   detail=f"source_ref={source_ref or '-'} queued"))
     db.commit(); db.refresh(task)
 
+    # 分析交给后台进程池：请求立即返回 QUEUED，前端轮询进度
+    mode = worker.submit_task(task.id, password=password)
     return {"task_id": task.id, "biz_no": task.biz_no, "status": task.status,
-            "carrier": task.carrier, "txn_count": result["txn_count"],
-            "preread": result.get("preread")}
+            "queued": True, "mode": mode, "preread": preread.to_dict()}
 
 
 def _latest_report(db: Session, task_id: int) -> Report | None:
@@ -551,59 +484,17 @@ def reanalyze_task(
             task.template_id = row.id
             task.template_version = row.version
 
-    preread = run_preread(data, password=password)
-    try:
-        result = run_analysis(
-            data, password=password, template=template, preread=preread,
-            thresholds=threshold_service.build_config(db),
-        )
-    except EncryptedFile as exc:
-        raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": str(exc)}) from exc
-
-    # 明细与指标按本次解析结果重建（重解析的核心目的）
-    from db.models import MetricValue as _MetricValue, Txn as _Txn
-
-    db.query(_Txn).filter(_Txn.task_id == task_id).delete()
-    db.query(_MetricValue).filter(_MetricValue.task_id == task_id).delete()
-    for item in result["transactions"]:
-        db.add(_Txn(
-            task_id=task_id,
-            txn_date=item["txn_date"],
-            direction=item["direction"],
-            amount=None if item["amount"] is None else Decimal(item["amount"]),
-            balance=None if item["balance"] is None else Decimal(item["balance"]),
-            summary=item["summary"],
-            counterparty_name=item["counterparty_name"],
-            page_no=item["page_no"],
-            confidence=None if item["confidence"] is None else Decimal(item["confidence"]),
-        ))
-    for m in result["metrics"]:
-        db.add(_MetricValue(
-            task_id=task_id, metric_code=m["code"], metric_name=m["name"],
-            value_num=None if m["value"] is None else Decimal(m["value"]),
-            unit=m["unit"], note=m["note"],
-            caliber_version=m.get("caliber_version", 1),
-        ))
-    db.flush()
-
-    latest = db.execute(
-        select(Report).where(Report.task_id == task_id).order_by(Report.version.desc())
-    ).scalars().first()
-    new_version = (latest.version + 1) if latest else 1
-    payload = dict(result["report"])
-    payload["version"] = new_version  # 对外可见的报告版本，只增不改
-    db.add(Report(task_id=task_id, version=new_version, payload=payload))
-
-    check = dict(task.check_result or {})
-    check.update({
-        "warnings": result["warnings"],
-        "self_check": result.get("self_check"),
-        "preread": result.get("preread"),
-    })
-    task.check_result = check
-    db.add(AuditLog(action="reanalyze_task", object_type="task", object_id=task_id,
-                    detail="report v" + str(new_version)))
+    if task.status in ("QUEUED", "CHECKING", "PARSING", "VERIFYING", "REPORTING"):
+        raise HTTPException(409, detail={"code": "E_STATE", "message": "任务正在处理中，请稍后再试"})
+    transition(task, "QUEUED")
+    db.add(AuditLog(action="reanalyze_queued", object_type="task", object_id=task_id,
+                   detail=f"template={task.template_id}"))
     db.commit()
+
+    mode = worker.submit_task(task_id, password=password)
+    return {"task_id": task_id, "version": task.version, "status": task.status,
+            "queued": True, "mode": mode}
+
     return {"task_id": task_id, "version": new_version, "layers": [
         {"layer": l["layer"], "status": l["status"], "checks": len(l.get("checks") or [])}
         for l in result["report"].get("layers", [])

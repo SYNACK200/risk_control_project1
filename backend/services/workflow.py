@@ -5,14 +5,15 @@ from dataclasses import dataclass
 
 
 TRANSITIONS: dict[str, frozenset[str]] = {
-    "PENDING": frozenset({"CHECKING", "FAILED"}),
+    "PENDING": frozenset({"QUEUED", "CHECKING", "FAILED"}),
+    "QUEUED": frozenset({"CHECKING", "FAILED"}),
     "CHECKING": frozenset({"PARSING", "FAILED"}),
     "PARSING": frozenset({"VERIFYING", "NEED_SUPPLEMENT", "FAILED"}),
     "NEED_SUPPLEMENT": frozenset({"PARSING", "FAILED"}),
     "VERIFYING": frozenset({"REPORTING", "FAILED"}),
     "REPORTING": frozenset({"DONE", "FAILED"}),
-    "DONE": frozenset(),
-    "FAILED": frozenset({"PENDING"}),
+    "DONE": frozenset({"QUEUED"}),
+    "FAILED": frozenset({"PENDING", "QUEUED"}),
 }
 
 

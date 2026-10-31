@@ -240,3 +240,4 @@
 | 2026-10-31 | 角色隔离与退出登录：借款侧登录拒绝银行侧账号并弹出拦截页（同源 localStorage 共享导致串号）；两侧「退出登录」改为回首页 `/` | 银行侧、借款侧 |
 | 2026-10-31 | 模板创建恢复可用：反验未通过不再硬拦草稿保存（`GET/POST /templates/infer` 增加 valid/saved_invalid，保留 draft_map）；标注页新增「保存为模板草稿」与反验提示 | 算法、后端、银行侧 |
 | 2026-10-31 | 模板删除改为「有引用则软删」：template.deleted_at，DELETE /templates/{id} 返回 soft/used/message；列表默认隐藏已移除，`?include_deleted=true` 可查 | 后端、银行侧 |
+| 2026-10-31 | 任务分析改为后台进程池：POST /tasks 与 /tasks/{id}/reanalyze 立即返回 status=QUEUED，新增 QUEUED 状态；ANALYSIS_BACKEND/ANALYSIS_WORKERS 配置；并发写 metric_value 的死锁加 READ COMMITTED + 重试 | 后端、借款侧、银行侧 |

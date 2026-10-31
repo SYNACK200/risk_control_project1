@@ -28,8 +28,14 @@ async def lifespan(app: FastAPI):
         session.close()
     logger.info("服务启动；数据库已就绪（缺表自动创建）。")
     try:
+        from services import worker as _worker
+
+        _worker.warmup()
         yield
     finally:
+        from services import worker
+
+        worker.shutdown()
         logger.info("服务已停止。")
 
 
