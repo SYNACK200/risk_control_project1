@@ -105,9 +105,12 @@ class _SpaStaticFiles(_StaticFiles):
 
 _ROOT = _Path(__file__).resolve().parents[1]
 _BORROWER_DIST = _ROOT / "frontend" / "dist"
+_PORTAL_DIR = _ROOT / "portal"
 _ADMIN_DIST = _ROOT / "frontend-admin" / "dist"
 
 if _ADMIN_DIST.exists():
     app.mount("/bank", _SpaStaticFiles(directory=_ADMIN_DIST, html=True), name="bank")
 if _BORROWER_DIST.exists():
-    app.mount("/", _SpaStaticFiles(directory=_BORROWER_DIST, html=True), name="borrower")
+    app.mount("/app", _SpaStaticFiles(directory=_BORROWER_DIST, html=True), name="borrower")
+if _PORTAL_DIR.exists():
+    app.mount("/", _StaticFiles(directory=_PORTAL_DIR, html=True), name="portal")

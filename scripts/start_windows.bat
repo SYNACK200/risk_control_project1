@@ -24,7 +24,7 @@ python -m pip install -q -r backend\requirements.txt || goto :err
 echo [3/4] 检查前端构建产物 ...
 if not exist frontend\dist\index.html (
   echo   构建借款侧前端（需要 Node.js）...
-  pushd frontend && call npm ci && call npm run build || goto :err
+  pushd frontend && call npm ci && call npm run build:app || goto :err
   popd
 )
 if not exist frontend-admin\dist\index.html (

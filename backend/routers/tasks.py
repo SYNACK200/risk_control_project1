@@ -7,6 +7,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime
+import os
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,6 +27,8 @@ from helpers.security import current_user, require_banker
 from services import thresholds as threshold_service
 from services.analysis import EncryptedFile, is_password_protected, run_analysis
 from services.workflow import transition
+
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "30")) * 1024 * 1024
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 

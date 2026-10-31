@@ -41,6 +41,7 @@ export function ReportView({ taskId }: { taskId: number }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [openLayers, setOpenLayers] = useState<Record<string, boolean>>({});
   const [openSelf, setOpenSelf] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
   const [whitelist, setWhitelist] = useState<{ reason: string; at: string } | null>(null);
@@ -148,9 +149,9 @@ export function ReportView({ taskId }: { taskId: number }) {
   return (
     <div className="result-wrap">
       <div className="result">
-        <div className="result-head">
+        <div className="result-head sticky-head">
           <div className="result-head-left">
-            <Link className="link-btn" to="/">← 返回解析结果</Link>
+            <Link className="back-btn" to="/">← 返回解析结果</Link>
             <h2>报告详情</h2>
           </div>
         </div>
@@ -190,12 +191,13 @@ export function ReportView({ taskId }: { taskId: number }) {
               const a = authenticity(report.layers, report.carrier, report.limitations);
               return (
                 <div className={"auth-card " + a.level}>
-                  <div className="auth-line">
+                  <div className="auth-line auth-toggle" onClick={() => setAuthOpen(v => !v)} role="button" tabIndex={0}>
                     <span className="auth-badge">{a.level === 'pass' ? '✓' : a.level === 'fail' ? '✕' : '!'}</span>
                     <span className="auth-title">真实性校验：{a.label}</span>
+                    <span className="auth-caret">{authOpen ? "▾" : "▸"}</span>
                     <span className="auth-meta">载体 {report.carrier} · 受限 {a.limited} 项 · {a.blocked.length ? '未全通过：' + a.blocked.join('、') : '四层全部通过'}</span>
                   </div>
-                  <div className="auth-meta-line">
+                  <div className="auth-meta-line" hidden={!authOpen}>
                     <button
                       className="link-btn"
                       type="button"
@@ -211,6 +213,32 @@ export function ReportView({ taskId }: { taskId: number }) {
                 </div>
               );
             })()}
+
+
+            {report.scores && (
+              <div className="scores-section">
+                <div className="scores-head">
+                  <span className="scores-title">综合评分</span>
+                  <span className={"score-grade " + report.scores.grade}>{report.scores.grade_label}</span>
+                  <span className="score-total">{report.scores.overall.toFixed(1)}<span className="muted small"> / 100</span></span>
+                </div>
+                <div className="scores-domains">
+                  {report.scores.domains.map(d => (
+                    <div className="score-card" key={d.key}>
+                      <div className="score-card-head">
+                        <span className="score-name">{d.name}</span>
+                        <span className="score-val">{d.score.toFixed(1)}</span>
+                      </div>
+                      <div className="score-bar"><div className={"score-fill " + d.key} style={{ width: d.score + "%" }} /></div>
+                      <div className="muted small">{d.desc}</div>
+                      <div className="score-detail">{d.detail}</div>
+                      <div className="muted small">权重 {(d.weight * 100).toFixed(0)}% · 指标 {d.metric_valued}/{d.metric_total} 有值</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="muted small">{report.scores.method}</div>
+              </div>
+            )}
 
             {preread && (
               <div className={"preread-card " + preread.verdict}>

@@ -89,6 +89,7 @@ def test_report_matches_contract_shape():
         "metric_set_version",
         "threshold_version",
         "conclusions",
+        "scores",
         "trend",
         "evidence",
         "materials",

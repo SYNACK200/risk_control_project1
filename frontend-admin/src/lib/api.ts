@@ -27,6 +27,11 @@ export interface ReportPayload {
   materials: { file_id: number; role: string; pages: number | null; sha256: string | null }[];
   version: number;
   trend: { month: string; income: string; expense: string }[];
+  scores?: {
+    overall: number; grade: string; grade_label: string; method: string;
+    domains: { key: string; name: string; weight: number; desc: string; score: number;
+               metric_total: number; metric_valued: number; missing: number; hits: string[]; detail: string }[];
+  } | null;
 }
 
 const BASE = '/api/v1';
