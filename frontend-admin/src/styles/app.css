@@ -500,3 +500,38 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 /* ---- 页头行（标题 + 刷新） ---- */
 .page-head-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .page-head-row h2 { margin: 0; }
+
+/* ---- 结论版：一页概要 ---- */
+.summary-panel { display: flex; flex-direction: column; gap: 14px; margin: 10px 0 18px; }
+.summary-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  border: 1px solid #dfe8f5; border-radius: 14px; padding: 16px 18px;
+  background: linear-gradient(180deg, #f7fbff, #ffffff); }
+.summary-label { font-size: 12px; color: #5b6b80; margin-bottom: 4px; }
+.summary-level { font-size: 20px; font-weight: 700; }
+.summary-level.pass, .summary-level.grant { color: #1f7a45; }
+.summary-level.supplement { color: #b67512; }
+.summary-level.fail { color: #b83a3a; }
+.summary-level.unknown { color: #5b6b80; }
+.summary-score-box { text-align: right; }
+.summary-score { font-size: 26px; font-weight: 700; }
+.summary-line { margin: 0; font-size: 14px; line-height: 1.75; color: #33455c; }
+.summary-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.summary-kpi-item { border: 1px solid #e6edf7; border-radius: 10px; padding: 10px 12px; background: #fbfdff; }
+.summary-kpi-k { font-size: 12px; color: #6b7c92; }
+.summary-kpi-v { font-size: 15px; font-weight: 600; margin-top: 2px; }
+.summary-block { border: 1px solid #e6edf7; border-radius: 10px; padding: 10px 12px; background: #fff; }
+.summary-block-title { font-weight: 600; margin-bottom: 6px; }
+.summary-risks { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+
+/* 结论版隐藏明细内容（明细版才显示） */
+.view-summary .auth-card,
+.view-summary .report-narrative,
+.view-summary .scores-section,
+.view-summary .metric-toolbar,
+.view-summary .metric-group,
+.view-summary .auth-detail,
+.view-summary .insight-section,
+.view-summary .chart-section,
+.view-summary .tiles,
+.view-summary h3 { display: none !important; }
+.view-detail .summary-panel { display: none !important; }
