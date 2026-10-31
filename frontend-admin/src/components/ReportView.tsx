@@ -207,16 +207,15 @@ export function ReportView({ taskId }: { taskId: number }) {
                   </div>
                   <div className="auth-meta-line" hidden={!authOpen}>
                     <button
-                      className="link-btn"
+                      className="pill-btn pill-btn-primary"
                       type="button"
                       onClick={() => setOpenLayers(Object.fromEntries(report.layers.map(l => [l.layer, true])))}
-                    >展开四层逐项（36 项）▸</button>
+                    ><span className="pill-icon">▣</span>展开四层逐项（36 项）</button>
                     <button
-                      className="link-btn"
+                      className="pill-btn"
                       type="button"
-                      style={{ marginLeft: 10 }}
                       onClick={() => setOpenLayers({})}
-                    >全部收起</button>
+                    ><span className="pill-icon">▤</span>全部收起</button>
                   </div>
                   {authOpen && (
                   <div className="auth-inline-layers">
