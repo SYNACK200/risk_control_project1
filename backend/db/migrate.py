@@ -22,4 +22,16 @@ def ensure_columns() -> list[str]:
             conn.execute(text("ALTER TABLE task ADD COLUMN user_id INT NULL"))
             conn.execute(text("CREATE INDEX ix_task_user_id ON task (user_id)"))
             done.append("task.user_id")
+    try:
+        tcols = {c["name"] for c in insp.get_columns("template")}
+    except Exception:  # noqa: BLE001 - 老库可能还没有 template 表
+        tcols = set()
+    if tcols:
+        with engine.begin() as conn:
+            if "sample_file_id" not in tcols:
+                conn.execute(text("ALTER TABLE template ADD COLUMN sample_file_id INT NULL"))
+                done.append("template.sample_file_id")
+            if "layout" not in tcols:
+                conn.execute(text("ALTER TABLE template ADD COLUMN layout JSON NULL"))
+                done.append("template.layout")
     return done
