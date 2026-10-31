@@ -458,7 +458,16 @@ export interface ProbeResult {
 }
 
 export async function probeTemplate(form: FormData): Promise<ProbeResult> {
-  return json<ProbeResult>(await authFetch(BASE + '/templates/probe', { method: 'POST', body: form }));
+  const res = await authFetch(BASE + '/templates/probe', { method: 'POST', body: form });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = typeof body?.detail === 'string' ? body.detail : (body?.detail?.message || '');
+    } catch { /* ignore */ }
+    throw new Error('HTTP ' + res.status + (detail ? '：' + detail : ''));
+  }
+  return (await res.json()) as ProbeResult;
 }
 
 export async function decryptPdf(file: File, password: string): Promise<Blob> {
