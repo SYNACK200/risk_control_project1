@@ -65,6 +65,65 @@ class InferApply(BaseModel):
     template_id: int
 
 
+@router.post("/probe")
+def probe_template(file: UploadFile = File(...), password: str | None = Form(None)):
+    """标注前的 OCR 预读：识别银行、表头词，并直接给出建议标注（只读第 1 页，不落库）。"""
+    data = file.file.read()
+    if not data:
+        raise HTTPException(400, "文件为空")
+    if data[:4] != b"%PDF":
+        raise HTTPException(422, detail={"code": "E_PARAM",
+                                         "message": "预读只支持 PDF 电子件（图片件请直接框选）"})
+    import pymupdf
+
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    if doc.needs_pass:
+        if not password or doc.authenticate(password) <= 0:
+            doc.close()
+            raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "PDF 需要打开口令"})
+    page = doc[0]
+    matrix = page.rotation_matrix
+    words: list[dict] = []
+    for x0, y0, x1, y1, text, *_rest in page.get_text("words"):
+        if not text.strip():
+            continue
+        rect = pymupdf.Rect(x0, y0, x1, y1) * matrix
+        words.append({"x0": rect.x0, "x1": rect.x1, "top": rect.y0,
+                      "bottom": rect.y1, "text": text})
+    full_text = page.get_text() or ""
+    page_size = {"width": round(page.rect.width, 1), "height": round(page.rect.height, 1)}
+    rotation = int(page.rotation)
+    doc.close()
+
+    from algorithm.algo.preread import BANK_ALIASES
+    from algorithm.ocr.infer import FIELD_BY_HEADER, detect_header_row
+
+    bank_name = bank_code = None
+    for alias, code in BANK_ALIASES:
+        if alias in full_text:
+            bank_name, bank_code = alias, code
+            break
+
+    header = detect_header_row({0: words})
+    headers = [{"text": w["text"], "x": round((w["x0"] + w["x1"]) / 2, 1),
+                "y": round((w["top"] + w["bottom"]) / 2, 1)} for w in header]
+
+    suggestions: list[dict] = []
+    used: set[str] = set()
+    for w in header:
+        field = FIELD_BY_HEADER.get(w["text"].strip())
+        if not field or field in used:
+            continue
+        used.add(field)
+        suggestions.append({"field": field, "column": w["text"],
+                            "x": round((w["x0"] + w["x1"]) / 2, 1),
+                            "y": round((w["top"] + w["bottom"]) / 2, 1)})
+
+    return {"bank_name": bank_name, "bank_code": bank_code, "rotation": rotation,
+            "page_size": page_size, "header_found": len(header) > 0,
+            "headers": headers, "suggestions": suggestions}
+
+
 @router.post("/infer")
 def infer_template_api(
     file: UploadFile = File(...),

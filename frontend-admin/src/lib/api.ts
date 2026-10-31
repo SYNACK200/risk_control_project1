@@ -444,3 +444,18 @@ export async function getTemplateLayoutPng(id: number, page = 0): Promise<Blob> 
   if (!res.ok) throw new Error('没有可回看的样本');
   return await res.blob();
 }
+
+export interface ProbeSuggestion { field: string; column: string; x: number; y: number }
+export interface ProbeResult {
+  bank_name: string | null;
+  bank_code: string | null;
+  rotation: number;
+  page_size: { width: number; height: number };
+  header_found: boolean;
+  headers: { text: string; x: number; y: number }[];
+  suggestions: ProbeSuggestion[];
+}
+
+export async function probeTemplate(form: FormData): Promise<ProbeResult> {
+  return json<ProbeResult>(await authFetch(BASE + '/templates/probe', { method: 'POST', body: form }));
+}
