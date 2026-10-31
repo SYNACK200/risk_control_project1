@@ -1,0 +1,3 @@
+# 可选：扫描件/图片件 OCR（不装也能跑，只是图片件会提示无法核验）
+rapidocr-onnxruntime>=1.3
+opencv-python-headless>=4.8

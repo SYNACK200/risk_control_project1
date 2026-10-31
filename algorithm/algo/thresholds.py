@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
@@ -660,3 +661,129 @@ def evaluate_thresholds(
         notes=notes,
         evidence=evidence,
     )
+
+
+@dataclass(frozen=True)
+class ThresholdDef:
+    """一个可调参数的定义：给页面渲染、给后端校验、给报告解释用。"""
+    key: str
+    label: str
+    group: str
+    kind: str  # ratio | amount | int | int_optional
+    unit: str
+    default: str | int | None
+    minimum: str | int | None
+    maximum: str | int | None
+    desc: str
+    impacts: tuple[str, ...]
+    calibrated: bool = True
+
+
+THRESHOLD_DEFS: tuple[ThresholdDef, ...] = (
+    # 收入能力
+    ThresholdDef("income_cv_high", "收入波动上限（CV）", "收入能力", "ratio", "倍",
+                 "0.5", "0.05", "3", "月度收入变异系数超过该值判定收入不稳定。", ("INCOME_UNSTABLE",)),
+    ThresholdDef("dti_high", "债务收入比上限（DTI）", "收入能力", "ratio", "倍",
+                 "0.5", "0.05", "2", "月还款 ÷ 月均收入超过该值判定负债偏高。", ("DTI_HIGH",)),
+    # 负债与还款
+    ThresholdDef("loan_platform_count", "网贷平台数上限", "负债与还款", "int", "家",
+                 3, 1, 50, "出现过的网贷平台超过该家数判定多头借贷。", ("MULTI_LOAN",)),
+    ThresholdDef("small_loan_repay_min_monthly", "小额贷款月还款次数上限", "负债与还款", "int", "次/月",
+                 1, 0, 50, "小额贷款类还款每月超过该次数判定小额贷依赖。", ("SMALL_LOAN_REPAY",)),
+    ThresholdDef("new_loan_min_count", "新增贷款笔数下限", "负债与还款", "int", "笔",
+                 1, 1, 100, "观察期内新增贷款达到该笔数判定新增负债。", ("NEW_LOAN",)),
+    ThresholdDef("new_loan_min_income_ratio", "新增贷款占比下限", "负债与还款", "ratio", "倍",
+                 "0.3", "0", "5", "新增贷款金额占期间收入达到该比例才判定（未校准）。", ("NEW_LOAN",), calibrated=False),
+    # 资金与余额
+    ThresholdDef("low_balance_multiple", "低余额倍数", "资金与余额", "ratio", "倍",
+                 "1.0", "0", "10", "期末余额低于「月均支出 × 该倍数」判定余额偏低。", ("LOW_BALANCE",)),
+    ThresholdDef("net_outflow_ratio", "净流出比例阈值", "资金与余额", "ratio", "倍",
+                 "0.3", "0", "5", "某月净流出超过月均收入该比例计为净流出月。", ("NET_OUTFLOW",)),
+    ThresholdDef("net_outflow_consecutive_months", "净流出连续月数", "资金与余额", "int", "个月",
+                 2, 1, 24, "连续净流出达到该月数判定资金紧张。", ("NET_OUTFLOW",)),
+    ThresholdDef("net_outflow_month_floor", "净流出最小金额", "资金与余额", "amount", "元",
+                 "100", "0", "1000000", "净流出低于该金额的月份不计入（未校准）。", ("NET_OUTFLOW",), calibrated=False),
+    ThresholdDef("balance_decline_ratio", "余额下降幅度", "资金与余额", "ratio", "倍",
+                 "0.1", "0", "5", "余额在一段时间内下降超过该比例判定余额下滑。", ("BALANCE_DECLINE",)),
+    ThresholdDef("balance_decline_windows", "余额下滑观察窗口", "资金与余额", "int", "个月",
+                 3, 1, 24, "用最近多少个月观察余额下滑。", ("BALANCE_DECLINE",)),
+    ThresholdDef("fast_in_out_ratio", "快进快出比例", "资金与余额", "ratio", "倍",
+                 "0.2", "0", "5", "入账后短时间内大比例转出判定快进快出。", ("FAST_IN_OUT",)),
+    ThresholdDef("fast_in_out_min_amount", "快进快出最小金额", "资金与余额", "amount", "元",
+                 "500", "0", "1000000", "低于该金额的快速转出不计入（未校准）。", ("FAST_IN_OUT",), calibrated=False),
+    ThresholdDef("fast_in_out_min_txns", "快进快出最少笔数", "资金与余额", "int", "笔",
+                 3, 1, 100, "达到该笔数才判定快进快出。", ("FAST_IN_OUT",)),
+    # 对手方与集中度
+    ThresholdDef("counterparty_min_txns", "集中度最小样本笔数", "对手方与集中度", "int", "笔",
+                 20, 1, 10000, "少于该笔数不做集中度判定（样本不足）。", ("COUNTERPARTY_CONCENTRATED",)),
+    ThresholdDef("counterparty_missing_ratio", "对手方缺失比例上限", "对手方与集中度", "ratio", "倍",
+                 "0.2", "0", "1", "对手方信息缺失超过该比例时集中度结论降级。", ("COUNTERPARTY_CONCENTRATED",)),
+    ThresholdDef("counterparty_hhi", "HHI 集中度阈值", "对手方与集中度", "ratio", "指数",
+                 None, "0", "1", "HHI 超过该值判定集中度高；留空 = 不判定（未校准）。", ("COUNTERPARTY_CONCENTRATED",), calibrated=False),
+    # 异常行为
+    ThresholdDef("gambling_hit_count", "博彩命中次数", "异常行为", "int", "次",
+                 1, 1, 100, "命中博彩类对手方达到该次数判定。", ("GAMBLING_HIT",)),
+    ThresholdDef("night_ratio", "夜间交易占比", "异常行为", "ratio", "倍",
+                 "0.1", "0", "1", "夜间（默认 0-6 点）交易占比超过该值判定。", ("NIGHT_TRADING",)),
+    ThresholdDef("crypto_min_count", "虚拟币交易笔数", "异常行为", "int", "笔",
+                 1, 1, 100, "虚拟币相关交易达到该笔数判定。", ("CRYPTO_HIT",)),
+    ThresholdDef("crypto_min_amount", "虚拟币最小金额", "异常行为", "amount", "元",
+                 "1000", "0", "10000000", "虚拟币交易金额达到该值才计入（未校准）。", ("CRYPTO_HIT",), calibrated=False),
+)
+
+
+def threshold_defs() -> list[dict]:
+    """给接口/页面用的定义列表。"""
+    return [
+        {
+            "key": d.key,
+            "label": d.label,
+            "group": d.group,
+            "kind": d.kind,
+            "unit": d.unit,
+            "default": d.default,
+            "minimum": d.minimum,
+            "maximum": d.maximum,
+            "desc": d.desc,
+            "impacts": list(d.impacts),
+            "calibrated": d.calibrated,
+        }
+        for d in THRESHOLD_DEFS
+    ]
+
+
+def validate_values(values: dict) -> dict:
+    """按定义表校验一组参数：范围、类型、未知键。返回规范化后的配置字典。"""
+    known = {d.key: d for d in THRESHOLD_DEFS}
+    unknown = set(values) - set(known) - {"version"}
+    if unknown:
+        raise ValueError(f"未知参数：{', '.join(sorted(unknown))}")
+    cleaned: dict = {}
+    for key, raw in values.items():
+        if key == "version":
+            continue
+        definition = known[key]
+        if raw is None or raw == "":
+            if definition.kind != "ratio" or definition.key != "counterparty_hhi":
+                raise ValueError(f"{definition.label} 不能为空")
+            cleaned[key] = None
+            continue
+        if definition.kind in ("int", "int_optional"):
+            try:
+                number = int(Decimal(str(raw)))
+            except Exception as exc:
+                raise ValueError(f"{definition.label} 必须是整数") from exc
+        else:
+            try:
+                number = Decimal(str(raw))
+            except Exception as exc:
+                raise ValueError(f"{definition.label} 必须是数字") from exc
+        if definition.minimum is not None and number < Decimal(str(definition.minimum)):
+            raise ValueError(f"{definition.label} 不能小于 {definition.minimum}")
+        if definition.maximum is not None and number > Decimal(str(definition.maximum)):
+            raise ValueError(f"{definition.label} 不能大于 {definition.maximum}")
+        cleaned[key] = number if definition.kind in ("int", "int_optional") else str(number)
+    missing = set(known) - set(cleaned) - {"counterparty_hhi"}
+    if missing:
+        raise ValueError(f"缺少参数：{', '.join(sorted(missing))}")
+    return cleaned

@@ -1,15 +1,6 @@
-import type { Rect } from './types';
 import verifyJson from '../mocks/verify_result.json';
 import metricsJson from '../mocks/metrics_report.json';
-import ocrJson from '../mocks/ocr_lines.json';
 import ratesJson from '../mocks/interest_rates.json';
-
-export interface DemoLine {
-  field: string;
-  text: string;
-  confidence: number;
-  rect: Rect;
-}
 
 export interface LayerItem { code: string; name: string; result: string; detail?: string }
 export interface Layer { verdict: string; reason?: string; items: LayerItem[] }
@@ -43,14 +34,6 @@ export interface MetricsReport {
   conclusions: Conclusion[];
 }
 
-export interface OcrSample {
-  note: string;
-  page: number;
-  page_size: { w: number; h: number };
-  self_check: { field_completeness: number; avg_confidence: number; low_conf_ratio: number };
-  lines: DemoLine[];
-}
-
 export interface RateRow { product: string; annual: string; min_balance: string }
 export interface RateTable {
   note: string; basis_days: number; settlement_days: string; rates: RateRow[];
@@ -58,7 +41,4 @@ export interface RateTable {
 
 export const verifyDemo = verifyJson as unknown as VerifyResult;
 export const metricsDemo = metricsJson as unknown as MetricsReport;
-export const ocrDemo = ocrJson as unknown as OcrSample;
 export const rateDemo = ratesJson as unknown as RateTable;
-
-export const LOW_CONF = 0.8;

@@ -746,6 +746,31 @@ def parse(file_bytes: bytes, template: Template | dict | None = None) -> ParseRe
             f"正文日期数与解析笔数差异较大：{body_dates} vs {len(transactions)}，需人工核对"
         )
 
+    if not transactions:
+        transactions, footer_count, page_summaries, page_count = _generic_rescue(
+            file_bytes, page_count, page_summaries, warnings
+        )
+        headers = []
     return _build_result(
         transactions, footer_count, page_count, warnings, page_summaries, headers
     )
+
+
+def _generic_rescue(file_bytes, page_count, page_summaries, warnings):
+    # 第三层兜底：表头驱动的通用解析（未知银行/未知版式，等价于默认模板）
+    warnings.append("两套引擎均未解析到明细，回退表头驱动的通用解析")
+    try:
+        from .generic_parse import parse_generic
+
+        result, generic_warnings = parse_generic(file_bytes)
+        warnings.extend(generic_warnings)
+        if result.transactions:
+            return (
+                result.transactions,
+                result.footer_count,
+                result.page_summaries,
+                result.page_count or page_count,
+            )
+    except Exception as exc:
+        warnings.append("通用解析执行失败：" + str(exc))
+    return [], None, page_summaries, page_count

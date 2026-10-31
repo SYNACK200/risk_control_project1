@@ -11,7 +11,7 @@ import { PdfPasswordError, openSampleFile } from '../lib/pdf';
 import { ArchiveError, extractStatement, isArchive } from '../lib/archive';
 import { PasswordDialog, type PasswordRequest } from '../components/PasswordDialog';
 import { createDemoPage } from '../lib/sample';
-import { ocrDemo, LOW_CONF, type DemoLine } from '../lib/demo';
+import { inferTemplate, type InferResult } from '../lib/api';
 import type { FieldMapV1, Issue, Rect, SamplePage, Selection, Tool } from '../lib/types';
 
 type Notice = { level: 'info' | 'error' | 'warning'; text: string } | null;
@@ -19,6 +19,41 @@ type SpecialLevel = 'info' | 'warn' | 'error';
 interface SpecialEvent { time: string; name: string; stage: string; result: string; level: SpecialLevel }
 interface Pending { file: File; kind: 'zip' | 'pdf'; target: string; attempts: number; wrong: boolean }
 const MAX_PW_ATTEMPTS = 3;
+const SOURCE_LABEL: Record<string, string> = { labeled: '人工标注', inferred: '统计推断', derived: '派生' };
+
+/** 标注比例 × 页面尺寸即 PDF pt（SamplePage 取自 viewport scale=1），与后端 pdfplumber 坐标一致。 */
+function toPoint(value: number, total: number) {
+  return Math.round(value * total * 10) / 10;
+}
+
+function marksFromMap(map: FieldMapV1): { field: string; page: number; x: number; y: number }[] {
+  const marks: { field: string; page: number; x: number; y: number }[] = [];
+  const seen = new Set<string>();
+  for (const table of map.tables) {
+    for (const col of table.columns) {
+      if (!col.field || seen.has(col.field)) continue;
+      seen.add(col.field);
+      marks.push({
+        field: col.field,
+        page: Math.max(0, table.page - 1),
+        x: toPoint(col.x + col.w / 2, map.page_size.w),
+        y: toPoint(table.headerY ?? table.area.y + 0.01, map.page_size.h),
+      });
+    }
+  }
+  if (marks.length > 0) return marks;
+  for (const box of map.meta_boxes) {
+    if (!box.field || seen.has(box.field)) continue;
+    seen.add(box.field);
+    marks.push({
+      field: box.field,
+      page: Math.max(0, box.page - 1),
+      x: toPoint(box.rect.x + box.rect.w / 2, map.page_size.w),
+      y: toPoint(box.rect.y + box.rect.h / 2, map.page_size.h),
+    });
+  }
+  return marks;
+}
 
 export function AnnotatePage() {
   const [map, setMap] = useState<FieldMapV1>(() => loadDraft() ?? createEmpty());
@@ -29,7 +64,9 @@ export function AnnotatePage() {
   const [tool, setTool] = useState<Tool>('meta');
   const [sel, setSel] = useState<Selection>(null);
   const [notice, setNotice] = useState<Notice>(null);
-  const [demoLines, setDemoLines] = useState<DemoLine[] | null>(null);
+  const [source, setSource] = useState<{ file: File; password?: string } | null>(null);
+  const [inference, setInference] = useState<InferResult | null>(null);
+  const [inferring, setInferring] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [events, setEvents] = useState<SpecialEvent[]>([]);
 
@@ -50,6 +87,10 @@ export function AnnotatePage() {
     return () => { current?.dispose(); };
   }, [sample]);
 
+  useEffect(() => {
+    setInference(null);
+  }, [map]);
+
   function hint(text: string) { setNotice({ level: 'info', text }); }
 
   function logEvent(name: string, stage: string, result: string, level: SpecialLevel) {
@@ -61,6 +102,8 @@ export function AnnotatePage() {
     const opened = await openSampleFile(file, password);
     setSample(opened);
     setSampleName(file.name);
+    setSource({ file, password });
+    setInference(null);
     setPage(1);
     setSel(null);
     setMap(prev => ({
@@ -68,7 +111,7 @@ export function AnnotatePage() {
       page_size: { w: Math.round(opened.width * 100) / 100, h: Math.round(opened.height * 100) / 100 },
       meta: { ...prev.meta, sample_name: file.name },
     }));
-    setNotice({ level: 'info', text: `已载入 ${file.name}（${opened.pageCount} 页）。样例只在本机读取，不会上传。` });
+    setNotice({ level: 'info', text: `已载入 ${file.name}（${opened.pageCount} 页）。样例在本机读取；点“试解析”时才会上传到本机后端。` });
     logEvent(file.name, '打开材料', `${opened.pageCount} 页，可标注`, 'info');
   }
 
@@ -175,6 +218,8 @@ export function AnnotatePage() {
     const demo = createDemoPage();
     setSample(demo);
     setSampleName('内置示例页（假数据）');
+    setSource(null);
+    setInference(null);
     setPage(1);
     setSel(null);
     setMap(prev => ({
@@ -182,7 +227,7 @@ export function AnnotatePage() {
       page_size: { w: demo.width, h: demo.height },
       meta: { ...prev.meta, sample_name: 'demo.png' },
     }));
-    setNotice({ level: 'info', text: '已载入内置示例页，可直接练习标注。' });
+    setNotice({ level: 'info', text: '已载入内置示例页，可直接练习标注；示例页没有源文件，不能试解析。' });
   }
 
   function draw(rect: Rect) {
@@ -271,7 +316,7 @@ export function AnnotatePage() {
     setNotice({
       level: res.ok ? 'info' : 'warning',
       text: res.ok
-        ? '已导出 field_map JSON 并保存草稿。注意：试解析接口尚未接入，当前只做了本地标注检查。'
+        ? '已导出 field_map JSON 并保存草稿。试解析结果仅供核对，保存模板请在模板管理里操作。'
         : `已导出 JSON，但草稿保存失败：${res.message ?? ''}`,
     });
   }
@@ -284,14 +329,39 @@ export function AnnotatePage() {
     setNotice({ level: 'info', text: '已清空标注。' });
   }
 
-  function runDemoParse() {
-    if (!sample) { hint('先载入样例或点「示例页」，再试解析'); return; }
-    setDemoLines(ocrDemo.lines);
-    const low = ocrDemo.lines.filter(l => l.confidence < LOW_CONF).length;
-    setNotice({
-      level: low > 0 ? 'warning' : 'info',
-      text: `演示试解析完成：${ocrDemo.lines.length} 个字段值，其中 ${low} 个低置信（<${LOW_CONF}，已标红）。完整率 ${(ocrDemo.self_check.field_completeness * 100).toFixed(1)}%，平均置信度 ${(ocrDemo.self_check.avg_confidence * 100).toFixed(1)}%。这是样例数据，真实结果需后端 dry-run。`,
-    });
+  async function runInfer() {
+    if (!source) { hint('先载入一份 PDF 样例；内置示例页没有源文件，不能试解析。'); return; }
+    if (!/\.pdf$/i.test(source.file.name) && source.file.type !== 'application/pdf') {
+      hint('试解析目前只支持 PDF 电子件；图片件请先导出为 PDF。');
+      return;
+    }
+    if (!map.page_size.w || !map.page_size.h) { hint('还没有记录样例页面尺寸，请重新载入样例。'); return; }
+    const marks = marksFromMap(map);
+    if (marks.length === 0) { hint('先给表格列指定字段，或画几个字段框，再试解析。'); return; }
+    setInferring(true);
+    setInference(null);
+    setNotice({ level: 'info', text: `正在用 ${marks.length} 个标注外推…` });
+    try {
+      const form = new FormData();
+      form.append('file', source.file);
+      form.append('marks', JSON.stringify(marks));
+      form.append('bank_code', map.bank_code || 'UNKNOWN');
+      if (source.password) form.append('password', source.password);
+      const res = await inferTemplate(form);
+      setInference(res);
+      const low = res.provenance.filter(r => r.confidence < 0.8).length;
+      setNotice({
+        level: res.warnings.length > 0 || low > 0 ? 'warning' : 'info',
+        text: `试解析完成：识别 ${res.columns.length} 列，映射 ${Object.keys(res.field_map).length} 个字段${low > 0 ? `，${low} 个低置信` : ''}。`,
+      });
+      logEvent(sampleName, '试解析（列外推）', `${res.columns.length} 列 / ${res.provenance.length} 字段`, res.warnings.length > 0 ? 'warn' : 'info');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setNotice({ level: 'error', text: `试解析失败：${msg}` });
+      logEvent(sampleName, '试解析（列外推）', msg, 'error');
+    } finally {
+      setInferring(false);
+    }
   }
 
   return (
@@ -314,14 +384,40 @@ export function AnnotatePage() {
       {notice && <div className={`notice ${notice.level}`}>{notice.text}</div>}
 
       <div className="toolbar2">
-        <button className="btn" onClick={runDemoParse}>演示：用模板试解析</button>
-        {demoLines && <button className="btn" onClick={() => { setDemoLines(null); hint('已关闭解析叠加'); }}>关闭叠加</button>}
+        <button className="btn" onClick={() => { void runInfer(); }} disabled={inferring}>
+          {inferring ? '正在试解析…' : '用当前标注试解析'}
+        </button>
         <span className="muted">
-          {demoLines
-            ? `叠加 ${demoLines.length} 个字段值 · 低置信 ${demoLines.filter(l => l.confidence < LOW_CONF).length} 个（红色）`
-            : '用内置样例演示模板解析结果如何回贴到原页'}
+          {source ? '调用本机后端 /templates/infer，只做列外推；不保存模板、不生成报告。' : '先载入 PDF 样例（内置示例页不能试解析）'}
         </span>
       </div>
+
+      {inference && (
+        <section className="infer-panel">
+          <div className="infer-head">
+            <strong>试解析结果</strong>
+            <span className="muted">识别 {inference.columns.length} 列 · 映射 {Object.keys(inference.field_map).length} 个字段</span>
+            <button className="btn" onClick={() => setInference(null)}>关闭</button>
+          </div>
+          <div className="infer-grid">
+            {/* 后端用 `p.column or 99` 排序，第 0 列会被排到最后，这里按列号重排 */}
+            {[...inference.provenance].sort((a, b) => (a.column ?? 99) - (b.column ?? 99)).map(row => (
+              <div className={`infer-row${row.confidence < 0.8 ? ' low' : ''}`} key={row.field}>
+                <b>{row.field}</b>
+                <span>{row.column === null ? '未匹配列' : `第 ${row.column + 1} 列`}</span>
+                <span>{SOURCE_LABEL[row.source] ?? row.source}</span>
+                <span>置信 {Math.round(row.confidence * 100)}%</span>
+                <span className="muted">{row.why}</span>
+              </div>
+            ))}
+          </div>
+          {inference.warnings.length > 0 && <p className="infer-warn">告警：{inference.warnings.join('；')}</p>}
+          {inference.columns.length > 0 && (
+            <p className="muted">列样本：{inference.columns.map(c => `#${c.index + 1} ${c.samples.slice(0, 3).join(' / ') || '（空）'}`).join('；')}</p>
+          )}
+          <p className="muted">field_map：<span className="mono">{JSON.stringify(inference.field_map)}</span></p>
+        </section>
+      )}
 
       <div className="workspace">
         {sample ? (
@@ -336,13 +432,12 @@ export function AnnotatePage() {
             onSelect={setSel}
             onMove={moveRect}
             onHint={hint}
-            demoLines={demoLines ?? undefined}
           />
         ) : (
           <div className="stage-wrap">
             <div className="empty">
               先载入一份样例流水（PDF / JPG / PNG），或点「示例页」用内置假数据练习。<br />
-              样例只在本机读取，不会上传到服务器。
+              样例在本机读取；点「试解析」时才会发往本机后端。
             </div>
           </div>
         )}
@@ -374,8 +469,7 @@ export function AnnotatePage() {
               onHint={hint}
             />
             <p className="muted" style={{ marginTop: 16 }}>
-              试解析（dry-run）：<b>尚未接入后端</b>。现在只能做标注结构检查（T/W 码），
-              抽取是否正确要等 <span className="mono">/templates/dry-run</span> 实现后才能验。
+              试解析只做列外推：返回字段→列、来源和置信度，不会逐格回贴；逐笔抽取仍走报告链路。
             </p>
           </div>
           <section className="events">
@@ -407,7 +501,7 @@ export function AnnotatePage() {
       </div>
 
       <div className="muted" style={{ padding: '6px 18px', background: '#fff', borderTop: '1px solid #e2e8f0' }}>
-        样例：{sampleName || '未载入'} · 草稿自动保存在本机浏览器 · 口令只在本机内存中使用
+        样例：{sampleName || '未载入'} · 草稿自动保存在本机浏览器 · 试解析时文件与口令会发往本机后端
       </div>
 
       {pending && (

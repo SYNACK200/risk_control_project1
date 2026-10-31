@@ -23,10 +23,10 @@ pip install -r requirements.txt
 
 ```bash
 cd backend
-MYSQL_PASSWORD=你的密码 python -m uvicorn main:app --host 127.0.0.1 --port 8000
+MYSQL_PASSWORD=你的密码 LOCAL_ACCESS_PASSWORD=本机访问口令 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-可选环境变量：`MYSQL_HOST`（默认 127.0.0.1）、`MYSQL_PORT`（3306）、`MYSQL_USER`（root）、`MYSQL_DB`（risk_control）、`LOG_LEVEL`（INFO）。
+可选环境变量：`MYSQL_HOST`（默认 127.0.0.1）、`MYSQL_PORT`（3306）、`MYSQL_USER`（root）、`MYSQL_DB`（risk_control）、`LOG_LEVEL`（INFO）。`LOCAL_ACCESS_PASSWORD` 是本地保护口令；除健康检查与借款人状态查询外，调用接口时需带 `Authorization: Bearer <口令>`。
 
 健康检查：`GET /health` 与 `GET /api/v1/health`。
 

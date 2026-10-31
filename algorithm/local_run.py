@@ -19,7 +19,7 @@ from algorithm.algo.ledger_layer import analyze_ledger
 from algorithm.algo.external_layer import analyze_external, ExternalContext
 from algorithm.algo.verdict import conclude
 from algorithm.algo.metrics import compute_metrics
-from algorithm.algo.report import build_report, ReportMaterial
+from algorithm.algo.report import build_report, ReportCheck, ReportMaterial
 from algorithm.algo.self_check import run_self_check
 
 
@@ -115,7 +115,8 @@ def main() -> int:
     ids = list(range(1, len(parsed.transactions) + 1))
     rep = build_report(v, ms, carrier=carrier, transactions=parsed.transactions, txn_ids=ids,
                        materials=[ReportMaterial(file_id=1, role="original", pages=pages)],
-                       self_check=sc)
+                       self_check=[ReportCheck(code=i.code, name=i.name, status=i.status, detail=i.detail)
+                                   for i in sc.items])
     data = json.loads(rep.model_dump_json())
     steps.append(("出报告", "完成", f"结论 {data['verdict']}；指标 {sum(1 for m in ms.metrics if m.value is not None)}/{len(ms.metrics)} 有值"))
 

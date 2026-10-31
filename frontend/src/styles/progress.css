@@ -1,0 +1,41 @@
+.step.current {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.step.current .dot {
+  background: var(--blue);
+  color: #fff;
+}
+
+.progress-card .steps {
+  margin: 24px 0 28px;
+}
+
+.progress-card .step {
+  background: #fff;
+}
+
+.progress-meta {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 10px 0 0;
+}
+
+.progress-card .tip,
+.progress-card .notice {
+  text-align: left;
+}
+
+.progress-card .notice .btn {
+  margin-top: 12px;
+}
+
+.progress-card .actions {
+  justify-content: center;
+  margin-top: 22px;
+}

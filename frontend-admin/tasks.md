@@ -30,7 +30,7 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 | 依赖 |
 | --- | --- | --- | --- | --- | --- | --- |
-| [ ] | FE-38 | 试解析接真实接口，替换 mock | 标注完看不到系统怎么读 | `Annotate.tsx`、`lib/api.ts` | 标注后调 templates/infer 返回真实列与置信度 | BE-31 |
+| [x] | FE-38 | 试解析接真实接口，替换 mock | 标注完看不到系统怎么读 | `Annotate.tsx`、`lib/api.ts` | 标注后调 templates/infer 返回真实列与置信度（见 `history/20261030-fe38.md`） | BE-31 |
 | [ ] | FE-46 | 真实性总结改读后端 authenticity_summary | 前端自算会与导出/审计不一致 | `TaskList.tsx` | 报告 JSON 有该字段后页面只渲染 | BE-39 |
 | [ ] | FE-35 | 本地口令保护 /bank/ | 银行侧不能裸奔，哪怕本地演示 | 全应用 + 后端 | 未输入口令进不去 | BE-20a |
 
@@ -38,6 +38,21 @@
 
 | 状态 | 编号 | 目标 | 为什么 | 涉及文件 | 验收命令 |
 | --- | --- | --- | --- | --- | --- |
+| [x] | FE-65 | 列表 chips 改 5 级；悬停显示缺材料；报告页真实性横幅同步新文案 | 银行要一眼分清可批与要补 | pages/TaskListPage.tsx、components/ReportView.tsx | 筛需补充 13 条；报告页显示可授信/需补充 |
+| [x] | FE-64 | 银行侧登录页（仅 banker）+ 非银行账号拦截 + 用户条与退出 | 银行端要明确是银行账号 | pages/LoginPage.tsx、components/AuthGate.tsx、UserBar.tsx | admin/admin123 登录后列表 16 行 |
+| [x] | FE-62 | 模板管理页重做：统计、编辑出新版本、复制、启停、试跑面板、导入导出、外推折叠 | 原页面只有启用按钮，无法判断模板好不好用 | components/TemplateAdmin.tsx | 表格 4 行；复制提示成功；编辑面板打开 |
+| [x] | FE-61 | 报告页导出：明细 CSV、报告 JSON、打印/存为 PDF（含 @media print 样式） | 银行要把分析结果带出系统 | components/ReportView.tsx、lib/api.ts、styles/app.css | 点两个导出按钮均提示成功、网络 200 |
+| [x] | FE-60 | 列表多选 + 批量移入回收站；流水列表/回收站双视图；回收站内恢复/彻底删除；页内两步确认 | 银行清理流水必须可多选、可恢复 | pages/TaskListPage.tsx | 勾 2 条回收：12→10；回收站 3→2→1（恢复/删除） |
+| [x] | FE-59 | 「风控参数」页：5 组 22 个输入框、改动高亮、保存为新版本（带备注）、恢复默认、版本历史 | 银行要能像调超参一样改阈值并看见版本 | pages/ThresholdsPage.tsx | 改 DTI 0.62 → 保存为 v5；历史可见 v2-v5 |
+| [x] | FE-58 | 本地口令门：请求统一带 Bearer；401/503 弹口令框并保存到 localStorage；银行侧与借款侧共用同一套 | 后端 BE-20a 严格保护后，前端不带口令会白屏 | frontend-admin/src/lib/auth.ts、components/AuthGate.tsx、lib/api.ts；frontend/src/lib/auth.ts、api/client.ts、components/AuthGate.tsx | 无口令→口令门；错口令→「口令不正确」；对口令→列表 15 行、报告页正常 |
+| [x] | FE-57 | 报告页：解析模板下拉 + 重新解析 + 开绿灯；白名单横幅；列表页白名单标签 | 银行要能自己救回解析失败的单子 | components/ReportView.tsx、pages/TaskListPage.tsx | 任务 7 页面显示横幅与 570 笔 |
+| [x] | FE-55 | 客户与账户页：冲突告警、客户选择、7 种合并方式（简约标签）、可展开说明、合并结果与账户明细 | 银行要一眼看客户整体风险，并知道怎么合的 | pages/EntitiesPage.tsx | 页面显示冲突 1 条；切换方式数值随之变化 |
+| [x] | FE-54 | 列表按银行关心维度呈现并支持多维筛选：合格性、信用风险、解析质量、银行、时间、业务号 | 银行不看 status/carrier | TaskListPage.tsx | 11 条筛“中”为 3 条；叠加“不合格”为 0 并提示 |
+| [x] | FE-53 | 列表与报告拆两页：/ 列表、/report/:id 详情，改用 HashRouter | 原来同页，流水一多不可用 | TaskListPage.tsx、ReportView.tsx、App.tsx | 列表点查看报告进 #/report/11，页内有返回 |
+| [x] | FE-52 | 真实性校验可直达：层标签变成按钮，点一下就展开明细并滚到该层高亮；旧报告显示「重算逐项」 | 用户反馈「点不开」——层标签原本是纯文本 | TaskList.tsx | 点载体层 → 展开并定位；旧报告出现重算按钮 |
+| [x] | FE-51 | 报告页预读卡：判定、置信度、银行、脱敏账户、期间、页数/文字层、疑似行数、命中特征与理由 | 审批人要知道系统在看到模板前先读到了什么 | TaskList.tsx | 报告页出现预读卡；与模板解析对照指到自检 S8 |
+| [x] | FE-50 | 真实性校验逐项可展开：每个检查点显示「怎么验 + 当前结果 + 状态含义」，含四层 36 项与识别自检 S0–S7 | 只看四层状态无法判断到底验了什么 | CheckTable.tsx、TaskList.tsx | 每层每项可点开；内容层与自检也带逐项结果 |
+| [x] | FE-49 | 指标逐条可展开：计算规则 + 输入 + 单项/指标集版本 + 按原始数据的图 | 审批人不能只看一个数字 | MetricExplain.tsx、TaskList.tsx、lib/api.ts | 点任一行出现「计算规则」与对应图；28/40 有图，12 项无图并说明原因 |
 | [ ] | FE-47 | 证据联调：点证据跳到 PDF 对应页并高亮 | 现在证据表是死的 | `TaskList.tsx` + 新组件 | 点一条证据，PDF 翻页并框出位置 |
 | [ ] | FE-48 | 报告导出 PDF（带水印、留操作人） | 审批要归档 | 新组件 | 导出 PDF 含全部区块与水印 |
 | [ ] | FE-34 | 模板版本细化（对比、停用、回滚） | 现在只能启用 | `TemplateAdmin.tsx` | 可停用/回滚旧版本 |
@@ -63,4 +78,5 @@
 | 文件名 | 来源 | 与哪个任务相关 | 状态 |
 | --- | --- | --- | --- |
 | algorithm/integration/samples/icbc_template.json | 团队生成（仅坐标） | FE-38 / FE-44 | 可用 |
-| src/mocks/*.json | 早期示例 | FE-36/37 已弃用 | 待清理 |
+| src/mocks/verify_result.json、metrics_report.json、interest_rates.json | 早期示例 | FE-36/37、报告与结息展示 | 仍在使用 |
+| src/mocks/ocr_lines.json | 早期示例 | 原 FE-38 假试解析 | 已删除（FE-38 接真实接口） |

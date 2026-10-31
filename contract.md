@@ -215,3 +215,24 @@
 | 2026-10-30 | 新增标注外推：只标 1-3 处即可生成模板，字段带来源与置信度 | 算法、后端、前端 |
 | 2026-10-30 | v2 实现进度：受理/任务/报告/模板接口与 11 张表落地；必填清单确立为「只有流水文件必填」 | 全部 |
 | 2026-10-30 | 指标口径 v2：月均/月供分母改为实际覆盖自然月（不足 1 月按 1 月并注明）；收入方向缺失时 A01/A02 给 null 而非 0；口径说明并入报告受限 | 算法、后端、前端 |
+| 接口 | GET /api/v1/metric-definitions（返回 40 项指标的 code/name/unit/group/formula/inputs/viz 与 metric_set_version） |
+| 2026-10-30 | 新增指标定义接口：银行侧逐条查看计算公式、输入与可视化类型；定义源在 algorithm/algo/metric_defs.py | 算法、后端、银行侧 |
+| 2026-10-30 | 报告 layers 每层新增 checks[]（code/name/status/detail），新增 self_check[] 七项自检结果；附 GET /api/v1/verification-definitions 返回 36 个检查点的检验方法 | 算法、后端、银行侧 |
+| 2026-10-30 | 新增预读取：受理阶段先全文预读，非流水返回 422 E_NOT_STATEMENT（附 preread 明细）；预读结果写入 task.check_result.preread；自检新增 S8 预读一致性 | 算法、后端、两端 |
+| 2026-10-30 | 新增 POST /api/v1/tasks/{id}/reanalyze：用原文件重跑，生成新版本报告（补齐逐项 checks）；加密件需再给口令；旧版本保留 | 后端、银行侧 |
+| 2026-10-30 | GET /tasks 改为解析结果汇总：每条含 bank/period/verdict/authenticity/parse/risk/materials/report_version，支持 authenticity、risk、parse、bank、date_from、date_to、q 筛选；返回 items/total/facets | 后端、银行侧 |
+| 2026-10-30 | 银行侧拆为两个页面：/ 解析结果列表（多维筛选）与 /report/:id 报告详情；前端改用 HashRouter 兼容静态托管 | 银行侧 |
+| 2026-10-30 | 新增 GET /entities（账户/户名/冲突）、GET /entities/methods（7 种合并方式与 3 种重叠算法）、GET /entities/merge?subject=&method=&overlap=（合并结果含口径说明与不支持项） | 后端、银行侧 |
+| 2026-10-31 | 重解析支持 `template_id`（换模板/无模板通用解析）并重建 txn/metric_value；新增 `POST /tasks/{id}/whitelist`（人工开绿灯，写审计）；`GET /tasks` 汇总新增 `whitelisted/whitelist_reason`；受理时按预读银行自动匹配启用模板 | 后端、银行侧 |
+
+## 本地访问口令（BE-20a）
+
+- 后端启动时设置 LOCAL_ACCESS_PASSWORD，否则受保护接口返回 503 E_AUTH（明确提示服务端未配置，不静默放行）。
+- 客户端对受保护接口统一带 Authorization: Bearer <口令>；口令只存浏览器 localStorage（key bs_token），不写日志、不入库、不进审计。
+- 受保护范围：/tasks（列表/创建/详情/重解析/补件/合并）、/reports、/templates、/entities、/audit。
+- 401/503 时两个前端都显示口令门；口令错误提示「口令不正确」。
+- 口令尝试审计只写材料名与结果（password_attempt_ok/cancelled/failed），不记录口令或其派生值。
+| 2026-10-31 | 流水回收站：`task.deleted_at` 软删除；`GET /tasks?trash=1`、`POST /tasks/recycle`、`POST /tasks/restore`、`POST /tasks/purge`（confirm 必填，仅回收站内） | 后端、银行侧 |
+| 2026-10-31 | 报告导出：`GET /tasks/{id}/transactions.csv`（UTF-8 BOM）、`GET /tasks/{id}/export.json`（报告+明细）；报告页新增导出与打印按钮 | 后端、银行侧 |
+| 2026-10-31 | 模板管理增强：PUT /templates/{id}（出新版本）、duplicate、disable、DELETE、stats、preview（试跑不落库）、export、import | 后端、银行侧 |
+| 2026-10-31 | 合格性从 4 级拆为 5 级：pass/grant(可授信)/supplement(需补充)/fail/unknown；authenticity.missing_materials 暴露缺材料项；facets 与列表 chips 同步 | 后端、银行侧 |

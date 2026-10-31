@@ -89,6 +89,7 @@ def test_report_matches_contract_shape():
         "metric_set_version",
         "threshold_version",
         "conclusions",
+        "scores",
         "trend",
         "evidence",
         "materials",
@@ -595,14 +596,12 @@ def test_counterparty_mask_names_alert():
 
 
 def _self_check(*items):
-    from algorithm.algo.self_check import SelfCheckItem, SelfCheckResult
+    from algorithm.algo.report import ReportCheck
 
-    parsed = [
-        SelfCheckItem(code=code, name=name, status=status, detail=detail, ratio=ratio)
-        for code, name, status, detail, ratio in items
+    return [
+        ReportCheck(code=code, name=name, status=status, detail=detail)
+        for code, name, status, detail, _ratio in items
     ]
-    status = "pass" if all(i.status == "pass" for i in parsed) else "limited"
-    return SelfCheckResult(status=status, items=parsed)
 
 
 def test_self_check_passed_through_to_report():
@@ -613,15 +612,14 @@ def test_self_check_passed_through_to_report():
         )
     )
     data = json.loads(report.model_dump_json())
-    assert data["self_check"]["status"] == "pass"
-    assert [item["code"] for item in data["self_check"]["items"]] == ["S1", "S5"]
-    assert data["self_check"]["summary"] == "全部通过"
+    assert [item["code"] for item in data["self_check"]] == ["S1", "S5"]
+    assert all(item["status"] == "pass" for item in data["self_check"])
     assert not any("识别自检" in n for n in data["limitations"])
 
 
 def test_missing_self_check_declared_in_limitations():
     data = json.loads(_report().model_dump_json())
-    assert data["self_check"] is None
+    assert data["self_check"] == []
     assert any("未执行识别自检" in n for n in data["limitations"])
 
 
@@ -634,6 +632,6 @@ def test_self_check_failure_declared_in_limitations():
             )
         ).model_dump_json()
     )
-    assert data["self_check"]["status"] == "limited"
-    assert data["self_check"]["summary"] == "未通过：跨引擎一致"
+    by_code = {item["code"]: item for item in data["self_check"]}
+    assert by_code["S4"]["status"] == "limited"
     assert "识别自检 S4 跨引擎一致：94/102 笔金额在两个引擎文本中均可定位" in data["limitations"]

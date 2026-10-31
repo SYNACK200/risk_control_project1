@@ -69,6 +69,7 @@ def _content_layer(content: ContentLayerResult) -> LayerConclusion:
         status=status_map[content.status],
         detail=detail,
         outcome=outcome,
+        checks=list(content.checks),
         limitations=content.limitations,
         evidence=evidence,
     )

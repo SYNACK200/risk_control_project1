@@ -59,6 +59,8 @@ class Task(Base):
     failure_code: Mapped[str | None] = mapped_column(String(24))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    user_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
 
 class TaskFile(Base):
@@ -140,6 +142,9 @@ class Template(Base):
     status: Mapped[str] = mapped_column(String(16), default="draft")  # draft/enabled/disabled
     field_map: Mapped[dict | None] = mapped_column(JSON)
     header_columns: Mapped[list | None] = mapped_column(JSON)
+    # 建模板时用的样本文件与当时的框选（供事后可视化回看）
+    sample_file_id: Mapped[int | None] = mapped_column(Integer)
+    layout: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
@@ -163,3 +168,25 @@ class AuditLog(Base):
     detail: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
+
+
+class ThresholdProfile(Base):
+    """银行自定义阈值的一次快照；最新 version 生效，旧版本保留可追溯。"""
+    __tablename__ = "threshold_profile"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version: Mapped[int] = mapped_column(Integer, unique=True)
+    values: Mapped[dict] = mapped_column(JSON)
+    note: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class User(Base):
+    """用户：借款侧（borrower）自助注册，银行侧（banker）由管理员创建或初始化。"""
+    __tablename__ = "app_user"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(16), default="borrower")  # borrower / banker
+    display_name: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime)

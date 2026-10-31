@@ -79,7 +79,12 @@ def _pymupdf_numbers(texts: list[str], limit: int = 3) -> Counter:
     return counter
 
 
-def run_self_check(raw: bytes, transactions: list, footer_count: int | None = None) -> SelfCheckResult:
+def run_self_check(
+    raw: bytes,
+    transactions: list,
+    footer_count: int | None = None,
+    preread: object | None = None,
+) -> SelfCheckResult:
     """transactions: 解析结果（需 txn_date / amount / balance / page_no 属性）。"""
     items: list[SelfCheckItem] = []
     samples: list[str] = []
@@ -177,6 +182,70 @@ def run_self_check(raw: bytes, transactions: list, footer_count: int | None = No
     items.append(SelfCheckItem("S7", "方向完整", "pass" if mismatch == 0 else "limited",
                                f"{mismatch} 笔方向缺失"))
 
+    items.append(_preread_item(preread, transactions))
     bad = [i for i in items if i.status == "inconsistent"]
     status = "inconsistent" if bad else ("limited" if any(i.status == "limited" for i in items) else "pass")
     return SelfCheckResult(status, items, samples)
+
+
+def _preread_item(preread: object | None, transactions: list) -> SelfCheckItem:
+    """S8：预读（不看模板）与模板解析是否互相印证。"""
+    if preread is None:
+        return SelfCheckItem("S8", "预读一致性", "limited", "未执行预读取，无法互证")
+    rows = int(getattr(preread, "txn_like_rows", 0) or 0)
+    dates_hit = int(getattr(preread, "date_hits", 0) or 0)
+    total = len(transactions)
+    parsed_start = _min_date(transactions)
+    parsed_end = _max_date(transactions)
+    p_start = getattr(preread, "period_start", None)
+    p_end = getattr(preread, "period_end", None)
+    reasons: list[str] = []
+    status = "pass"
+    if rows > 0 and total > 0:
+        tolerance = max(3, int(round(max(rows, total) * 0.1)))
+        if abs(rows - total) > tolerance:
+            status = "limited"
+            if dates_hit >= total * 0.5:
+                reasons.append(
+                    f"版式旋转或多列，预读按行只识别出 {rows} 行（日期出现 {dates_hit} 次），"
+                    "行数不能独立验证"
+                )
+            else:
+                reasons.append(f"预读疑似 {rows} 行，模板解析 {total} 笔，差 {abs(rows - total)} 笔超出容差")
+    elif rows == 0:
+        status = "limited"
+        reasons.append("预读未识别出明细行（可能无文字层或版式特殊）")
+    if p_start and parsed_start and p_start > parsed_start:
+        status = "limited" if status == "pass" else status
+        reasons.append(f"预读起始日期 {p_start} 晚于解析首笔 {parsed_start}")
+    if p_end and parsed_end and p_end < parsed_end:
+        status = "limited" if status == "pass" else status
+        reasons.append(f"预读结束日期 {p_end} 早于解析末笔 {parsed_end}")
+    detail = (
+        f"预读 {rows} 行（日期出现 {dates_hit} 次）/ 解析 {total} 笔；"
+        f"预读期间 {p_start or '—'}~{p_end or '—'} / 解析 {parsed_start or '—'}~{parsed_end or '—'}"
+    )
+    if reasons:
+        detail += "；" + "；".join(reasons)
+    return SelfCheckItem("S8", "预读一致性", status, detail)
+
+
+def _min_date(transactions: list) -> str | None:
+    days = [_norm_date(getattr(t, "txn_date", None)) for t in transactions]
+    days = [d for d in days if d]
+    return min(days) if days else None
+
+
+def _max_date(transactions: list) -> str | None:
+    days = [_norm_date(getattr(t, "txn_date", None)) for t in transactions]
+    days = [d for d in days if d]
+    return max(days) if days else None
+
+
+def _norm_date(value: str | None) -> str | None:
+    if not value:
+        return None
+    m = re.search(r"(20\d{2})\D(\d{1,2})\D(\d{1,2})", str(value))
+    if not m:
+        return None
+    return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"

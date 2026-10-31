@@ -1,117 +1,265 @@
-import { useEffect, useState } from 'react';
-import { createTemplate, inferTemplate, listTemplates, publishTemplate, type InferResult, type TemplateRow } from '../lib/api';
+import { TemplateLayoutView } from './TemplateLayoutView';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  createTemplate, deleteTemplate, disableTemplate, downloadAttachment, duplicateTemplate,
+  importTemplate, inferTemplate, listTemplates, previewTemplate, publishTemplate, templateStats,
+  updateTemplate,
+  type InferResult, type TemplatePreview, type TemplateRow, type TemplateStats,
+} from '../lib/api';
+
+const FIELDS = ['txn_date', 'summary', 'amount', 'income', 'expense', 'balance', 'counterparty', 'channel', 'account_no', 'currency'];
 
 export function TemplateAdmin() {
   const [rows, setRows] = useState<TemplateRow[]>([]);
-  const [bank, setBank] = useState('ICBC');
-  const [json, setJson] = useState('');
   const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [newBank, setNewBank] = useState('CMB');
+  const [newJson, setNewJson] = useState('{\n  "txn_date": 0,\n  "summary": 2,\n  "amount": 4,\n  "balance": 6\n}');
+  const [editing, setEditing] = useState<TemplateRow | null>(null);
+  const [editBank, setEditBank] = useState('');
+  const [editJson, setEditJson] = useState('');
+  const [stats, setStats] = useState<Record<number, TemplateStats>>({});
+  const [layoutTarget, setLayoutTarget] = useState<TemplateRow | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<TemplateRow | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewPw, setPreviewPw] = useState('');
+  const [preview, setPreview] = useState<TemplatePreview | null>(null);
+  const [importJson, setImportJson] = useState('');
   const [inferFile, setInferFile] = useState<File | null>(null);
-  const [marks, setMarks] = useState('[{"field":"txn_date","page":0,"x":105,"y":60},{"field":"amount","page":0,"x":530,"y":60},{"field":"balance","page":0,"x":650,"y":60}]');
-  const [pw, setPw] = useState('');
+  const [marks, setMarks] = useState('[{"field":"txn_date","page":0,"x":105,"y":60}]');
   const [infer, setInfer] = useState<InferResult | null>(null);
 
   async function refresh() {
-    try { setRows(await listTemplates()); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    try {
+      const list = await listTemplates();
+      setRows(list);
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
+
   useEffect(() => { void refresh(); }, []);
+  const banks = useMemo(() => Array.from(new Set(rows.map(r => r.bank_code))).sort(), [rows]);
 
-  async function save() {
-    setMsg('');
+  async function act(label: string, fn: () => Promise<unknown>) {
+    setBusy(true); setMsg(''); setError('');
     try {
-      const parsed = JSON.parse(json);
-      const fieldMap = parsed.field_map ?? parsed;
-      const { id } = await createTemplate({ bank_code: bank, field_map: fieldMap, header_columns: parsed.header_columns, version: parsed.version ?? 1 });
-      setMsg(`已保存模板 #${id}（草稿），点“启用”后用于解析`);
+      await fn();
+      setMsg(label);
       await refresh();
     } catch (e) {
-      setMsg(e instanceof Error ? `保存失败：${e.message}` : String(e));
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function runInfer() {
-    if (!inferFile) { setMsg('请先选择一份样本文件'); return; }
-    setMsg('正在外推…'); setInfer(null);
+  async function loadStats(id: number) {
     try {
-      const form = new FormData();
-      form.append('file', inferFile);
-      form.append('marks', marks);
-      form.append('bank_code', bank);
-      if (pw) form.append('password', pw);
-      const res = await inferTemplate(form);
-      setInfer(res);
-      setMsg('外推完成：识别 ' + res.columns.length + ' 列，映射 ' + Object.keys(res.field_map).length + ' 个字段');
+      const s = await templateStats(id);
+      setStats(prev => ({ ...prev, [id]: s }));
     } catch (e) {
-      setMsg(e instanceof Error ? '外推失败：' + e.message : String(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 
-  async function saveInfer() {
-    if (!infer || infer.valid === false) return;
-    try {
-      const { id } = await createTemplate({ bank_code: infer.bank_code, field_map: infer.field_map, version: 1 });
-      setMsg('已保存模板 #' + id + '（草稿），点“启用”后用于解析');
-      await refresh();
-    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  function startEdit(row: TemplateRow) {
+    setEditing(row);
+    setEditBank(row.bank_code);
+    setEditJson(JSON.stringify(row.field_map ?? {}, null, 2));
+    setMsg('正在编辑 #' + row.id + '，保存会生成新版本（旧版本保留）');
   }
 
-  async function enable(id: number) {
-    try { await publishTemplate(id); setMsg(`模板 #${id} 已启用`); await refresh(); }
-    catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  async function saveEdit() {
+    if (!editing) return;
+    let fieldMap: Record<string, unknown>;
+    try {
+      fieldMap = JSON.parse(editJson);
+    } catch (e) {
+      setError('JSON 不合法：' + (e instanceof Error ? e.message : String(e)));
+      return;
+    }
+    if (!fieldMap || typeof fieldMap !== 'object' || Object.keys(fieldMap).length === 0) {
+      setError('字段映射不能为空');
+      return;
+    }
+    await act('已保存为新版本（草稿），需要时点启用', () => updateTemplate(editing.id, { bank_code: editBank, field_map: fieldMap }));
+    setEditing(null);
+  }
+
+  async function runPreview() {
+    if (!previewTarget || !previewFile) { setError('请选择模板与样例文件'); return; }
+    setBusy(true); setError(''); setPreview(null);
+    try {
+      const res = await previewTemplate(previewTarget.id, previewFile, previewPw || undefined);
+      setPreview(res);
+      setMsg('试跑完成：' + res.txn_count + ' 笔 / ' + res.page_count + ' 页');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className="result-wrap">
       <div className="result">
-        <div className="result-head"><h2>模板管理</h2></div>
-        {msg && <div className="notice info">{msg}</div>}
+        <div className="result-head">
+          <h2>模板管理</h2>
+          <span className="muted">{rows.length} 个版本 · {banks.length} 家银行 · 同一银行只允许一个启用版本</span>
+        </div>
+        {msg && <div className="notice ok">{msg}</div>}
+        {error && <div className="notice error">{error}</div>}
 
         <table className="mini">
-          <thead><tr><th>ID</th><th>银行</th><th>版本</th><th>状态</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>银行</th><th>版本</th><th>状态</th><th>使用</th><th>成功率</th><th>字段</th><th>操作</th></tr></thead>
           <tbody>
-            {rows.map(t => (
-              <tr key={t.id}>
-                <td className="mono">{t.id}</td><td>{t.bank_code}</td><td>v{t.version}</td><td>{t.status}</td>
-                <td>{t.status !== 'enabled' && <button className="btn" onClick={() => { void enable(t.id); }}>启用</button>}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && <tr><td colSpan={5} className="muted">还没有模板。</td></tr>}
+            {rows.map(t => {
+              const s = stats[t.id];
+              return (
+                <tr key={t.id}>
+                  <td className="mono">{t.id}</td>
+                  <td>{t.bank_code}</td>
+                  <td>v{t.version}</td>
+                  <td><span className={'tag ' + (t.status === 'enabled' ? 'pass' : t.status === 'draft' ? 'limited' : '')}>{t.status}</span></td>
+                  <td>
+                    <button className="link-btn" type="button" onClick={() => { void loadStats(t.id); }}>{s ? s.tasks_total + ' 条' : '查看'}</button>
+                    {s && <span className="muted small"> 成功 {s.tasks_done} · 失败 {s.tasks_failed} · 平均 {s.avg_txn_count ?? '—'} 笔</span>}
+                  </td>
+                  <td className="num">{s?.success_rate === null || s?.success_rate === undefined ? '—' : Math.round(s.success_rate * 100) + '%'}</td>
+                  <td className="muted small">{Object.keys(t.field_map ?? {}).length} 项</td>
+                  <td className="row-actions">
+                    {t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}
+                    {t.status === 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已停用 #' + t.id, () => disableTemplate(t.id)); }}>停用</button>}
+                    <button className="link-btn" type="button" onClick={() => { setLayoutTarget(layoutTarget?.id === t.id ? null : t); }}>{layoutTarget?.id === t.id ? '收起框选' : '回看框选'}</button>
+                    <button className="link-btn" type="button" onClick={() => startEdit(t)}>编辑</button>
+                    <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已复制为新草稿', () => duplicateTemplate(t.id)); }}>复制</button>
+                    <button className="link-btn" type="button" onClick={() => { setPreviewTarget(t); setPreview(null); setMsg('试跑目标：#' + t.id + ' ' + t.bank_code + ' v' + t.version); }}>试跑</button>
+                    <button className="link-btn" type="button" onClick={() => { void downloadAttachment('/templates/' + t.id + '/export', 'template-' + t.bank_code + '-v' + t.version + '.json').catch(e => setError(String(e))); }}>导出</button>
+                    <button className="link-btn danger-text" type="button" disabled={busy} onClick={() => { void act('已删除 #' + t.id, () => deleteTemplate(t.id)); }}>删除</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && <tr><td colSpan={8} className="muted">还没有模板：可以新建，或用下面的标注外推。</td></tr>}
           </tbody>
         </table>
 
-        <h3>只标几处，让系统外推整张表</h3>
-        <p className="muted">流程：选一份样本文件 → 点几个格子（或直接改下面的 marks）→ 外推 → 确认后保存草稿并启用。</p>
-        <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
-          <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e => setInferFile(e.target.files?.[0] ?? null)} />
-          <input type="password" placeholder="文件口令（如需）" value={pw} onChange={e => setPw(e.target.value)} />
-          <button className="btn primary" onClick={() => { void runInfer(); }}>外推模板</button>
-        </div>
-        <textarea rows={3} style={{ width: '100%', fontFamily: 'ui-monospace, monospace', fontSize: 12, marginTop: 8 }}
-          value={marks} onChange={e => setMarks(e.target.value)} />
-        {infer && (
-          <div style={{ marginTop: 12 }}>
-            <p className="muted">识别到 {infer.columns.length} 列；映射：{Object.entries(infer.field_map).map(([k, v]) => k + '→' + v).join('，')}</p>
-            <table className="mini">
-              <thead><tr><th>字段</th><th>列</th><th>来源</th><th>置信</th><th>依据</th></tr></thead>
-              <tbody>
-                {infer.provenance.map(r => (
-                  <tr key={r.field}><td>{r.field}</td><td>{r.column ?? '—'}</td><td>{r.source}</td>
-                    <td>{r.confidence}</td><td className="muted">{r.why}</td></tr>
-                ))}
-              </tbody>
-            </table>
-            {infer.warnings.length > 0 && <p className="notice error">{infer.warnings.join('；')}</p>}
-            {infer.valid !== false && <button className="btn" style={{ marginTop: 8 }} onClick={() => { void saveInfer(); }}>保存为草稿</button>}
-          </div>
+        {layoutTarget && (
+          <section className="card">
+            <div className="card-head-static">
+              <strong>模板 #{layoutTarget.id} · {layoutTarget.bank_code} v{layoutTarget.version}</strong>
+              <span className="muted small">下面这张就是建模板时用的样本页，方框就是当时选中的列</span>
+            </div>
+            <div className="card-body">
+              <TemplateLayoutView templateId={layoutTarget.id} />
+            </div>
+          </section>
         )}
 
-        <h3>新增模板</h3>
-        <div className="row"><label>银行代码</label><input type="text" value={bank} onChange={e => setBank(e.target.value)} /></div>
-        <p className="muted">粘贴 field_map JSON（来自标注页导出，或 ICBC/CMB 模板文件）</p>
-        <textarea rows={10} style={{ width: '100%', fontFamily: 'ui-monospace, monospace', fontSize: 12 }} value={json} onChange={e => setJson(e.target.value)} placeholder='{"field_map":{"txn_date":0,"amount":8,"balance":9}}' />
-        <div className="row" style={{ marginTop: 8 }}><button className="btn primary" onClick={() => { void save(); }}>保存为草稿</button></div>
+        {editing && (
+          <section className="tpl-panel">
+            <h3>编辑模板 #{editing.id}（保存生成 v{editing.version + 1} 草稿）</h3>
+            <div className="tpl-row">
+              <label>银行代码</label>
+              <input className="thr-input" value={editBank} onChange={e => setEditBank(e.target.value.toUpperCase())} />
+            </div>
+            <label className="muted small">字段映射（键 = 字段名，值 = 列下标，从 0 开始）：{FIELDS.join(' / ')}</label>
+            <textarea className="tpl-json" rows={8} value={editJson} onChange={e => setEditJson(e.target.value)} />
+            <div className="tpl-row">
+              <button className="btn" type="button" disabled={busy} onClick={() => { void saveEdit(); }}>保存为新版本</button>
+              <button className="link-btn" type="button" onClick={() => setEditing(null)}>取消</button>
+            </div>
+          </section>
+        )}
+
+        {previewTarget && (
+          <section className="tpl-panel">
+            <h3>试跑模板 #{previewTarget.id}（{previewTarget.bank_code} v{previewTarget.version}）</h3>
+            <p className="muted">上传一份样例流水，用该模板解析，不写入数据库；用来验证列映射对不对。</p>
+            <div className="tpl-row">
+              <input type="file" accept=".pdf" onChange={e => setPreviewFile(e.target.files?.[0] ?? null)} />
+              <input className="thr-input" type="password" placeholder="打开口令（可选）" value={previewPw} onChange={e => setPreviewPw(e.target.value)} />
+              <button className="btn" type="button" disabled={busy || !previewFile} onClick={() => { void runPreview(); }}>开始试跑</button>
+              <button className="link-btn" type="button" onClick={() => { setPreviewTarget(null); setPreview(null); }}>关闭</button>
+            </div>
+            {preview && (
+              <div>
+                <p className="muted">解析出 <b>{preview.txn_count}</b> 笔 / {preview.page_count} 页</p>
+                {preview.warnings.length > 0 && <ul className="muted small">{preview.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+                {preview.rows.length > 0 && (
+                  <table className="mini">
+                    <thead><tr><th>日期</th><th>摘要</th><th>方向</th><th>金额</th><th>余额</th><th>页</th></tr></thead>
+                    <tbody>
+                      {preview.rows.map((r, i) => (
+                        <tr key={i}>
+                          <td className="mono">{r.txn_date ?? '—'}</td>
+                          <td>{r.summary ?? '—'}</td>
+                          <td>{r.direction === 'in' ? '收入' : r.direction === 'out' ? '支出' : '—'}</td>
+                          <td className="num">{r.amount ?? '—'}</td>
+                          <td className="num">{r.balance ?? '—'}</td>
+                          <td className="num">{r.page_no}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="tpl-panel">
+          <h3>新建模板 / 导入 JSON</h3>
+          <div className="tpl-row">
+            <label>银行代码</label>
+            <input className="thr-input" value={newBank} onChange={e => setNewBank(e.target.value.toUpperCase())} />
+            <button className="btn" type="button" disabled={busy} onClick={() => {
+              let fm: Record<string, unknown>;
+              try { fm = JSON.parse(newJson); } catch (e) { setError('JSON 不合法：' + (e instanceof Error ? e.message : String(e))); return; }
+              void act('已新建草稿模板', () => createTemplate({ bank_code: newBank, field_map: fm }));
+            }}>新建草稿</button>
+          </div>
+          <textarea className="tpl-json" rows={6} value={newJson} onChange={e => setNewJson(e.target.value)} />
+          <div className="tpl-row">
+            <textarea className="tpl-json" rows={4} placeholder="或粘贴导出的模板 JSON" value={importJson} onChange={e => setImportJson(e.target.value)} />
+            <button className="btn secondary" type="button" disabled={busy || !importJson.trim()} onClick={() => {
+              let payload: { bank_code: string; field_map: Record<string, unknown>; header_columns?: unknown[] };
+              try { payload = JSON.parse(importJson); } catch (e) { setError('JSON 不合法：' + (e instanceof Error ? e.message : String(e))); return; }
+              void act('已导入为新草稿', () => importTemplate(payload));
+            }}>导入</button>
+          </div>
+        </section>
+
+        <details className="tpl-panel">
+          <summary>只标几处，让系统外推整张表（原有能力）</summary>
+          <div className="tpl-row">
+            <input type="file" accept=".pdf" onChange={e => setInferFile(e.target.files?.[0] ?? null)} />
+            <input className="thr-input" value={marks} onChange={e => setMarks(e.target.value)} style={{ minWidth: 320 }} />
+            <button className="btn secondary" type="button" disabled={busy || !inferFile} onClick={() => {
+              if (!inferFile) return;
+              const form = new FormData();
+              form.append('file', inferFile);
+              form.append('marks', marks);
+              form.append('bank_code', newBank);
+              setBusy(true); setError('');
+              inferTemplate(form)
+                .then(r => { setInfer(r); setMsg('外推完成：' + r.columns.length + ' 列，映射 ' + Object.keys(r.field_map).length + ' 个字段'); })
+                .catch(e => setError(e instanceof Error ? e.message : String(e)))
+                .finally(() => setBusy(false));
+            }}>外推</button>
+          </div>
+          {infer && (
+            <div>
+              <p className="muted">银行 {infer.bank_code} · {infer.columns.length} 列 · 映射 {Object.keys(infer.field_map).length} 个字段</p>
+              <pre className="tpl-pre">{JSON.stringify(infer.field_map, null, 2)}</pre>
+              <button className="btn" type="button" onClick={() => { void act('已保存外推结果', () => createTemplate({ bank_code: infer.bank_code, field_map: infer.field_map })); }}>保存为草稿</button>
+            </div>
+          )}
+        </details>
       </div>
     </div>
   );
 }
-

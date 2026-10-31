@@ -8,6 +8,7 @@ class Settings:
     app_name: str
     api_prefix: str
     log_level: str
+    local_access_password: str | None
 
 
 def load_settings() -> Settings:
@@ -19,6 +20,7 @@ def load_settings() -> Settings:
         app_name=os.getenv("APP_NAME", "银行个人交易流水解析与风险分析 API"),
         api_prefix="/api/v1",
         log_level=log_level,
+        local_access_password=os.getenv("LOCAL_ACCESS_PASSWORD") or None,
     )
 
 

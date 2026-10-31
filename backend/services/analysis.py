@@ -20,7 +20,7 @@ from algorithm.algo.ledger_layer import analyze_ledger  # noqa: E402
 from algorithm.algo.external_layer import analyze_external, ExternalContext  # noqa: E402
 from algorithm.algo.verdict import conclude  # noqa: E402
 from algorithm.algo.metrics import compute_metrics  # noqa: E402
-from algorithm.algo.report import build_report, ReportMaterial  # noqa: E402
+from algorithm.algo.report import build_report, ReportMaterial, ReportCheck  # noqa: E402
 from algorithm.ocr.infer import Mark as InferMark, infer_template as _infer_template  # noqa: E402
 from algorithm.algo.self_check import run_self_check  # noqa: E402
 
@@ -29,21 +29,36 @@ class EncryptedFile(Exception):
     """PDF 需要口令；由接口转成 E_ENCRYPT。"""
 
 
+def is_password_protected(file_bytes: bytes) -> bool:
+    """只识别 PDF 是否设有打开口令，不验证或保存口令。"""
+    if file_bytes[:4] != b"%PDF":
+        return False
+    doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+    try:
+        return bool(doc.needs_pass)
+    finally:
+        doc.close()
+
+
 def run_analysis(
     file_bytes: bytes,
     *,
     password: str | None = None,
     template: dict | None = None,
+    preread: object | None = None,
+    thresholds: object | None = None,
 ) -> dict:
     """返回 {carrier, pages, has_text_layer, txn_count, report, metrics, bank} 供落库。"""
     raw = file_bytes
     pages = 1
     has_text = False
 
+    password_protected = False
     if file_bytes[:4] == b"%PDF":
         doc = pymupdf.open(stream=file_bytes, filetype="pdf")
         pages = doc.page_count
         if doc.needs_pass:
+            password_protected = True
             if not password or doc.authenticate(password) <= 0:
                 raise EncryptedFile("PDF 需要打开口令")
             tmp = Path(tempfile.gettempdir()) / "backend_plain.pdf"
@@ -72,6 +87,7 @@ def run_analysis(
     )
     metrics = compute_metrics(parsed.transactions)
     txn_ids = list(range(1, len(parsed.transactions) + 1))
+    self_check = run_self_check(raw, parsed.transactions, getattr(parsed, "footer_count", None), preread=preread)
     report = build_report(
         verdict,
         metrics,
@@ -79,16 +95,22 @@ def run_analysis(
         transactions=parsed.transactions,
         txn_ids=txn_ids,
         materials=[ReportMaterial(file_id=0, role="original", pages=pages)],
+        self_check=[
+            ReportCheck(code=i.code, name=i.name, status=i.status, detail=i.detail or "")
+            for i in self_check.items
+        ],
+        thresholds=thresholds,
     )
-    self_check = run_self_check(raw, parsed.transactions, getattr(parsed, "footer_count", None))
     payload = json.loads(report.model_dump_json())
 
     return {
         "carrier": carrier,
         "pages": pages,
         "has_text_layer": has_text,
+        "password_protected": password_protected,
         "txn_count": len(parsed.transactions),
         "warnings": list(parsed.warnings),
+        "preread": preread.to_dict() if preread is not None else None,
         "self_check": {
             "status": self_check.status,
             "summary": self_check.summary,

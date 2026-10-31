@@ -9,8 +9,24 @@
 .material-help { padding-left: 22px; line-height: 1.9; }
 .consent-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 20px; }
 .btn:disabled { opacity: .6; cursor: not-allowed; box-shadow: none; }
-.file-row { flex-wrap: wrap; overflow-wrap: anywhere; }
-.file-row strong { min-width: 0; overflow-wrap: anywhere; }
+.drop.has-file { padding: 26px 20px; }
+.file-chosen { display: grid; justify-items: center; gap: 2px; }
+.drop .file-ok { margin: 0; color: #18a67b; font-weight: 700; }
+.file-tick {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #e6f7f1;
+  color: #18a67b;
+  font-size: 13px;
+  vertical-align: -5px;
+}
+.file-name { display: block; max-width: 100%; margin-top: 6px; color: var(--ink); font-size: 16px; overflow-wrap: anywhere; }
+.drop .file-size { margin: 0; }
+.file-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 10px; }
 .file-input {
   position: absolute;
   width: 1px;

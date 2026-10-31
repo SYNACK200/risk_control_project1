@@ -14,7 +14,6 @@ interface Props {
   onSelect: (s: Selection) => void;
   onMove: (kind: 'meta' | 'table', id: string, rect: Rect) => void;
   onHint: (text: string) => void;
-  demoLines?: { field: string; text: string; confidence: number; rect: Rect }[];
 }
 
 type Drag =
@@ -28,20 +27,25 @@ export function Stage(p: Props) {
   const holderRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<Drag>(null);
   const [renderError, setRenderError] = useState('');
+  const renderSeq = useRef(0);
+  const renderChain = useRef<Promise<void>>(Promise.resolve());
 
+  // pdfjs 禁止同一 canvas 并发 render（StrictMode 会双跑 effect），串行并对过期任务短路
   useEffect(() => {
-    let alive = true;
+    const seq = ++renderSeq.current;
     const target = canvasRef.current;
     if (!target) return;
     setRenderError('');
-    p.sample
-      .render(p.page, target, 780 * p.zoom)
+    renderChain.current = renderChain.current
+      .then(() => {
+        if (seq !== renderSeq.current) return;
+        return p.sample.render(p.page, target, 780 * p.zoom);
+      })
       .catch((err: unknown) => {
-        if (!alive) return;
+        if (seq !== renderSeq.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         setRenderError(`第 ${p.page} 页渲染失败：${msg}`);
       });
-    return () => { alive = false; };
   }, [p.sample, p.page, p.zoom]);
 
   function toRel(e: { clientX: number; clientY: number }): { x: number; y: number } {
@@ -192,20 +196,6 @@ export function Stage(p: Props) {
                 </div>
               );
             })}
-
-            {p.demoLines?.map((line, idx) => (
-              <div
-                key={`demo-${idx}`}
-                className={`box demo ${line.confidence < 0.8 ? 'low' : ''}`}
-                style={{
-                  left: `${line.rect.x * 100}%`, top: `${line.rect.y * 100}%`,
-                  width: `${line.rect.w * 100}%`, height: `${line.rect.h * 100}%`,
-                  pointerEvents: 'none',
-                }}
-              >
-                <span className="box-label">{line.field} {(line.confidence * 100).toFixed(0)}%</span>
-              </div>
-            ))}
 
             {drag?.mode === 'create' && (
               <div
