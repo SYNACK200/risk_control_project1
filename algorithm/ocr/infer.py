@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 import pdfplumber
+import pymupdf
 
 from .models import Template
 from .parse import parse
@@ -57,29 +58,88 @@ class InferResult:
 
 
 def _words(file_bytes: bytes) -> dict[int, list[dict]]:
+    """取页面词坐标，统一归一化到「显示坐标系」。
+
+    页面 rotate 90/180/270 时，原始 PDF 坐标与用户在界面上点选的坐标不一致；
+    这里乘 rotation_matrix（与 parse.py 一致），让标注点、模板、解析三方同坐标系。
+    """
     pages: dict[int, list[dict]] = {}
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        for idx, page in enumerate(pdf.pages):
-            ws = page.extract_words(use_text_flow=False) or []
-            pages[idx] = [
-                {"x0": w["x0"], "x1": w["x1"], "top": w["top"], "bottom": w["bottom"], "text": w["text"]}
-                for w in ws
-            ]
+    with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
+        for idx, page in enumerate(doc):
+            matrix = page.rotation_matrix
+            ws: list[dict] = []
+            for x0, y0, x1, y1, text, *_rest in page.get_text("words"):
+                if not text.strip():
+                    continue
+                rect = pymupdf.Rect(x0, y0, x1, y1) * matrix
+                ws.append({"x0": rect.x0, "x1": rect.x1, "top": rect.y0,
+                           "bottom": rect.y1, "text": text})
+            pages[idx] = ws
     return pages
 
 
-def _nearest(words: list[dict], x: float, y: float, radius: float = 40.0) -> dict | None:
-    best, best_d = None, radius
+_HEADER_META = ("卡号", "户名", "起止日期", "申请单", "打印", "第", "共", "页",
+                "借记账户历史明细", "电子版", "明细真伪", "扫码", "识别")
+
+def _is_header_meta(text: str) -> bool:
+    """页眉/页脚元数据词（卡号、户名、起止日期、页码…），不能当列锚点。"""
+    t = text.strip()
+    return any(t.startswith(k) or k in t for k in _HEADER_META)
+
+
+def _nearest(words: list[dict], x: float, y: float, radius: float | None = None) -> dict | None:
+    """把标注点吸附到最近的词，容忍框选偏差。
+
+    三级策略（从严到宽）：
+    1. 欧氏距离 ≤ 2.5% 页宽 —— 点在词附近；
+    2. 同列范围（|Δx| ≤ 6% 页宽）且纵向偏差 ≤ 15% 页高 —— 点在列的上下空白处；
+    3. 仅按横向最近（|Δx| ≤ 12% 页宽）—— 点明显偏出列，但仍能吸附到最近的列。
+    """
+    if not words:
+        return None
+    # 所有吸附级别都不允许落到页眉/页脚元数据词上
+    words = [w for w in words if not _is_header_meta(w["text"])]
+    if not words:
+        return None
+    page_width = max((w["x1"] for w in words), default=595.0) or 595.0
+    page_height = max((w["bottom"] for w in words), default=842.0) or 842.0
+
+    def center(w):
+        return (w["x0"] + w["x1"]) / 2, (w["top"] + w["bottom"]) / 2
+
+    # 1) 距离内最近
+    best, best_d = None, radius if radius is not None else max(24.0, page_width * 0.025)
     for w in words:
-        cx, cy = (w["x0"] + w["x1"]) / 2, (w["top"] + w["bottom"]) / 2
+        cx, cy = center(w)
         d = ((cx - x) ** 2 + (cy - y) ** 2) ** 0.5
         if d <= best_d:
             best, best_d = w, d
-    return best
+    if best is not None:
+        return best
+
+    # 2) 同列（横向接近），纵向放宽
+    cand = [w for w in words
+            if abs(center(w)[0] - x) <= page_width * 0.06
+            and abs(center(w)[1] - y) <= page_height * 0.15]
+    if cand:
+        return min(cand, key=lambda w: (abs(center(w)[0] - x), abs(center(w)[1] - y)))
+
+    # 3) 只按横向最近；排除页眉/页脚元数据词，避免把「卡号/起止日期」当成列
+    cand = [w for w in words
+            if abs(center(w)[0] - x) <= page_width * 0.12 and not _is_header_meta(w["text"])]
+    if cand:
+        return min(cand, key=lambda w: (abs(center(w)[0] - x), abs(center(w)[1] - y)))
+    return None
 
 
-def _cluster_columns(anchors: list[dict], pages: dict[int, list[dict]], tol: float = 14.0) -> list[dict]:
-    """以锚点为种子横向聚类，得到列区间与全部单元。"""
+def _cluster_columns(anchors: list[dict], pages: dict[int, list[dict]], tol: float | None = None) -> list[dict]:
+    """以锚点为种子横向聚类，得到列区间与全部单元。
+
+    tol 默认按页宽自适应（默认 1.2% 页宽，最小 10pt），让同一列内的小幅偏移仍能聚合。
+    """
+    if tol is None:
+        width = max((w["x1"] for ws in pages.values() for w in ws), default=595.0) or 595.0
+        tol = max(10.0, width * 0.012)
     cols: list[dict] = []
     for a in anchors:
         cx = (a["x0"] + a["x1"]) / 2
@@ -208,6 +268,7 @@ def _header_aliases(cols: list[dict], pages: dict[int, list[dict]], limit: int =
 
 
 def _validate(file_bytes: bytes, template: Template) -> list[str]:
+    """反验：用模板反跑一遍，行数/金额/余额链对不上就不许作废通过。"""
     """用推断出的模板真解析一遍，按行数/余额链反验列语义；返回硬性问题。"""
     parsed = parse(file_bytes, template)
     txns = parsed.transactions
