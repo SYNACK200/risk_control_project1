@@ -6,6 +6,7 @@ import { getTask, type TaskDetail } from '../lib/api';
 const POLL_MS = 3000;
 
 const ACTIVE_STATUSES = new Set([
+  'QUEUED',
   'PENDING',
   'CHECKING',
   'PARSING',
@@ -14,6 +15,7 @@ const ACTIVE_STATUSES = new Set([
 ]);
 
 const STATUS_COPY: Record<string, string> = {
+  QUEUED: '已排队，前面还有其它材料在分析。',
   PENDING: '已收件，等待处理。',
   CHECKING: '正在检查材料。',
   PARSING: '正在解析流水。',
@@ -27,6 +29,7 @@ const STATUS_COPY: Record<string, string> = {
 const STAGES = ['已收件', '文件检查', '解析流水', '核验完成'];
 
 const STAGE_INDEX: Record<string, number> = {
+  QUEUED: 0,
   PENDING: 0,
   CHECKING: 1,
   PARSING: 2,
