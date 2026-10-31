@@ -103,6 +103,7 @@ def infer_template_api(
 
     payload = {
         "bank_code": bank_code.upper(),
+        "valid": result["valid"],
         "field_map": result["field_map"],
         "provenance": result["provenance"],
         "columns": result["columns"],
@@ -115,7 +116,7 @@ def infer_template_api(
         layout = None
     payload["layout"] = layout
 
-    if save_draft:
+    if save_draft and result["valid"]:
         file_id = None
         try:
             file_id = _store_sample(db, file.filename or "template_sample.pdf", data)

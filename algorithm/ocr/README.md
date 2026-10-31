@@ -7,8 +7,12 @@
 # 接口
 
 ```python
-def parse(file_bytes: bytes, template: Template | None) -> ParseResult:
-    """返回明细列表与自检三项；不判断真伪。"""
+def parse(file_bytes: bytes, template: Template | dict | None) -> ParseResult:
+    """返回明细列表与自检三项；不判断真伪。
+
+    template 可为解析模板，也可直接传标注导出（template-spec v1 dict）：
+    内部先走 convert_annotation()，转换失败只返回带 T 码的 warnings，不产出半份结果。
+    """
 
 class ParseResult(BaseModel):
     transactions: list[Transaction]
@@ -19,6 +23,25 @@ class ParseResult(BaseModel):
     warnings: list[str]
 
 ```
+
+# 标注导出 → 解析模板（AL-34）
+
+```python
+from algorithm.ocr import convert_annotation, parse
+
+result = convert_annotation(export_dict, pdf_bytes)   # 校验 + 转换
+if not result.ok:
+    raise SystemExit(result.errors)                   # T001–T009，有错不出模板
+parsed = parse(pdf_bytes, result.template)            # 等价于 parse(pdf_bytes, export_dict)
+```
+
+| 项 | 做法 |
+| --- | --- |
+| 列 → 字段 | `tables[].columns` 的 x/w 按页面实际宽度换成点，在 `header_y` 附近找表头行，按横向位置取表头文字作别名；表头指纹能命中时优先按指纹定位（实测招行标注页与脱敏件的表头纵向差 47pt） |
+| 无样本兜底 | 没有可读 PDF 或列未定位时，列数与 `match_rule.header_fingerprint` 一致则按顺序映射；仍缺失必需列记 T003 |
+| 页眉字段 | `meta_boxes` 转成 `Template.meta_boxes`，`parse()` 优先按框取账号/户名/期间，框内取不到再退回文字标签；其余页眉字段保留在标注中不参与解析 |
+| 校验 | T001–T009 阻断，W001–W005 只提示；重复字段按“同一表格内重复列 / 同页重复框”判 T005，跨页同字段按 template-spec 第九节允许 |
+| 坐标基准 | `Template.page_size` 取导出 `page_size`，缺失时取样本第 1 页尺寸；影像件词坐标是像素，与模板 pt 差数倍，页眉框自动跳过、改走文字标签 |
 
 # 实现要点
 

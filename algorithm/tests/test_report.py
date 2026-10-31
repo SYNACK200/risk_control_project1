@@ -198,10 +198,97 @@ def test_evidence_maps_txn_id_and_dedupes():
         transactions=_history(),
         txn_ids=[11, 22, 33],
     )
-    assert len(report.evidence) == 2
-    assert report.evidence[0].txn_id == 22
-    assert report.evidence[1].txn_id is None
+    assert len([item for item in report.evidence if item.rule_code in ("C1", "F1")]) == 2
+    c1 = next(item for item in report.evidence if item.rule_code == "C1")
+    f1 = next(item for item in report.evidence if item.rule_code == "F1")
+    assert c1.txn_id == 22
+    assert f1.txn_id is None
     assert any("交易号未落库" in item for item in report.limitations)
+
+
+def test_threshold_conclusions_carry_row_evidence():
+    report = _report()
+    codes = {item.code for item in report.conclusions}
+    assert {"DTI_HIGH", "LOW_BALANCE"} <= codes
+    evidence = [item for item in report.evidence if item.rule_code in codes]
+    assert evidence
+    for item in evidence:
+        assert item.page_no == 1
+        assert (item.x, item.y) == (200.0, 220.0)
+        assert item.txn_id is not None
+
+
+def test_conclusion_evidence_capped_per_code():
+    day = "2026-01-05"
+    txns = [
+        _txn(day, "消费", direction="out", amount="1", row=index)
+        for index in range(1, 31)
+    ]
+    report = _report(transactions=txns, thresholds=ThresholdConfig(counterparty_hhi=Decimal("0.5")))
+    assert any(item.code == "COUNTERPARTY_CONCENTRATED" for item in report.conclusions)
+    picked = [item for item in report.evidence if item.rule_code == "COUNTERPARTY_CONCENTRATED"]
+    assert len(picked) == 20
+
+
+def test_missing_counterparty_column_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "消费", direction="out", amount="10", row=index).model_copy(
+            update={"counterparty_name": ""}
+        )
+        for index in range(1, 4)
+    ]
+    report = _report(transactions=txns)
+    assert any("明细无对手方名称" in item and "E01/E02" in item for item in report.limitations)
+
+
+def test_missing_balance_column_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "消费", direction="out", amount="10", row=index).model_copy(
+            update={"balance": None}
+        )
+        for index in range(1, 4)
+    ]
+    report = _report(transactions=txns)
+    assert any("明细无余额" in item and "C03–C06" in item for item in report.limitations)
+
+
+def test_low_confidence_rows_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "消费", direction="out", amount="10", row=1),
+        _txn("2026-01-06", "消费", direction="out", amount="20", row=2).model_copy(
+            update={"confidence": 0.5}
+        ),
+    ]
+    report = _report(transactions=txns)
+    assert any(
+        "1 笔明细置信度低于 0.80" in item and "第 1 页" in item
+        for item in report.limitations
+    )
+
+
+def test_uncalibrated_threshold_trigger_declared_in_limitations():
+    txns = [
+        _txn("2026-01-05", "转账", direction="in", amount="600", row=1),
+        _txn("2026-01-05", "转账", direction="out", amount="600", row=2),
+        _txn("2026-01-05", "消费", direction="out", amount="50", row=3),
+        _txn("2026-01-05", "消费", direction="in", amount="100", row=4),
+    ]
+    report = _report(transactions=txns)
+    assert any(
+        "FAST_IN_OUT" in item and "未校准" in item for item in report.limitations
+    )
+
+
+def test_evidence_without_coordinates_declared_in_limitations():
+    evidence = [Evidence(rule_code="F1", page_no=1, x=0.0, y=0.0)]
+    report = build_report(
+        _verdict(evidence=evidence),
+        compute_metrics(_history()),
+        carrier="electronic",
+        transactions=_history(),
+        txn_ids=[11, 22, 33],
+    )
+    assert any("无法跳转到页内位置" in item for item in report.limitations)
 
 
 def test_screenshot_verdict_and_limitation_passthrough():
@@ -506,3 +593,45 @@ def test_counterparty_mask_names_alert():
         transactions=txns, thresholds=ThresholdConfig(counterparty_hhi=Decimal("0.5"))
     )
     assert any("掩码名称" in n for n in report.limitations)
+
+
+def _self_check(*items):
+    from algorithm.algo.report import ReportCheck
+
+    return [
+        ReportCheck(code=code, name=name, status=status, detail=detail)
+        for code, name, status, detail, _ratio in items
+    ]
+
+
+def test_self_check_passed_through_to_report():
+    report = _report(
+        self_check=_self_check(
+            ("S1", "金额回查", "pass", "102/102 笔金额能在原文定位", 1.0),
+            ("S5", "行数守恒", "pass", "声明 102 笔 vs 解析 102 笔", None),
+        )
+    )
+    data = json.loads(report.model_dump_json())
+    assert [item["code"] for item in data["self_check"]] == ["S1", "S5"]
+    assert all(item["status"] == "pass" for item in data["self_check"])
+    assert not any("识别自检" in n for n in data["limitations"])
+
+
+def test_missing_self_check_declared_in_limitations():
+    data = json.loads(_report().model_dump_json())
+    assert data["self_check"] == []
+    assert any("未执行识别自检" in n for n in data["limitations"])
+
+
+def test_self_check_failure_declared_in_limitations():
+    data = json.loads(
+        _report(
+            self_check=_self_check(
+                ("S1", "金额回查", "pass", "102/102 笔金额能在原文定位", 1.0),
+                ("S4", "跨引擎一致", "limited", "94/102 笔金额在两个引擎文本中均可定位", 0.92),
+            )
+        ).model_dump_json()
+    )
+    by_code = {item["code"]: item for item in data["self_check"]}
+    assert by_code["S4"]["status"] == "limited"
+    assert "识别自检 S4 跨引擎一致：94/102 笔金额在两个引擎文本中均可定位" in data["limitations"]

@@ -12,7 +12,13 @@ import fitz
 from pydantic import BaseModel, Field
 
 SampleLayout = Literal["icbc", "ccb", "cmb", "wechat"]
-ForgeryType = Literal["content_amount_tamper", "file_incremental_overlay"]
+ForgeryType = Literal[
+    "content_amount_tamper",
+    "file_incremental_overlay",
+    "content_row_deleted",
+    "content_page_splice",
+    "content_duplicate_reference",
+]
 Carrier = Literal["electronic", "image", "screenshot"]
 SampleVerdict = Literal["未发现异常", "存在不一致", "余额可疑", "来源可疑", "无法判定"]
 
@@ -20,6 +26,9 @@ SAMPLE_LAYOUTS: tuple[str, ...] = ("icbc", "ccb", "cmb", "wechat")
 SAMPLE_FORGERY_TYPES: tuple[str, ...] = (
     "content_amount_tamper",
     "file_incremental_overlay",
+    "content_row_deleted",
+    "content_page_splice",
+    "content_duplicate_reference",
 )
 LAYOUT_LABELS = {
     "icbc": "工行式：借贷标志 + 单列交易金额 + 余额，跨两页",
@@ -30,8 +39,11 @@ LAYOUT_LABELS = {
 FORGERY_LABELS = {
     "content_amount_tamper": "内容篡改：改金额不改余额，余额链断",
     "file_incremental_overlay": "文件伪造：增量更新 + 白底覆盖后重写金额",
+    "content_row_deleted": "内容篡改：删一笔但保留原页脚，余额链、页合计、笔数同时暴露",
+    "content_page_splice": "内容伪造：两个时段拼页，页内各自闭合、接缝余额链断",
+    "content_duplicate_reference": "内容篡改：整行复制一笔（含同一参考号），余额链同步改写，重号暴露",
 }
-SAMPLE_SET_VERSION = 1
+SAMPLE_SET_VERSION = 3
 
 
 class SampleExpectation(BaseModel):
@@ -69,6 +81,8 @@ class LoadedSample:
 
 _ICBC_HEADER = ["交易日期", "摘要", "对方户名", "借贷标志", "交易金额", "余额"]
 _ICBC_XS = [40, 200, 380, 480, 560, 660]
+_ICBC_REF_HEADER = [*_ICBC_HEADER, "交易流水号"]
+_ICBC_REF_XS = [*_ICBC_XS, 730]
 _CCB_HEADER = ["交易日期", "摘要", "对方户名", "收入金额", "支出金额", "账户余额"]
 _CCB_XS = [40, 170, 300, 430, 510, 610]
 _CMB_HEADER = ["交易日期", "交易类型", "对手方", "借贷方向", "交易金额", "交易后余额"]
@@ -98,6 +112,22 @@ _BANK_ROWS = [
 
 def _icbc_rows() -> list[tuple[str, ...]]:
     return list(_BANK_ROWS)
+
+
+def _icbc_duplicate_reference_rows() -> list[tuple[str, ...]]:
+    """复制第 2 笔（连参考号一起）并把其后余额整体下调，保证余额链仍闭合。"""
+    shift = Decimal(_BANK_ROWS[1][4].replace(",", ""))
+    base = [_BANK_ROWS[0], _BANK_ROWS[1], _BANK_ROWS[1], *_BANK_ROWS[2:]]
+    references = [f"20260105{index:04d}" for index in (1, 2, 2, 3, 4, 5, 6)]
+    rows: list[tuple[str, ...]] = []
+    for index, ((day, summary, party, direction, amount, balance), reference) in enumerate(
+        zip(base, references)
+    ):
+        value = Decimal(balance.replace(",", ""))
+        if index >= 2:
+            value -= shift
+        rows.append((day, summary, party, direction, amount, f"{value:,.2f}", reference))
+    return rows
 
 
 def _ccb_rows() -> list[tuple[str, ...]]:
@@ -219,6 +249,15 @@ def _apply_incremental_overlay(path: Path) -> None:
     doc.close()
 
 
+def _splice_pages(path: Path, first: Path, second: Path) -> None:
+    """把两份同版式文件的页面拼成一份，制造跨页接缝。保留首页元数据。"""
+    doc = fitz.open(first)
+    with fitz.open(second) as other:
+        doc.insert_pdf(other)
+    doc.save(path)
+    doc.close()
+
+
 def _relative(path: Path, root: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
 
@@ -305,6 +344,59 @@ def build_sample_set(directory: str | Path) -> list[LoadedSample]:
     )
     _apply_incremental_overlay(overlay_path)
 
+    deleted = [list(row) for row in _BANK_ROWS]
+    del deleted[2]
+    deleted_pages = [deleted[:2], deleted[2:]]
+    _write_pdf(
+        forged / "icbc_row_deleted.pdf",
+        title="银行账户交易明细",
+        header=_ICBC_HEADER,
+        xs=_ICBC_XS,
+        pages=deleted_pages,
+        footers=[
+            _bank_footer(list(_BANK_ROWS[:3]), "icbc"),
+            _bank_footer(list(_BANK_ROWS[3:]), "icbc"),
+        ],
+    )
+
+    shifted = [list(row) for row in _BANK_ROWS]
+    for row in shifted[3:]:
+        row[5] = f"{Decimal(row[5].replace(',', '')) - Decimal('10000'):,.2f}"
+    splice_first = forged / "_splice_page_1.pdf"
+    splice_second = forged / "_splice_page_2.pdf"
+    _write_pdf(
+        splice_first,
+        title="银行账户交易明细",
+        header=_ICBC_HEADER,
+        xs=_ICBC_XS,
+        pages=[list(_BANK_ROWS[:3])],
+        footers=[_bank_footer(list(_BANK_ROWS[:3]), "icbc")],
+    )
+    _write_pdf(
+        splice_second,
+        title="银行账户交易明细",
+        header=_ICBC_HEADER,
+        xs=_ICBC_XS,
+        pages=[shifted[3:]],
+        footers=[_bank_footer(shifted[3:], "icbc")],
+    )
+    splice_path = forged / "icbc_page_splice.pdf"
+    _splice_pages(splice_path, splice_first, splice_second)
+    splice_first.unlink(missing_ok=True)
+    splice_second.unlink(missing_ok=True)
+
+    duplicate_rows = _icbc_duplicate_reference_rows()
+    duplicate_pages = [duplicate_rows[:4], duplicate_rows[4:]]
+    duplicate_path = forged / "icbc_duplicate_reference.pdf"
+    _write_pdf(
+        duplicate_path,
+        title="银行账户交易明细",
+        header=_ICBC_REF_HEADER,
+        xs=_ICBC_REF_XS,
+        pages=duplicate_pages,
+        footers=[_bank_footer(page, "icbc") for page in duplicate_pages],
+    )
+
     cases = [
         _clean_case("clean_icbc", clean / "icbc.pdf", root, "icbc", 6, LAYOUT_LABELS["icbc"]),
         _clean_case("clean_ccb", clean / "ccb.pdf", root, "ccb", 6, LAYOUT_LABELS["ccb"]),
@@ -333,6 +425,42 @@ def build_sample_set(directory: str | Path) -> list[LoadedSample]:
                 fail_codes=["F3", "F7"],
             ),
             notes=FORGERY_LABELS["file_incremental_overlay"],
+        ),
+        SampleCase(
+            id="forged_row_deleted_icbc",
+            path=_relative(forged / "icbc_row_deleted.pdf", root),
+            layout="icbc",
+            forgery="content_row_deleted",
+            expectation=SampleExpectation(
+                verdict="存在不一致",
+                txn_count=5,
+                fail_codes=["C1", "C2", "C3"],
+            ),
+            notes=FORGERY_LABELS["content_row_deleted"],
+        ),
+        SampleCase(
+            id="forged_page_splice_icbc",
+            path=_relative(splice_path, root),
+            layout="icbc",
+            forgery="content_page_splice",
+            expectation=SampleExpectation(
+                verdict="存在不一致",
+                txn_count=6,
+                fail_codes=["C1"],
+            ),
+            notes=FORGERY_LABELS["content_page_splice"],
+        ),
+        SampleCase(
+            id="forged_duplicate_ref_icbc",
+            path=_relative(duplicate_path, root),
+            layout="icbc",
+            forgery="content_duplicate_reference",
+            expectation=SampleExpectation(
+                verdict="存在不一致",
+                txn_count=7,
+                fail_codes=["C6", "C10"],
+            ),
+            notes=FORGERY_LABELS["content_duplicate_reference"],
         ),
     ]
 

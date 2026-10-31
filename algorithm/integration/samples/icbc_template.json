@@ -1,7 +1,7 @@
 {
  "bank_code": "ICBC",
- "version": 1,
- "note": "工行电子明细模板（解析格式）；按列序号映射，规避表头混入数字",
+ "version": 2,
+ "note": "工行电子明细模板（解析格式）；按列序号映射，规避表头混入数字。v2：对方户名列在 10、渠道在 12，v1 把渠道指到 10 覆盖了对方户名",
  "field_map": {
   "txn_date": 0,
   "account_no": 1,
@@ -9,7 +9,8 @@
   "summary": 6,
   "amount": 8,
   "balance": 9,
-  "channel": 10
+  "counterparty": 10,
+  "channel": 12
  },
  "header_columns": [
   "交易日期",
@@ -22,9 +23,9 @@
   "地区",
   "收入/支出金额",
   "余额",
+  "对方户名",
+  "对方账号",
   "渠道"
  ],
- "missing_columns": [
-  "对方户名（该版式无此列）"
- ]
+ "missing_columns": []
 }
