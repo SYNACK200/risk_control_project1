@@ -460,3 +460,12 @@ export interface ProbeResult {
 export async function probeTemplate(form: FormData): Promise<ProbeResult> {
   return json<ProbeResult>(await authFetch(BASE + '/templates/probe', { method: 'POST', body: form }));
 }
+
+export async function decryptPdf(file: File, password: string): Promise<Blob> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('password', password);
+  const res = await authFetch(BASE + '/templates/decrypt', { method: 'POST', body: form });
+  if (!res.ok) throw new Error('解密失败（口令可能不正确）');
+  return await res.blob();
+}
