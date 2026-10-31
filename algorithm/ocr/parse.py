@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import io
 import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
 
 import fitz
 import pdfplumber
 
-from .models import Direction, PageSummary, ParseResult, Template, Transaction
+from .models import (
+    Direction,
+    HeaderField,
+    PageHeader,
+    PageSummary,
+    ParseResult,
+    Template,
+    Transaction,
+)
 from .table import (
     Line,
     Word,
@@ -22,6 +31,7 @@ DATE_RE = re.compile(r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})")
 MONEY_RE = re.compile(r"[-+]?[¥￥]?\d[\d,]*(?:\.\d+)?")
 FOOTER_RE = re.compile(r"(?:共|合计|总计)\s*(\d+)\s*笔")
 TIME_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
+CLOCK_RE = re.compile(r"(?<![\d.:])(\d{1,2}):([0-5]\d)(?::([0-5]\d))?(?!\d)")
 PAGE_COUNT_RE = re.compile(r"(?<![\d.])(\d+)\s*$")
 PAGE_COUNT_LABEL_RE = re.compile(r"本页交易笔数[:：]?\s*(\d+)")
 PAGE_IN_RE = re.compile(r"(?:本页)?收入(?:算术)?合计[:：]?\s*([-+]?[¥￥]?[\d,]+\.\d{2})")
@@ -29,6 +39,17 @@ PAGE_OUT_RE = re.compile(r"(?:本页)?支出(?:算术)?合计[:：]?\s*([-+]?[¥
 TOTAL_LINE_RE = re.compile(r"[-+]?[\d,]+\.\d{2}\s*$")
 DECIMAL_MONEY_RE = re.compile(r"[-+]?[¥￥]?\d[\d,]*\.\d{2}")
 PAGE_MARK_RE = re.compile(r"(第\s*\d+\s*页|page\s*\d+|共\s*\d+\s*页)", re.IGNORECASE)
+ACCOUNT_LABEL_RE = re.compile(
+    r"(?:卡号|账号|帐号|账\s*号)\s*[:：]?\s*([0-9*＊xX×][0-9*＊xX×\s\-]{2,})"
+)
+NAME_LABEL_RE = re.compile(r"(?:户\s*名|账户名|客户名称|户主|姓名)\s*[:：]\s*([^\s:：]+)")
+PERIOD_LABEL_RE = re.compile(r"(?:期间|时段|时间段|日期范围)")
+_DATE_PATTERN = r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})日?"
+PERIOD_RE = re.compile(
+    _DATE_PATTERN
+    + r"(?:\s*\d{1,2}:\d{2}(?::\d{2})?)?\s*(?:--|—|－|~|～|至|到|-)\s*"
+    + _DATE_PATTERN
+)
 
 REQUIRED_FIELDS = ("txn_date", "amount", "direction")
 LOW_CONF = 0.8
@@ -36,6 +57,9 @@ MIN_BODY_SIZE = 5.0
 MAX_BODY_SIZE = 12.0
 WORD_X_TOLERANCE = 4.0
 LINE_Y_TOLERANCE = 4.0
+CLOCK_JOIN_GAP = 6.0
+CONT_MAX_GAP = 24.0
+HEADER_ZONE_BOTTOM = 220.0
 
 
 class OcrUnavailable(RuntimeError):
@@ -50,6 +74,40 @@ def parse_date(text: str) -> str | None:
     if not (1 <= month <= 12 and 1 <= day <= 31):
         return None
     return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def parse_clock(text: str) -> str | None:
+    """整串是时间时归一为 HH:MM:SS；原件只印到分时秒位补 00。"""
+    raw = re.sub(r"\s+", "", text or "")
+    match = CLOCK_RE.fullmatch(raw)
+    if not match:
+        return None
+    return _clock_text(*match.groups())
+
+
+def _clock_text(hour: str, minute: str, second: str | None) -> str | None:
+    h, m, s = int(hour), int(minute), int(second or 0)
+    if not 0 <= h <= 23:
+        return None
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _line_clock(line: Line) -> str | None:
+    """按 x 合并相邻字块后取首个时间，兼容逐字抽取的 PDF。"""
+    runs: list[str] = []
+    prev: Word | None = None
+    for word in line.words:
+        if prev is not None and word.x0 - prev.x1 <= CLOCK_JOIN_GAP:
+            runs[-1] += word.text
+        else:
+            runs.append(word.text)
+        prev = word
+    for run in runs:
+        match = CLOCK_RE.search(run)
+        clock = _clock_text(*match.groups()) if match else None
+        if clock is not None:
+            return clock
+    return None
 
 
 def parse_money(text: str) -> Decimal | None:
@@ -121,36 +179,49 @@ def _is_body_char(obj: dict) -> bool:
 
 
 def _fitz_page_words(page: fitz.Page) -> tuple[list[Word], list[str], bool]:
-    """按字号过滤水印/缩印重影，返回 (词, 正文字符串, 页面是否有任何文本)。"""
+    """按字号过滤水印/缩印重影，返回 (词, 正文字符串, 页面是否有任何文本)。
+
+    只按几何位置判断正文，不按块/行编号：含图像块的 PDF 里 words 的块号不计图像块，
+    与 dict 的编号会错位，招行件的图片块排在正文前，曾导致整页词被滤空。
+    """
     layout = page.get_text("dict")
-    body_lines: dict[tuple[int, int], list[tuple[float, float, float, float]]] = {}
+    body_rects: list[fitz.Rect] = []
     body_texts: list[str] = []
     has_text = False
-    for block_index, block in enumerate(layout["blocks"]):
-        block_no = block.get("number", block_index)
-        for line_index, line in enumerate(block.get("lines", [])):
-            rects: list[tuple[float, float, float, float]] = []
+    for block in layout["blocks"]:
+        for line in block.get("lines", []):
             for span in line.get("spans", []):
                 text = span.get("text", "")
                 if text.strip():
                     has_text = True
                 if MIN_BODY_SIZE <= float(span.get("size", 0)) <= MAX_BODY_SIZE:
-                    rects.append(tuple(span["bbox"]))
+                    body_rects.append(fitz.Rect(span["bbox"]))
                     body_texts.append(text)
-            if rects:
-                body_lines[(block_no, line_index)] = rects
 
+    spans = sorted(body_rects, key=lambda rect: rect.y0)
+    tops = [rect.y0 for rect in spans]
     matrix = page.rotation_matrix
     words: list[Word] = []
-    for x0, y0, x1, y1, text, block_no, line_no, _ in page.get_text("words"):
-        rects = body_lines.get((block_no, line_no))
-        if not rects or not text.strip():
+    for x0, y0, x1, y1, text, _block, _line, _no in page.get_text("words"):
+        if not text.strip():
             continue
-        if not any(x0 < r[2] and x1 > r[0] and y0 < r[3] and y1 > r[1] for r in rects):
+        area = max((x1 - x0) * (y1 - y0), 1e-6)
+        start = bisect_left(tops, y0 - MAX_BODY_SIZE - 1)
+        end = bisect_right(tops, y1)
+        if not any(_overlap_ratio(area, x0, y0, x1, y1, r) >= 0.5 for r in spans[start:end]):
             continue
         rect = fitz.Rect(x0, y0, x1, y1) * matrix
         words.append(Word(text=text, x0=rect.x0, x1=rect.x1, top=rect.y0, bottom=rect.y1))
     return words, body_texts, has_text
+
+
+def _overlap_ratio(area: float, x0: float, y0: float, x1: float, y1: float, rect: fitz.Rect) -> float:
+    """词框与字号命中框的交叠面积占比；水印/大字号词只沾边，占比很低。"""
+    width = min(x1, rect.x1) - max(x0, rect.x0)
+    height = min(y1, rect.y1) - max(y0, rect.y0)
+    if width <= 0 or height <= 0:
+        return 0.0
+    return (width * height) / area
 
 
 def _fitz_extract(
@@ -209,7 +280,7 @@ def _parse_pdf_pages(
     pdf: pdfplumber.PDF,
     template: Template | None,
     warnings: list[str],
-) -> tuple[list[Transaction], int | None, list[PageSummary]]:
+) -> tuple[list[Transaction], int | None, list[PageSummary], list[PageHeader]]:
     def pages() -> Iterable[tuple[int, list[Word]]]:
         for page_no, page in enumerate(pdf.pages, start=1):
             body = page.filter(_is_body_char)
@@ -223,37 +294,167 @@ def _line_confidence(line: Line) -> float:
     return min((word.confidence for word in line.words), default=1.0)
 
 
+def _clean_account(text: str) -> str:
+    compact = re.sub(r"[\s\-]", "", text)
+    return re.sub(r"[xX×＊]", "*", compact)
+
+
+def _clean_name(text: str) -> str:
+    return re.sub(r"\s", "", text).replace("＊", "*")
+
+
+def _box_words(lines: list[Line], box, width: float, height: float) -> list[Word]:
+    x0, y0 = box.x * width, box.y * height
+    x1, y1 = (box.x + box.w) * width, (box.y + box.h) * height
+    hits = [
+        word
+        for line in lines
+        for word in line.words
+        if x0 <= word.cx <= x1 and y0 <= (word.top + word.bottom) / 2 <= y1
+    ]
+    return sorted(hits, key=lambda word: (word.top, word.x0))
+
+
+def _boxes_match_page(lines: list[Line], template: Template | None) -> bool:
+    """标注框按模板基准页尺寸换算；影像件像素坐标与 pt 差数倍，不能套用。"""
+    if template is None or not template.meta_boxes or not template.page_size:
+        return False
+    width, height = template.page_size
+    max_x = max((word.x1 for line in lines for word in line.words), default=0.0)
+    max_y = max((word.bottom for line in lines for word in line.words), default=0.0)
+    return max_x <= width * 1.2 and max_y <= height * 1.2
+
+
+def _fill_header_from_boxes(
+    header: PageHeader,
+    page_no: int,
+    lines: list[Line],
+    template: Template | None,
+) -> None:
+    """标注框优先：框内取到值就填，取不到再由文字标签兜底。"""
+    if not _boxes_match_page(lines, template):
+        return
+    width, height = template.page_size  # type: ignore[misc]
+    for box in template.meta_boxes:
+        if box.page != page_no:
+            continue
+        words = _box_words(lines, box, width, height)
+        if not words:
+            continue
+        text = "".join(word.text for word in words)
+        compact = re.sub(r"\s+", "", text)
+        bbox = _bbox(words)
+        confidence = min(word.confidence for word in words)
+        if box.field == "account_no" and header.account_no is None:
+            match = ACCOUNT_LABEL_RE.search(compact)
+            value = _clean_account(match.group(1) if match else compact)
+            if any(ch.isdigit() for ch in value):
+                header.account_no = HeaderField(value=value, bbox=bbox, confidence=confidence)
+        elif box.field == "account_name" and header.account_name is None:
+            match = NAME_LABEL_RE.search(text)
+            value = _clean_name(match.group(1) if match else text)
+            if value:
+                header.account_name = HeaderField(value=value, bbox=bbox, confidence=confidence)
+        elif box.field == "period" and header.period_start is None:
+            match = PERIOD_RE.search(compact)
+            if not match:
+                continue
+            start = parse_date(f"{match.group(1)}-{match.group(2)}-{match.group(3)}")
+            end = parse_date(f"{match.group(4)}-{match.group(5)}-{match.group(6)}")
+            if start and end:
+                header.period_start = HeaderField(value=start, bbox=bbox, confidence=confidence)
+                header.period_end = HeaderField(value=end, bbox=bbox, confidence=confidence)
+
+
+def _page_header(
+    page_no: int,
+    lines: list[Line],
+    header_top: float,
+    has_table_header: bool,
+    template: Template | None = None,
+) -> PageHeader:
+    """抽取表头上方的页眉字段；没有标签的续页不靠猜，字段留空。"""
+    header = PageHeader(page_no=page_no)
+    _fill_header_from_boxes(header, page_no, lines, template)
+    for line in lines:
+        if line.top > HEADER_ZONE_BOTTOM:
+            break
+        if has_table_header and line.top >= header_top:
+            continue
+        text = line.text.strip()
+        if not text:
+            continue
+        # 逐字抽取的 PDF 会把数字拆成「2 0 2 6」，去空白后再匹配
+        compact = re.sub(r"\s+", "", text)
+        bbox = _bbox(line.words)
+        confidence = _line_confidence(line)
+        if header.account_no is None:
+            match = ACCOUNT_LABEL_RE.search(compact)
+            if match:
+                header.account_no = HeaderField(
+                    value=_clean_account(match.group(1)), bbox=bbox, confidence=confidence
+                )
+        if header.account_name is None:
+            # 户名后可能紧跟日期/期间，按原文本取到下一个空白为止
+            match = NAME_LABEL_RE.search(text)
+            if match:
+                header.account_name = HeaderField(
+                    value=_clean_name(match.group(1)), bbox=bbox, confidence=confidence
+                )
+        if header.period_start is None:
+            match = PERIOD_RE.search(compact)
+            if match and (has_table_header or PERIOD_LABEL_RE.search(text)):
+                start = parse_date(f"{match.group(1)}-{match.group(2)}-{match.group(3)}")
+                end = parse_date(f"{match.group(4)}-{match.group(5)}-{match.group(6)}")
+                if start and end:
+                    header.period_start = HeaderField(
+                        value=start, bbox=bbox, confidence=confidence
+                    )
+                    header.period_end = HeaderField(
+                        value=end, bbox=bbox, confidence=confidence
+                    )
+    return header
+
+
 def _transactions_from_pages(
     pages: Iterable[tuple[int, list[Word]]],
     template: Template | None,
     warnings: list[str],
     allow_date_in_line: bool = False,
     strip_date_from_summary: bool = False,
-) -> tuple[list[Transaction], int | None, list[PageSummary]]:
+) -> tuple[list[Transaction], int | None, list[PageSummary], list[PageHeader]]:
     transactions: list[Transaction] = []
     columns = None
     footer_count: int | None = None
     page_footer_total = 0
     summaries: list[PageSummary] = []
+    headers: list[PageHeader] = []
+    has_direction_column = False
+    has_split_amount = False
 
     for page_no, words in pages:
         page_footer: int | None = None
         page_summary = PageSummary(page_no=page_no)
         summaries.append(page_summary)
         lines = group_lines(words, y_tol=LINE_Y_TOLERANCE)
-        if not lines:
-            continue
 
         header = find_header(lines, template.field_map if template else None)
         if header is not None:
             header_line, tokens, mapping = header
             columns = build_columns(tokens, mapping)
             header_top = header_line.top
+            fields = set(mapping.values())
+            has_direction_column = has_direction_column or "direction" in fields
+            has_split_amount = has_split_amount or bool({"amount_in", "amount_out"} & fields)
         elif columns is None:
             warnings.append(f"第 {page_no} 页未识别到表头，跳过该页")
+            headers.append(PageHeader(page_no=page_no))
             continue
         else:
             header_top = -1.0
+        headers.append(_page_header(page_no, lines, header_top, header is not None, template))
+        if not lines:
+            continue
 
         current: Transaction | None = None
         for line in lines:
@@ -305,12 +506,19 @@ def _transactions_from_pages(
             if txn_date is None:
                 if current is None:
                     continue
+                # 表格结束后页脚（页码、温馨提示）离上一行很远，不能并入上一笔
+                if current.bbox is not None and line.top - current.bbox[3] > CONT_MAX_GAP:
+                    continue
                 extra = _cell_text(cells.get("summary", []))
                 if extra and extra not in (current.summary or ""):
                     current.summary = f"{current.summary or ''}{extra}"
                 extra_cp = _cell_text(cells.get("counterparty", []))
                 if extra_cp and extra_cp not in (current.counterparty_name or ""):
                     current.counterparty_name = f"{current.counterparty_name or ''}{extra_cp}"
+                if current.trade_time is None:
+                    current.trade_time = _line_clock(line)
+                if current.reference_no is None:
+                    current.reference_no = _cell_text(cells.get("reference_no", [])) or None
                 _assign_money(current, cells)
                 current.confidence = min(current.confidence, _line_confidence(line))
                 continue
@@ -325,6 +533,8 @@ def _transactions_from_pages(
                 page_no=page_no,
                 row_no=len(transactions) + 1,
                 txn_date=txn_date,
+                trade_time=_line_clock(line),
+                reference_no=_cell_text(cells.get("reference_no", [])) or None,
                 summary=summary or None,
                 counterparty_name=_cell_text(cells.get("counterparty", [])) or None,
                 direction=parse_direction(direction_text, None),
@@ -339,7 +549,38 @@ def _transactions_from_pages(
 
     if footer_count is None and page_footer_total:
         footer_count = page_footer_total
-    return transactions, footer_count, summaries
+    _fill_signed_directions(
+        transactions,
+        warnings,
+        has_direction_column=has_direction_column,
+        has_split_amount=has_split_amount,
+    )
+    return transactions, footer_count, summaries, headers
+
+
+def _fill_signed_directions(
+    transactions: list[Transaction],
+    warnings: list[str],
+    *,
+    has_direction_column: bool,
+    has_split_amount: bool,
+) -> None:
+    """金额列以正负记收支时，未带负号的行补为入账。
+
+    仅在整表既无收付方向列、也无收入/支出两列，且金额列确实出现过负数时启用：
+    列内没有负数可能只是没有出账，不能据此认定符号约定。
+    """
+    if has_direction_column or has_split_amount:
+        return
+    if not any(txn.direction == "out" for txn in transactions):
+        return
+    filled = 0
+    for txn in transactions:
+        if txn.direction is None and txn.amount:
+            txn.direction = "in"
+            filled += 1
+    if filled:
+        warnings.append(f"金额列未印收付方向，按正负号约定判定：{filled} 笔无负号金额按入账处理")
 
 
 def _ocr_to_words(page) -> list[Word]:
@@ -356,17 +597,18 @@ def _ocr_to_words(page) -> list[Word]:
     ]
 
 
-def _parse_ocr(file_bytes: bytes, template: Template | None) -> ParseResult:
+def _parse_ocr(file_bytes: bytes, template: Template | None, warnings: list[str] | None = None) -> ParseResult:
     from .engine import get_default_engine
 
     ocr = get_default_engine().recognize(file_bytes)
-    warnings = [f"经 OCR 识别（{ocr.engine}），结果需人工核对"]
+    warnings = list(warnings or [])
+    warnings.append(f"经 OCR 识别（{ocr.engine}），结果需人工核对")
     if not ocr.pages:
         warnings.append("OCR 未返回页面")
         return _build_result([], None, 0, warnings)
 
     pages = [(page.page_no, _ocr_to_words(page)) for page in ocr.pages]
-    transactions, footer_count, summaries = _transactions_from_pages(
+    transactions, footer_count, summaries, headers = _transactions_from_pages(
         pages,
         template,
         warnings,
@@ -377,14 +619,16 @@ def _parse_ocr(file_bytes: bytes, template: Template | None) -> ParseResult:
         warnings.append("未解析到交易明细")
     if footer_count is not None and footer_count != len(transactions):
         warnings.append(f"页脚笔数 {footer_count} 与解析笔数 {len(transactions)} 不一致")
-    return _build_result(transactions, footer_count, len(ocr.pages), warnings, summaries)
+    return _build_result(
+        transactions, footer_count, len(ocr.pages), warnings, summaries, headers
+    )
 
 
 def _parse_with_plumber(
     file_bytes: bytes,
     template: Template | None,
     warnings: list[str],
-) -> tuple[list[Transaction], int | None, int, list[PageSummary]] | None:
+) -> tuple[list[Transaction], int | None, int, list[PageSummary], list[PageHeader]] | None:
     try:
         pdf = pdfplumber.open(io.BytesIO(file_bytes))
     except Exception as exc:  # 加密或结构损坏
@@ -394,8 +638,10 @@ def _parse_with_plumber(
         if not pdf.pages:
             warnings.append("PDF 无页面")
             return None
-        transactions, footer_count, summaries = _parse_pdf_pages(pdf, template, warnings)
-        return transactions, footer_count, len(pdf.pages), summaries
+        transactions, footer_count, summaries, headers = _parse_pdf_pages(
+            pdf, template, warnings
+        )
+        return transactions, footer_count, len(pdf.pages), summaries, headers
 
 
 def _build_result(
@@ -404,6 +650,7 @@ def _build_result(
     page_count: int,
     warnings: list[str],
     page_summaries: list[PageSummary] | None = None,
+    headers: list[PageHeader] | None = None,
 ) -> ParseResult:
     total = len(transactions)
     if total:
@@ -422,20 +669,34 @@ def _build_result(
         page_count=page_count,
         footer_count=footer_count,
         page_summaries=page_summaries or [],
+        headers=headers or [],
         warnings=warnings,
     )
 
 
-def parse(file_bytes: bytes, template: Template | None = None) -> ParseResult:
-    """解析电子件 PDF 与影像件；影像件走本机 OCR 引擎（RapidOCR）。"""
+def parse(file_bytes: bytes, template: Template | dict | None = None) -> ParseResult:
+    """解析电子件 PDF 与影像件；template 可为解析模板或标注导出（template-spec v1）。"""
     if not file_bytes:
         return ParseResult(warnings=["空文件"])
+
+    template_warnings: list[str] = []
+    if isinstance(template, dict):
+        from .template_convert import convert_annotation
+
+        conversion = convert_annotation(template, file_bytes)
+        if conversion.template is None:
+            return ParseResult(warnings=["标注模板无效：" + "；".join(conversion.errors)])
+        template = conversion.template
+        template_warnings = [
+            f"标注转换：{item}" for item in (*conversion.warnings, *conversion.notes)
+        ]
+
     if file_bytes.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")):
-        return _parse_ocr(file_bytes, template)
+        return _parse_ocr(file_bytes, template, template_warnings)
     if not file_bytes.startswith(b"%PDF"):
         return ParseResult(warnings=["不支持的文件格式"])
 
-    warnings: list[str] = []
+    warnings: list[str] = list(template_warnings)
     try:
         pages, page_count, body_dates, has_text, encrypted = _fitz_extract(file_bytes)
     except Exception as exc:
@@ -456,20 +717,20 @@ def parse(file_bytes: bytes, template: Template | None = None) -> ParseResult:
     if pages is not None and page_count == 0:
         return ParseResult(warnings=["PDF 无页面"])
     if not has_text:
-        return _parse_ocr(file_bytes, template)
+        return _parse_ocr(file_bytes, template, warnings)
 
     if pages is not None:
-        transactions, footer_count, page_summaries = _transactions_from_pages(
+        transactions, footer_count, page_summaries, headers = _transactions_from_pages(
             iter(pages), template, warnings
         )
     else:
-        transactions, footer_count, page_summaries = [], None, []
+        transactions, footer_count, page_summaries, headers = [], None, [], []
 
     if not transactions:
         warnings.append("PyMuPDF 未解析到明细，回退 pdfplumber")
         fallback = _parse_with_plumber(file_bytes, template, warnings)
         if fallback is not None:
-            transactions, footer_count, fallback_pages, page_summaries = fallback
+            transactions, footer_count, fallback_pages, page_summaries, headers = fallback
             if page_count and fallback_pages != page_count:
                 warnings.append(
                     f"引擎页数不一致：PyMuPDF {page_count} vs pdfplumber {fallback_pages}"
@@ -489,7 +750,10 @@ def parse(file_bytes: bytes, template: Template | None = None) -> ParseResult:
         transactions, footer_count, page_summaries, page_count = _generic_rescue(
             file_bytes, page_count, page_summaries, warnings
         )
-    return _build_result(transactions, footer_count, page_count, warnings, page_summaries)
+        headers = []
+    return _build_result(
+        transactions, footer_count, page_count, warnings, page_summaries, headers
+    )
 
 
 def _generic_rescue(file_bytes, page_count, page_summaries, warnings):

@@ -4,8 +4,9 @@ from dataclasses import dataclass, field
 
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "txn_date": ("交易时间", "交易日期", "记账日期", "交易发生日期", "交易发生时间", "交易日", "日期"),
+    "reference_no": ("参考号", "流水号", "交易流水号", "凭证号", "业务编号", "交易单号", "交易编号"),
     "summary": ("摘要", "交易摘要", "交易类型", "商品", "用途", "交易说明", "附言", "备注"),
-    "counterparty": ("交易对方", "对方户名", "对方名称", "对方账户名", "对手方", "商户名称", "收款方"),
+    "counterparty": ("交易对方", "对方户名", "对方名称", "对方账户名", "对手方", "对手信息", "商户名称", "收款方"),
     "direction": ("收/支", "收支", "借贷标志", "借贷方向", "收付标志", "借/贷", "方向"),
     "amount": ("收入/支出金额", "金额(元)", "交易金额", "发生额", "交易额", "金额"),
     "amount_in": ("收入金额", "贷方发生额", "贷方金额"),
@@ -131,17 +132,27 @@ def find_header(
 
 
 def apply_template(tokens: list[Word], mapping: dict[int, str], field_map: dict[str, str | int]) -> dict[int, str]:
+    """模板显式映射优先：同一字段只保留模板指定的那一列，去掉表头自动识别的重名列。"""
     merged = dict(mapping)
+    claimed: dict[str, int] = {}
     for canonical, target in field_map.items():
+        idx: int | None = None
         if isinstance(target, int):
             if 0 <= target < len(tokens):
-                merged[target] = canonical
+                idx = target
+        else:
+            want = _norm(target)
+            for i, token in enumerate(tokens):
+                if _norm(token.text) == want:
+                    idx = i
+                    break
+        if idx is None:
             continue
-        want = _norm(target)
-        for idx, token in enumerate(tokens):
-            if _norm(token.text) == want:
-                merged[idx] = canonical
-                break
+        merged[idx] = canonical
+        claimed[canonical] = idx
+    for idx, canonical in list(merged.items()):
+        if canonical in claimed and claimed[canonical] != idx:
+            del merged[idx]
     return merged
 
 

@@ -236,3 +236,4 @@
 | 2026-10-31 | 报告导出：`GET /tasks/{id}/transactions.csv`（UTF-8 BOM）、`GET /tasks/{id}/export.json`（报告+明细）；报告页新增导出与打印按钮 | 后端、银行侧 |
 | 2026-10-31 | 模板管理增强：PUT /templates/{id}（出新版本）、duplicate、disable、DELETE、stats、preview（试跑不落库）、export、import | 后端、银行侧 |
 | 2026-10-31 | 合格性从 4 级拆为 5 级：pass/grant(可授信)/supplement(需补充)/fail/unknown；authenticity.missing_materials 暴露缺材料项；facets 与列表 chips 同步 | 后端、银行侧 |
+| 2026-10-31 | PR #8（AL-34 标注导出转模板 + 解析/核验增量）：template-spec v1 导出可直喂 parse()、T001–T009 阻断校验、meta_boxes→Template 页眉抽取；内容层 C5–C10；自检 S1–S7 进报告；AL-43 跨引擎诊断、AL-36 模板外推反验；招行真件与 AL-47 方向识别 | 算法、后端、银行侧 |

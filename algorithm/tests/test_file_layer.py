@@ -261,3 +261,50 @@ def test_image_carrier_and_non_pdf_skip_structure_forensics():
     text_result = analyze_file(b"not a pdf")
     assert text_result.status == "skipped"
     assert "非 PDF" in text_result.detail
+
+
+def make_multipage_pdf(*, continuation: bool, shift_top: float = 0.0, shift_left: float = 0.0) -> bytes:
+    table = [
+        "记账日期  交易金额  联机余额",
+        "2026-08-30  1,850.00  1,850.00",
+        "2026-08-31  -100.00  1,750.00",
+        "2026-09-01  -500.00  1,250.00",
+        "2026-09-03  -50.00  1,200.00",
+        "第 1 页",
+    ]
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    if continuation:
+        page.insert_text((72, 60), "招商银行交易流水", fontsize=10, fontname="china-s")
+    for index, line in enumerate(table):
+        page.insert_text((72, 120 + 20 * index), line, fontsize=10, fontname="china-s")
+    page = doc.new_page(width=595, height=842)
+    if not continuation:
+        page.insert_text((72, 60 + shift_top), "招商银行交易流水", fontsize=10, fontname="china-s")
+    for index, line in enumerate(table):
+        page.insert_text((72 + shift_left, 43 + 20 * index), line, fontsize=10, fontname="china-s")
+    doc.set_metadata({"producer": "BankCore Export 1.0", "creator": "BankCore"})
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_continuation_page_without_letterhead_passes_layout():
+    result = analyze_file(make_multipage_pdf(continuation=True))
+    f9 = check(result, "F9")
+    assert f9.status == "pass"
+    assert "顶边距未比对" in f9.detail
+
+
+def test_same_letterhead_shifted_fails_layout():
+    result = analyze_file(make_multipage_pdf(continuation=False, shift_top=20))
+    f9 = check(result, "F9")
+    assert f9.status == "fail"
+    assert "顶边距" in f9.detail
+
+
+def test_left_margin_shift_fails_layout():
+    result = analyze_file(make_multipage_pdf(continuation=True, shift_left=10))
+    f9 = check(result, "F9")
+    assert f9.status == "fail"
+    assert "左边距" in f9.detail
