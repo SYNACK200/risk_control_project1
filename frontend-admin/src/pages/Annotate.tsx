@@ -13,6 +13,7 @@ import { PasswordDialog, type PasswordRequest } from '../components/PasswordDial
 import { createDemoPage } from '../lib/sample';
 import { inferTemplate, probeTemplate, type InferResult, type ProbeResult } from '../lib/api';
 import type { FieldMapV1, Issue, Rect, SamplePage, Selection, Tool } from '../lib/types';
+import { FIELD_DICT } from '../lib/fields';
 
 type Notice = { level: 'info' | 'error' | 'warning'; text: string } | null;
 type SpecialLevel = 'info' | 'warn' | 'error';
@@ -31,14 +32,18 @@ function marksFromMap(map: FieldMapV1): { field: string; page: number; x: number
   const seen = new Set<string>();
   for (const table of map.tables) {
     for (const col of table.columns) {
-      if (!col.field || seen.has(col.field)) continue;
-      seen.add(col.field);
-      marks.push({
-        field: col.field,
-        page: Math.max(0, table.page - 1),
-        x: toPoint(col.x + col.w / 2, map.page_size.w),
-        y: toPoint(table.headerY ?? table.area.y + 0.01, map.page_size.h),
-      });
+      // 一列可以承载多个属性（col.fields），每个属性各生成一条标注
+      const codes = (col.fields && col.fields.length ? col.fields : [col.field]).filter(Boolean);
+      for (const code of codes) {
+        if (seen.has(code)) continue;
+        seen.add(code);
+        marks.push({
+          field: code,
+          page: Math.max(0, table.page - 1),
+          x: toPoint(col.x + col.w / 2, map.page_size.w),
+          y: toPoint(table.headerY ?? table.area.y + 0.01, map.page_size.h),
+        });
+      }
     }
   }
   if (marks.length > 0) return marks;
@@ -323,6 +328,44 @@ export function AnnotatePage() {
     setSel(null);
   }
 
+
+  function updateColumn(tableId: string, index: number, patch: Partial<{ field: string; fields: string[] }>) {
+    setMap(prev => ({
+      ...prev,
+      tables: prev.tables.map(tb => (tb.id !== tableId ? tb : {
+        ...tb,
+        columns: tb.columns.map((c, i) => (i === index ? { ...c, ...patch } : c)),
+      })),
+    }));
+  }
+
+  function addColumnField(tableId: string, index: number, current: string[]) {
+    const code = window.prompt('再给这一列加一个属性（字段 code，可自定义，例如 counterparty_name）', '');
+    if (!code) return;
+    const next = Array.from(new Set([...current, code.trim()]));
+    updateColumn(tableId, index, { fields: next });
+  }
+
+  function removeColumnField(tableId: string, index: number, current: string[], code: string) {
+    const next = current.filter(c => c !== code);
+    updateColumn(tableId, index, { fields: next.length ? next : undefined, ...(next.includes(code) ? {} : {}) });
+  }
+
+  function removeColumn(tableId: string, index: number) {
+    setMap(prev => ({
+      ...prev,
+      tables: prev.tables.map(tb => (tb.id !== tableId ? tb : {
+        ...tb, columns: tb.columns.filter((_, i) => i !== index),
+      })),
+    }));
+  }
+
+  function customField(code: string) {
+    const next = [...map.custom_fields];
+    if (!next.some(f => f.code === code)) next.push({ code, label: code });
+    setMap(prev => ({ ...prev, custom_fields: next }));
+  }
+
   function assign(field: string) {
     if (!sel) return;
     setMap(prev => {
@@ -333,7 +376,7 @@ export function AnnotatePage() {
         return {
           ...prev,
           tables: prev.tables.map(t => (t.id === sel.tableId
-            ? { ...t, columns: t.columns.map((c, i) => (i === sel.index ? { ...c, field } : c)) }
+            ? { ...t, columns: t.columns.map((c, i) => (i === sel.index ? { ...c, field, fields: [field] } : c)) }
             : t)),
         };
       }
@@ -491,6 +534,66 @@ export function AnnotatePage() {
           {source ? '调用本机后端 /templates/infer，只做列外推；不保存模板、不生成报告。' : '先载入 PDF 样例（内置示例页不能试解析）'}
         </span>
       </div>
+
+
+      {map.tables.length > 0 && (
+        <section className="column-list">
+          <div className="column-list-head">
+            已标注字段（{map.tables.reduce((n, tb) => n + tb.columns.length, 0)} 列）
+            <span className="muted small"> · 可改字段、一列加多个属性、删除或定位；字段支持自定义</span>
+          </div>
+          {map.tables.map((tb, ti) => (
+            <div key={tb.id} className="column-table">
+              <div className="muted small">表格 {ti + 1}（第 {tb.page} 页）· {tb.columns.length} 列</div>
+              {tb.columns.length === 0 && <div className="muted small">还没有列：用「列」工具在画布上点选一列数据。</div>}
+              {tb.columns.map((c, i) => {
+                const codes = c.fields && c.fields.length ? c.fields : (c.field ? [c.field] : []);
+                return (
+                  <div className="column-row" key={i}>
+                    <button className="link-btn" type="button"
+                      onClick={() => { setSel({ kind: 'column', tableId: tb.id, index: i }); }}>
+                      #{i + 1}
+                    </button>
+                    <span className="muted small">x {c.x.toFixed(3)} · w {c.w.toFixed(3)}</span>
+                    <select value={c.field}
+                      onChange={e => {
+                        const v = e.target.value;
+                        if (v === '__custom__') {
+                          const code = window.prompt('自定义字段 code（英文/下划线）', '');
+                          if (!code) return;
+                          customField(code.trim());
+                          updateColumn(tb.id, i, { field: code.trim(), fields: [code.trim()] });
+                          return;
+                        }
+                        updateColumn(tb.id, i, { field: v, fields: [v] });
+                      }}>
+                      <option value="">（未指定）</option>
+                      {FIELD_DICT.filter(f => f.scope !== 'meta').map(f => (
+                        <option key={f.code} value={f.code}>{f.label}（{f.code}）</option>
+                      ))}
+                      {map.custom_fields.map(f => (
+                        <option key={f.code} value={f.code}>{f.label}（自定义）</option>
+                      ))}
+                      <option value="__custom__">+ 自定义字段…</option>
+                    </select>
+                    {codes.slice(1).map(code => (
+                      <span className="field-chip" key={code}>
+                        {code}
+                        <button className="link-btn" type="button"
+                          onClick={() => removeColumnField(tb.id, i, codes, code)}>×</button>
+                      </span>
+                    ))}
+                    <button className="link-btn" type="button"
+                      onClick={() => addColumnField(tb.id, i, codes)}>＋属性</button>
+                    <button className="link-btn danger-text" type="button"
+                      onClick={() => removeColumn(tb.id, i)}>删除</button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </section>
+      )}
 
       {inference && (
         <section className="infer-panel">
