@@ -8,6 +8,15 @@ export interface CreateTaskResult {
   txn_count: number;
 }
 
+export function composeTask(form: FormData): Promise<CreateTaskResult> {
+  return request<CreateTaskResult>({
+    method: 'POST',
+    url: '/tasks/compose',
+    data: form,
+    timeout: 300_000,
+  });
+}
+
 export function createTask(form: FormData): Promise<CreateTaskResult> {
   return request<CreateTaskResult>({
     method: 'POST',
