@@ -1,0 +1,117 @@
+{
+  "source_commit": "e9baadf",
+  "tables": {
+    "staff_user": [
+      "id",
+      "name",
+      "role",
+      "status"
+    ],
+    "file_obj": [
+      "id",
+      "sha256",
+      "mime",
+      "carrier",
+      "width",
+      "height",
+      "pages",
+      "has_text_layer",
+      "storage_path"
+    ],
+    "task": [
+      "id",
+      "biz_no",
+      "task_type",
+      "channel",
+      "file_id",
+      "carrier",
+      "template_id",
+      "template_version",
+      "status",
+      "check_result",
+      "period_start",
+      "period_end",
+      "hits"
+    ],
+    "task_file": [
+      "id",
+      "task_id",
+      "file_id",
+      "role",
+      "seq",
+      "created_at"
+    ],
+    "bank_account": [
+      "id",
+      "task_id",
+      "account_no",
+      "bank_name",
+      "period_start",
+      "period_end",
+      "opening_balance",
+      "closing_balance"
+    ],
+    "txn": [
+      "id",
+      "task_id",
+      "account_id",
+      "txn_date",
+      "direction",
+      "amount",
+      "balance",
+      "summary",
+      "counterparty_name",
+      "page_no",
+      "coord_x",
+      "coord_y",
+      "confidence",
+      "drop_reason"
+    ],
+    "metric_value": [
+      "id",
+      "task_id",
+      "metric_code",
+      "metric_name",
+      "value_num",
+      "unit",
+      "note",
+      "caliber_version"
+    ],
+    "report": [
+      "id",
+      "task_id",
+      "version",
+      "carrier",
+      "verdict",
+      "layers",
+      "limitations",
+      "evidence",
+      "metric_set_version",
+      "threshold_version"
+    ],
+    "template": [
+      "id",
+      "bank_code",
+      "version",
+      "status",
+      "field_map"
+    ],
+    "rule": [
+      "id",
+      "rule_code",
+      "version",
+      "category",
+      "expr",
+      "threshold"
+    ],
+    "audit_log": [
+      "id",
+      "actor_id",
+      "action",
+      "object_type",
+      "object_id",
+      "created_at"
+    ]
+  },
+  "field_count": 89
+}

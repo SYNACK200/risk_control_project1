@@ -1,0 +1,9 @@
+{
+  "source": "real_browser_and_live_mysql",
+  "task_id": 2,
+  "transactions": 3,
+  "metrics": 40,
+  "report_read": true,
+  "borrower_conclusions_displayed": false,
+  "bank_report_ui_tested": false
+}

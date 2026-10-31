@@ -1,0 +1,21 @@
+{
+  "result": "PASS: V2Deploy; upload/parse/store/metrics/report",
+  "passed": true,
+  "report": {
+    "report_version": 1,
+    "grants_ok": true,
+    "contract_fields": 89,
+    "report_read_ok": true,
+    "metrics": 40,
+    "task_id": 1,
+    "transactions": 3,
+    "backup_sample_roundtrip": true,
+    "http_upload_ok": true,
+    "tables": 11,
+    "backup_file": "v2-synthetic-backup-edbb4ace99e04d0c9be251565f7c97f1.json",
+    "privacy_ok": true
+  },
+  "database": "rc_demo_v2",
+  "recorded_at": "2026-10-31T00:15:11.5625361+08:00",
+  "source": "live_mysql"
+}

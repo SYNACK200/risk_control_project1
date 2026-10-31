@@ -1,0 +1,37 @@
+{
+  "source": "live_mysql",
+  "database": "rc_demo_v2",
+  "checks": {
+    "visible_objects": 10,
+    "partitioned": true,
+    "stored_privacy": true,
+    "explain": {
+      "task": [
+        {
+          "key": "PRIMARY",
+          "type": "const"
+        }
+      ],
+      "transactions": [
+        {
+          "key": "ix_txn_task_id",
+          "type": "ref"
+        }
+      ],
+      "metrics": [
+        {
+          "key": "ix_metric_task_code",
+          "type": "ref"
+        }
+      ],
+      "report": [
+        {
+          "key": "ix_report_task_id",
+          "type": "ref"
+        }
+      ]
+    },
+    "four_index_paths_pass": true,
+    "reader_permissions_tested": false
+  }
+}

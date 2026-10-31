@@ -1,0 +1,12 @@
+V2 preparation evidence; source team dev e9baadf.
+Environment: existing dedicated Python 3.12 virtual environment with SQLAlchemy 2.0.55.
+test_v2_models.py: Ran 4 tests; OK.
+  11 backend tables reused; all 89 contract key fields covered.
+  MySQL DDL compilation checks: txn composite PK/range partition, no txn FK, task_file unique constraint.
+  Actual Session.flush event invokes privacy before failing for deliberately absent database bind.
+  Missing approval and existing target database stop without writes (fake cursor only).
+test_v2_privacy.py: Ran 8 tests; OK.
+git diff --check: EXIT=0.
+Generated: data/v2/schema.sql; data/v2/data_dictionary.md.
+NOT executed: real MySQL connection, CREATE DATABASE/TABLE, GRANT, business INSERT, HTTP upload or end-to-end report test.
+No claim of live deployment or full privacy integration in this evidence.
