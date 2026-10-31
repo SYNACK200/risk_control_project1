@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import Task, Template, Txn
+from db.models import Task, Template, Txn, now
 from db.session import get_session
 from helpers.security import require_banker
 from services.analysis import infer_from_marks
@@ -27,8 +27,11 @@ class TemplateIn(BaseModel):
 
 
 @router.get("")
-def list_templates(bank_code: str | None = None, db: Session = Depends(get_session)):
+def list_templates(bank_code: str | None = None, include_deleted: bool = False,
+                   db: Session = Depends(get_session)):
     stmt = select(Template).order_by(Template.bank_code, Template.version.desc())
+    if not include_deleted:
+        stmt = stmt.where(Template.deleted_at.is_(None))
     if bank_code:
         stmt = stmt.where(Template.bank_code == bank_code.upper())
     rows = db.execute(stmt).scalars().all()
@@ -194,13 +197,19 @@ def delete_template(template_id: int, db: Session = Depends(get_session)):
     row = db.get(Template, template_id)
     if row is None:
         raise HTTPException(404, "模板不存在")
+    if row.deleted_at is not None:
+        return {"deleted": template_id, "soft": True, "used": 0, "message": "该模板已从列表移除"}
     used = db.execute(select(func.count(Task.id)).where(Task.template_id == template_id)).scalar() or 0
     if used:
-        raise HTTPException(409, detail={"code": "E_STATE",
-                                         "message": f"该模板已被 {used} 条流水使用，请先停用而不是删除"})
+        # 有历史流水引用：不能物理删除，否则报告溯源断链；改为从列表移除（历史保留）
+        row.deleted_at = now()
+        row.status = "disabled"
+        db.commit()
+        return {"deleted": template_id, "soft": True, "used": used,
+                "message": f"该模板被 {used} 条流水引用，已从列表移除（历史解析记录仍保留），未做物理删除"}
     db.delete(row)
     db.commit()
-    return {"deleted": template_id}
+    return {"deleted": template_id, "soft": False, "used": 0, "message": "已删除"}
 
 
 @router.get("/{template_id}/stats")
