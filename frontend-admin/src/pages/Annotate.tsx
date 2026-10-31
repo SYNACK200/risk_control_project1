@@ -74,6 +74,7 @@ export function AnnotatePage() {
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [probeNote, setProbeNote] = useState('');
+  const [toolsOpen, setToolsOpen] = useState(true);
   const [inferring, setInferring] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [events, setEvents] = useState<SpecialEvent[]>([]);
@@ -538,7 +539,7 @@ export function AnnotatePage() {
         blocking={blocking}
       />
 
-      {notice && <div className={`notice ${notice.level}`}>{notice.text}</div>}
+      {notice && (<div className={"notice " + notice.level}>{notice.text}<button className="notice-close" type="button" onClick={() => setNotice(null)}>×</button></div>)}
 
       {(probing || probeResult || probeNote) && (
         <div className="probe-card">
@@ -571,14 +572,17 @@ export function AnnotatePage() {
 
 
       <div className="toolbar2">
-        <button className="btn" onClick={() => { void runInfer(); }} disabled={inferring}>
+        <button className="pill-btn" type="button" onClick={() => setToolsOpen(v => !v)}>
+          {toolsOpen ? '收起解析工具' : '展开解析工具'}
+        </button>
+        <button className="btn" style={{ display: toolsOpen ? undefined : 'none' }} onClick={() => { void runInfer(); }} disabled={inferring}>
           {inferring ? '正在试解析…' : '用当前标注试解析'}
         </button>
-        <button className="btn" onClick={() => { void saveAsTemplate(false); }} disabled={inferring}>
+        <button className="btn" style={{ display: toolsOpen ? undefined : 'none' }} onClick={() => { void saveAsTemplate(false); }} disabled={inferring}>
           保存为模板草稿
         </button>
         {inference && inference.valid === false && (
-          <button className="btn" onClick={() => { void saveAsTemplate(true); }} disabled={inferring}>
+          <button className="btn" style={{ display: toolsOpen ? undefined : 'none' }} onClick={() => { void saveAsTemplate(true); }} disabled={inferring}>
             反验未通过，仍保存为草稿
           </button>
         )}
