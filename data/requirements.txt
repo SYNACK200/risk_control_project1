@@ -1,0 +1,6 @@
+# Dedicated Python 3.11/3.12 environment; not installed by any project script.
+alembic>=1.13,<2
+SQLAlchemy>=2.0,<2.1
+PyMySQL[rsa]>=1.1.1,<2
+cryptography>=41,<50
+Pillow>=10,<13

@@ -1,0 +1,60 @@
+data/tools/check_static.py
+Python AST files=69 errors=0
+
+SQL structural files=8; balanced delimiters/no database deletion; MySQL syntax NOT executed
+
+Partition/index/view/append-only grant structure PASS; runtime pruning/grants still required
+
+Credential pattern scan PASS (heuristic; not proof of absence)
+
+Synthetic image fixtures=9 PNG decode/dimensions PASS; carrier classification NOT verified
+
+
+EXIT=0
+data/tools/test_v2_models.py
+........
+
+----------------------------------------------------------------------
+
+Ran 8 tests in 5.036s
+
+
+
+OK
+
+
+EXIT=0
+data/tools/test_v2_privacy.py
+........
+
+----------------------------------------------------------------------
+
+Ran 8 tests in 0.001s
+
+
+
+OK
+
+
+EXIT=0
+data/tools/test_v2_web_demo.py
+..
+
+----------------------------------------------------------------------
+
+Ran 2 tests in 0.000s
+
+
+
+OK
+
+
+EXIT=0
+data/tools/test_v2_analysis.py
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+
+Actual synthetic PDF -> parse -> 40 metrics -> 4 report layers PASS; no DB or HTTP request
+
+
+EXIT=0
+COMMANDS=5 FAILED=0

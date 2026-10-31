@@ -1,0 +1,8 @@
+{
+  "report": null,
+  "database": "rc_demo_v2",
+  "passed": false,
+  "result": "STOP: stage=v2:prepare; category=CORE_EXECUTION_FAILED; error code=suppressed; writes_started=False",
+  "source": "live_mysql",
+  "recorded_at": "2026-10-31T00:05:27.2919597+08:00"
+}

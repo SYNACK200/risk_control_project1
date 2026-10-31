@@ -1,0 +1,435 @@
+Offline validation at 2026-10-30T21:20:43.853499
+
+No DB connections, service operations or Git index writes.
+
+
+> D:\Anaconda\python.exe -B data/tools/check_core.py
+staff_user: contract=4 DDL=4 missing=0 extra=0 duplicate=0
+file_obj: contract=9 DDL=9 missing=0 extra=0 duplicate=0
+task: contract=13 DDL=13 missing=0 extra=0 duplicate=0
+bank_account: contract=8 DDL=8 missing=0 extra=0 duplicate=0
+txn: contract=10 DDL=10 missing=0 extra=0 duplicate=0
+metric_value: contract=8 DDL=8 missing=0 extra=0 duplicate=0
+report: contract=8 DDL=8 missing=0 extra=0 duplicate=0
+template: contract=5 DDL=5 missing=0 extra=0 duplicate=0
+rule: contract=6 DDL=6 missing=0 extra=0 duplicate=0
+appeal: contract=5 DDL=5 missing=0 extra=0 duplicate=0
+audit_log: contract=6 DDL=6 missing=0 extra=0 duplicate=0
+OFFLINE PASS; MySQL execution, migrations, grants and performance NOT verified
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/check_static.py
+Python AST files=54 errors=0
+SQL structural files=7; balanced delimiters/no database deletion; MySQL syntax NOT executed
+Partition/index/view/append-only grant structure PASS; runtime pruning/grants still required
+Credential pattern scan PASS (heuristic; not proof of absence)
+Synthetic image fixtures=9 PNG decode/dimensions PASS; carrier classification NOT verified
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_synthetic.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.025s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_backup_format.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_integration.py
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.017s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_migration_guards.py
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_snapshots.py
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.950s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_restore_flow.py
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.119s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_validation.py
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.001s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_benchmark.py
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_partitions.py
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_extensions.py
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.034s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_synthetic_audit.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_live_metadata.py
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_schema_checker.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.400s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_carrier_evaluator.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/audit_synthetic.py
+{"synthetic_only": true, "tasks": 500, "per_task": 3000, "transactions": 1500000, "id_reference_balance_amount_time_mask_checks": "PASS", "database_loaded": false}
+
+EXIT=0
+
+> pwsh -NoProfile -File data/tools/check_powershell.ps1
+PowerShell Parser files=13 errors=0; no scripts executed
+
+EXIT=0
+
+> pwsh -NoProfile -File data/bootstrap/tests/Test-Preflight.ps1
+PASS: fresh deployment prerequisites
+PASS: missing 8.4 blocks readiness
+PASS: nonempty data blocks initialization
+PASS: initialized directory before registration
+PASS: registered stopped identity
+PASS: matching service process and listener
+PASS: unrelated listener PID rejected
+PASS: old executable rejected
+PASS: wrong service config rejected
+PASS: unexpected process options rejected
+PASS: non-loopback binding rejected
+PASS: unreadable identity fails closed
+PASS: reparse path rejected
+PASS: unexpected service account rejected
+Pure preflight tests: 14 PASS, no OS/database mutation
+PASS: verified direct worker child accepted
+PASS: unrelated worker parent rejected
+PASS: worker configuration override rejected
+Final pure preflight tests: 17 PASS, no OS/database mutation
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_auth_dependencies.py
+PASS: accepted interface/version policy
+PASS: missing driver
+PASS: missing cryptography
+PASS: old driver version
+PASS: unreviewed driver major
+PASS: unreviewed crypto major
+PASS: driver missing RSA support
+PASS: backend missing OAEP support
+PASS: Python version admission (3, 7)
+PASS: Python version admission (3, 10)
+PASS: Python version admission (3, 11)
+PASS: Python version admission (3, 12)
+PASS: Python version admission (3, 13)
+PASS: Python version admission (3, 15)
+PASS: Python version admission (4, 0)
+Dependency tests: 15 PASS; fake imports only; no connection
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_auth_input.py
+PASS: synthetic input case 1
+PASS: synthetic input case 2
+PASS: synthetic input case 3
+PASS: synthetic input case 4
+PASS: synthetic input case 5
+PASS: synthetic input case 6
+PASS: synthetic input case 7
+PASS: synthetic input case 8
+PASS: synthetic input case 9
+Auth input tests: 10 PASS; synthetic only; no connection
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_credential_collection.py
+PASS: middle-account eof
+PASS: middle-account cancel
+PASS: middle-account input
+PASS: three distinct confirmed credentials
+PASS: CONFIRMATION_MISMATCH
+PASS: REUSED_CREDENTIAL
+Credential collection: 6 PASS; synthetic only; no connection
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_credential_pipe.py
+PASS: synthetic roundtrip 1
+PASS: synthetic roundtrip 2
+PASS: synthetic roundtrip 3
+PASS: synthetic roundtrip 4
+PASS: invalid frame/input 1
+PASS: invalid frame/input 2
+PASS: invalid frame/input 3
+PASS: invalid frame/input 4
+PASS: invalid frame/input 5
+PASS: invalid frame/input 6
+PASS: invalid frame/input 7
+PASS: invalid frame/input 8
+PASS: invalid frame/input 9
+PASS: invalid frame/input 10
+PASS: invalid frame/input 11
+PASS: authentication uses SELECT only, fixed success output
+PASS: 1045 safe category, exception text suppressed
+PASS: cancellation without traceback
+Credential pipe Python: 18 PASS; no real terminal, credentials or database
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_provision.py
+....................
+----------------------------------------------------------------------
+Ran 20 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> pwsh -NoProfile -File data/bootstrap/tests/Test-ProvisionDialogue.ps1 -PythonExe D:\Anaconda\python.exe
+PASS: real subprocess dialogue InspectObjects (in-memory DB only)
+PASS: real subprocess dialogue VerifyAdmin (in-memory DB only)
+PASS: real subprocess dialogue VerifyRuntime (in-memory DB only)
+PASS: real subprocess dialogue InspectDown (in-memory DB only)
+PASS: real subprocess dialogue Initialize (in-memory DB only)
+PASS: single runtime account authentication (in-memory DB only)
+PASS: unified acceptance, one admin and three runtime prompts (in-memory DB only)
+PASS: 1045 aggregate retains all accounts, suppresses raw exception (in-memory DB only)
+PASS: real subprocess mismatch, no real DB
+PASS: real subprocess reuse, no real DB
+PASS: real subprocess empty, no real DB
+PASS: real subprocess control, no real DB
+PASS: real subprocess cancel, no real DB
+Provision dialogue: 14 PASS; synthetic credentials; fake database only
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_core_schema.py
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.028s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_migration_env.py
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+OK
+
+EXIT=0
+
+> pwsh -NoProfile -File data/bootstrap/tests/Test-CoreDialogue.ps1 -PythonExe D:\Anaconda\python.exe
+PASS: CorePlan native pipe protocol (in-memory metadata only)
+PASS: CoreVerify native pipe protocol (in-memory metadata only)
+PASS: CoreApply hash/confirmation protocol; temporary-file and in-memory migration fixture only
+Core dialogue: 3 PASS; no actual MySQL or migration
+
+EXIT=0
+
+> git diff --check
+
+EXIT=0
+
+> git status --short --untracked-files=all
+ M data/chat.md
+ M data/inputs/README.md
+ M data/tasks.md
+?? data/acceptance.md
+?? data/alembic.ini
+?? data/bootstrap/01_databases_roles.sql
+?? data/bootstrap/02_provision_users.ps1
+?? data/bootstrap/03_verify_admin.sql
+?? data/bootstrap/04_verify_runtime.sql
+?? data/bootstrap/05_prepare_service_acl.ps1
+?? data/bootstrap/06_authenticate_secure.ps1
+?? data/bootstrap/07_accept_da01.ps1
+?? data/bootstrap/08_core_schema.ps1
+?? data/bootstrap/README.md
+?? data/bootstrap/authenticate_pipe.py
+?? data/bootstrap/connection.example.env
+?? data/bootstrap/core_schema.py
+?? data/bootstrap/credential_pipe.ps1
+?? data/bootstrap/down.sql
+?? data/bootstrap/my.ini.example
+?? data/bootstrap/preflight.ps1
+?? data/bootstrap/provision_core.py
+?? data/bootstrap/tests/Test-CoreDialogue.ps1
+?? data/bootstrap/tests/Test-CredentialPipe.ps1
+?? data/bootstrap/tests/Test-Preflight.ps1
+?? data/bootstrap/tests/Test-ProvisionDialogue.ps1
+?? data/bootstrap/tests/Test-ServiceAcl.ps1
+?? data/bootstrap/tests/core_dialogue_fixture.py
+?? data/bootstrap/tests/fake_provision_db.py
+?? data/bootstrap/tests/provision_acceptance_failure_fixture.py
+?? data/bootstrap/tests/provision_dialogue_fixture.py
+?? data/bootstrap/tests/test_auth_dependencies.py
+?? data/bootstrap/tests/test_auth_input.py
+?? data/bootstrap/tests/test_core_schema.py
+?? data/bootstrap/tests/test_credential_collection.py
+?? data/bootstrap/tests/test_credential_pipe.py
+?? data/bootstrap/tests/test_driver_passwords.py
+?? data/bootstrap/tests/test_migration_env.py
+?? data/bootstrap/tests/test_provision.py
+?? data/bootstrap/tests/test_windows_console.py
+?? data/bootstrap/windows_console.py
+?? data/core/README.md
+?? data/core/model_review.md
+?? data/core/physical_dictionary.md
+?? data/core/queries.sql
+?? data/core/schema.json
+?? data/core/schema.sql
+?? data/core/views_grants.sql
+?? data/deliverables/README.md
+?? "data/deliverables/risk_control_project1_\346\225\260\346\215\256\346\250\241\345\235\227\344\272\244\344\273\230\345\214\205_20261029.zip"
+?? data/evidence/20261029-continuation.txt
+?? data/evidence/20261029-static.txt
+?? data/evidence/20261029-system-readonly.txt
+?? data/evidence/20261030-da01-handoff.txt
+?? data/evidence/da01-live-20261030-205612-2a743751dc004d60b7a8b6bbaf7cff1f.json
+?? data/extensions/README.md
+?? data/extensions/adapters.py
+?? data/extensions/proposal.json
+?? data/history/20261029-01.md
+?? data/history/20261029-02.md
+?? data/history/20261029-03.md
+?? data/history/20261029-04.md
+?? data/history/20261030-01.md
+?? data/history/20261030-02.md
+?? data/history/20261030-03.md
+?? data/history/20261030-04.md
+?? data/inputs/demo_images/manifest.json
+?? data/inputs/demo_images/photo-1.png
+?? data/inputs/demo_images/photo-2.png
+?? data/inputs/demo_images/photo-3.png
+?? data/inputs/demo_images/scan-1.png
+?? data/inputs/demo_images/scan-2.png
+?? data/inputs/demo_images/scan-3.png
+?? data/inputs/demo_images/screenshot-1.png
+?? data/inputs/demo_images/screenshot-2.png
+?? data/inputs/demo_images/screenshot-3.png
+?? data/integration.py
+?? data/migrations/env.py
+?? data/migrations/versions/0001_core.py
+?? data/migrations/versions/0002_views.py
+?? data/next_batch.md
+?? data/operations.md
+?? data/requirements.txt
+?? data/tools/audit_synthetic.py
+?? data/tools/benchmark.py
+?? data/tools/build_core.py
+?? data/tools/build_views.py
+?? data/tools/check_core.py
+?? data/tools/check_powershell.ps1
+?? data/tools/check_static.py
+?? data/tools/evaluate_carrier.py
+?? data/tools/image_fixtures.py
+?? data/tools/load_demo.py
+?? data/tools/logical_backup.py
+?? data/tools/logical_incremental.py
+?? data/tools/partition_plan.py
+?? data/tools/run_checks.py
+?? data/tools/snapshot_format.py
+?? data/tools/synthetic.py
+?? data/tools/test_backup_format.py
+?? data/tools/test_benchmark.py
+?? data/tools/test_carrier_evaluator.py
+?? data/tools/test_extensions.py
+?? data/tools/test_integration.py
+?? data/tools/test_live_metadata.py
+?? data/tools/test_migration_guards.py
+?? data/tools/test_partitions.py
+?? data/tools/test_restore_flow.py
+?? data/tools/test_schema_checker.py
+?? data/tools/test_snapshots.py
+?? data/tools/test_synthetic.py
+?? data/tools/test_synthetic_audit.py
+?? data/tools/test_validation.py
+?? data/tools/verify_live.py
+?? data/tools/verify_permissions.py
+?? data/validation.py
+
+EXIT=0
+
+COMMANDS=30 FAILED=0

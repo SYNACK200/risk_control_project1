@@ -1,0 +1,182 @@
+Offline validation at 2026-10-29T22:27:48.441033
+
+No DB connections, service operations or Git index writes.
+
+
+> D:\Anaconda\python.exe -B data/tools/check_core.py
+staff_user: contract=4 DDL=4 missing=0 extra=0 duplicate=0
+file_obj: contract=9 DDL=9 missing=0 extra=0 duplicate=0
+task: contract=13 DDL=13 missing=0 extra=0 duplicate=0
+bank_account: contract=8 DDL=8 missing=0 extra=0 duplicate=0
+txn: contract=10 DDL=10 missing=0 extra=0 duplicate=0
+metric_value: contract=8 DDL=8 missing=0 extra=0 duplicate=0
+report: contract=8 DDL=8 missing=0 extra=0 duplicate=0
+template: contract=5 DDL=5 missing=0 extra=0 duplicate=0
+rule: contract=6 DDL=6 missing=0 extra=0 duplicate=0
+appeal: contract=5 DDL=5 missing=0 extra=0 duplicate=0
+audit_log: contract=6 DDL=6 missing=0 extra=0 duplicate=0
+OFFLINE PASS; MySQL execution, migrations, grants and performance NOT verified
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/check_static.py
+Python AST files=21 errors=0
+SQL structural files=7; balanced delimiters/no database deletion; MySQL syntax NOT executed
+Partition/index/view/append-only grant structure PASS; runtime pruning/grants still required
+Credential pattern scan PASS (heuristic; not proof of absence)
+Synthetic image fixtures=9 PNG decode/dimensions PASS; carrier classification NOT verified
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_synthetic.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.021s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_backup_format.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_integration.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.001s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/test_migration_guards.py
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.007s
+
+OK
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/tools/synthetic.py --count-only
+SYNTHETIC rows=1500000
+
+EXIT=0
+
+> pwsh -NoProfile -File data/tools/check_powershell.ps1
+PowerShell Parser files=4 errors=0; no scripts executed
+
+EXIT=0
+
+> pwsh -NoProfile -File data/bootstrap/tests/Test-Preflight.ps1
+PASS: fresh deployment prerequisites
+PASS: missing 8.4 blocks readiness
+PASS: nonempty data blocks initialization
+PASS: initialized directory before registration
+PASS: registered stopped identity
+PASS: matching service process and listener
+PASS: unrelated listener PID rejected
+PASS: old executable rejected
+PASS: wrong service config rejected
+PASS: unexpected process options rejected
+PASS: non-loopback binding rejected
+PASS: unreadable identity fails closed
+PASS: reparse path rejected
+PASS: unexpected service account rejected
+Pure preflight tests: 14 PASS, no OS/database mutation
+PASS: verified direct worker child accepted
+PASS: unrelated worker parent rejected
+PASS: worker configuration override rejected
+Final pure preflight tests: 17 PASS, no OS/database mutation
+
+EXIT=0
+
+> D:\Anaconda\python.exe -B data/bootstrap/tests/test_auth_dependencies.py
+PASS: accepted interface/version policy
+PASS: missing driver
+PASS: missing cryptography
+PASS: old driver version
+PASS: unreviewed driver major
+PASS: unreviewed crypto major
+PASS: driver missing RSA support
+PASS: backend missing OAEP support
+PASS: dependency admission precedes connection definition and account writes
+Dependency tests: 9 PASS, fake modules only; no credentials, connections or keys
+
+EXIT=0
+
+> git diff --check
+
+EXIT=0
+
+> git status --short --untracked-files=all
+ M data/chat.md
+ M data/inputs/README.md
+ M data/tasks.md
+?? data/acceptance.md
+?? data/alembic.ini
+?? data/bootstrap/01_databases_roles.sql
+?? data/bootstrap/02_provision_users.ps1
+?? data/bootstrap/03_verify_admin.sql
+?? data/bootstrap/04_verify_runtime.sql
+?? data/bootstrap/README.md
+?? data/bootstrap/connection.example.env
+?? data/bootstrap/down.sql
+?? data/bootstrap/my.ini.example
+?? data/bootstrap/preflight.ps1
+?? data/bootstrap/tests/Test-Preflight.ps1
+?? data/bootstrap/tests/test_auth_dependencies.py
+?? data/core/README.md
+?? data/core/physical_dictionary.md
+?? data/core/queries.sql
+?? data/core/schema.json
+?? data/core/schema.sql
+?? data/core/views_grants.sql
+?? data/evidence/20261029-static.txt
+?? data/extensions/proposal.json
+?? data/history/20261029-01.md
+?? data/history/20261029-02.md
+?? data/history/20261029-03.md
+?? data/inputs/demo_images/manifest.json
+?? data/inputs/demo_images/photo-1.png
+?? data/inputs/demo_images/photo-2.png
+?? data/inputs/demo_images/photo-3.png
+?? data/inputs/demo_images/scan-1.png
+?? data/inputs/demo_images/scan-2.png
+?? data/inputs/demo_images/scan-3.png
+?? data/inputs/demo_images/screenshot-1.png
+?? data/inputs/demo_images/screenshot-2.png
+?? data/inputs/demo_images/screenshot-3.png
+?? data/integration.py
+?? data/migrations/env.py
+?? data/migrations/versions/0001_core.py
+?? data/migrations/versions/0002_views.py
+?? data/operations.md
+?? data/requirements.txt
+?? data/tools/benchmark.py
+?? data/tools/build_core.py
+?? data/tools/build_views.py
+?? data/tools/check_core.py
+?? data/tools/check_powershell.ps1
+?? data/tools/check_static.py
+?? data/tools/image_fixtures.py
+?? data/tools/load_demo.py
+?? data/tools/logical_backup.py
+?? data/tools/run_checks.py
+?? data/tools/synthetic.py
+?? data/tools/test_backup_format.py
+?? data/tools/test_integration.py
+?? data/tools/test_migration_guards.py
+?? data/tools/test_synthetic.py
+?? data/tools/verify_live.py
+?? data/tools/verify_permissions.py
+
+EXIT=0
+
+COMMANDS=12 FAILED=0

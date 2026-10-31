@@ -1,0 +1,74 @@
+[
+  {
+    "file": "photo-1.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "photo",
+    "classifier_verified": false
+  },
+  {
+    "file": "photo-2.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "photo",
+    "classifier_verified": false
+  },
+  {
+    "file": "photo-3.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "photo",
+    "classifier_verified": false
+  },
+  {
+    "file": "scan-1.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "scan",
+    "classifier_verified": false
+  },
+  {
+    "file": "scan-2.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "scan",
+    "classifier_verified": false
+  },
+  {
+    "file": "scan-3.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "scan",
+    "classifier_verified": false
+  },
+  {
+    "file": "screenshot-1.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "screenshot",
+    "classifier_verified": false
+  },
+  {
+    "file": "screenshot-2.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "screenshot",
+    "classifier_verified": false
+  },
+  {
+    "file": "screenshot-3.png",
+    "width": 1200,
+    "height": 1600,
+    "synthetic": true,
+    "intended_style": "screenshot",
+    "classifier_verified": false
+  }
+]
