@@ -422,3 +422,23 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .legend-field { font-weight: 600; }
 .layout-empty { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed #d9e2ee; border-radius: 10px; background: #fbfcfe; }
 .card-head-static { display: flex; align-items: baseline; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #eef2f8; flex-wrap: wrap; }
+
+/* ---- 报告：结论摘要与视图切换 ---- */
+.view-switch { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 6px; }
+.report-narrative { border: 1px solid #dfe8f5; border-radius: 12px; background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%); padding: 14px 16px; margin: 6px 0 14px; }
+.report-narrative-title { font-weight: 700; font-size: 15px; margin-bottom: 8px; color: #1f2d3d; }
+.report-narrative ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.report-narrative li { font-size: 13.5px; line-height: 1.65; color: #33455c; }
+
+/* ---- 账户合并：系统建议 ---- */
+.suggest-list { display: grid; gap: 10px; margin: 8px 0 14px; }
+.suggest-card { border: 1px solid #e2e9f3; border-radius: 12px; padding: 12px 14px; background: #fbfdff; }
+.suggest-card.active { border-color: #9dbce9; background: #f2f8ff; }
+.suggest-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.suggest-reason { font-size: 13px; color: #44556b; margin: 6px 0 10px; line-height: 1.6; }
+.suggest-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.manual-merge { margin: 10px 0 4px; border: 1px dashed #dbe3ee; border-radius: 12px; padding: 6px 12px 10px; background: #fcfdff; }
+.manual-merge > summary { cursor: pointer; font-size: 13px; color: #2a5db0; list-style: none; padding: 4px 0; }
+.manual-merge > summary::-webkit-details-marker { display: none; }
+.manual-merge > summary::before { content: "▸ "; }
+.manual-merge[open] > summary::before { content: "▾ "; }

@@ -38,6 +38,62 @@ function authenticity(layers: { layer: string; status: string }[], carrier: stri
 }
 
 
+
+const CONCLUSION_TEXT: Record<string, string> = {
+  DTI_HIGH: '负债收入比偏高',
+  INCOME_UNSTABLE: '收入波动较大',
+  MULTI_LOAN: '存在多头借贷',
+  SMALL_LOAN_REPAY: '有小贷还款',
+  NEW_LOAN: '近期新增贷款',
+  LOW_BALANCE: '账户余额偏低',
+  NET_OUTFLOW: '净流出明显',
+  BALANCE_DECLINE: '余额持续下降',
+  FAST_IN_OUT: '存在快进快出',
+  GAMBLING_HIT: '命中博彩类交易',
+  NIGHT_TRADING: '夜间交易偏多',
+  CRYPTO_HIT: '命中虚拟币交易',
+  COUNTERPARTY_CONCENTRATED: '交易对手方集中',
+};
+
+function buildNarrative(report: ReportPayload, authLabel: string, limited: number) {
+  const metrics: Record<string, string | null> = {};
+  for (const m of report.metrics) metrics[m.code] = m.value;
+  const num = (code: string) => {
+    const raw = metrics[code];
+    if (raw === null || raw === undefined) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+  const money = (v: number | null) => (v === null ? '—' : v.toLocaleString() + ' 元');
+  const carrierText = report.carrier === 'electronic' ? '电子版流水（带文字层）'
+    : report.carrier === 'image' ? '图片件' : '截图件';
+
+  const income = num('A02');
+  const expense = num('B01');
+  const net = num('C01');
+  const dti = num('B02');
+  const subject = metrics['A01'] ? '本件' : '本件';
+  const hits = (report.conclusions ?? []).map(c => CONCLUSION_TEXT[c.code] ?? c.code);
+
+  const lines: string[] = [];
+  lines.push(subject + '为' + carrierText + '，真实性校验结论：' + authLabel +
+    (limited > 0 ? '（' + limited + ' 项受限，见下方明细）' : '') + '。');
+  lines.push('期间 ' + (report.trend?.[0]?.month ?? '—') + ' 起，共 ' + (report.metrics.length ? '' : '') +
+    '纳入统计的交易已在明细中列示；月均收入 ' + money(income) + '，月均支出 ' + money(expense) +
+    '，期间净流入 ' + money(net) + '。');
+  if (dti !== null) {
+    lines.push('月还款占收入比（DTI）约 ' + (dti * 100).toFixed(1) + '%，' +
+      (dti >= 0.5 ? '偏高，需要关注还款压力。' : '处于可接受区间。'));
+  }
+  lines.push(hits.length ? '系统命中 ' + hits.length + ' 项风险提示：' + hits.join('、') + '。'
+    : '未命中负债、异常行为、集中度方面的风险提示。');
+  if (report.scores) {
+    lines.push('综合评分 ' + report.scores.overall.toFixed(1) + '（' + report.scores.grade_label + '）：' +
+      report.scores.domains.map(d => d.name + ' ' + d.score.toFixed(0)).join(' · ') + '。');
+  }
+  return lines;
+}
+
 export function ReportView({ taskId }: { taskId: number }) {
   const [report, setReport] = useState<ReportPayload | null>(null);
   const [txns, setTxns] = useState<TxnRow[]>([]);
@@ -50,6 +106,7 @@ export function ReportView({ taskId }: { taskId: number }) {
   const [openLayers, setOpenLayers] = useState<Record<string, boolean>>({});
   const [openSelf, setOpenSelf] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [view, setView] = useState<'summary' | 'detail'>('summary');
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [templateId, setTemplateId] = useState<string>('');
   const [whitelist, setWhitelist] = useState<{ reason: string; at: string } | null>(null);
@@ -205,7 +262,8 @@ export function ReportView({ taskId }: { taskId: number }) {
                     <span className="auth-caret">{authOpen ? "▾" : "▸"}</span>
                     <span className="auth-meta">载体 {report.carrier} · 受限 {a.limited} 项 · {a.blocked.length ? '未全通过：' + a.blocked.join('、') : '四层全部通过'}</span>
                   </div>
-                  <div className="auth-meta-line" hidden={!authOpen}>
+                  {authOpen && (
+                  <div className="auth-meta-line">
                     <button
                       className="pill-btn pill-btn-primary"
                       type="button"
@@ -217,6 +275,7 @@ export function ReportView({ taskId }: { taskId: number }) {
                       onClick={() => setOpenLayers({})}
                     ><span className="pill-icon">▤</span>全部收起</button>
                   </div>
+                  )}
                   {authOpen && (
                   <div className="auth-inline-layers">
                 <h3>四层核验（点卡片展开，逐项看「怎么验」与本次结果）</h3>
@@ -257,6 +316,22 @@ export function ReportView({ taskId }: { taskId: number }) {
             })()}
 
 
+            <div className="view-switch">
+              <button type="button" className={'pill-btn' + (view === 'summary' ? ' pill-btn-primary' : '')} onClick={() => setView('summary')}>结论版</button>
+              <button type="button" className={'pill-btn' + (view === 'detail' ? ' pill-btn-primary' : '')} onClick={() => setView('detail')}>明细版</button>
+              <span className="muted small">结论版给不需要看指标的人；明细版保留全部指标、核验与证据</span>
+            </div>
+
+            <div className="report-narrative">
+              <div className="report-narrative-title">结论摘要</div>
+              <ul>
+                {(() => {
+                  const a = authenticity(report.layers, report.carrier, report.limitations);
+                  return buildNarrative(report, a.label, a.limited).map((line, i) => <li key={i}>{line}</li>);
+                })()}
+              </ul>
+            </div>
+
             {report.scores && (
               <div className="scores-section">
                 <div className="scores-head">
@@ -285,7 +360,7 @@ export function ReportView({ taskId }: { taskId: number }) {
             {preread && (
               <div className={"preread-card " + preread.verdict}>
                 <div className="preread-head">
-                  <span className="preread-title">预读取（不看模板，只读全文）</span>
+                  <span className="preread-title">预读取（只读第 1 页元数据：银行/户名/账号/期间/页数）</span>
                   <span className={'check-status ' + (preread.verdict === 'accept' ? 'pass' : preread.verdict === 'reject' ? 'fail' : 'limited')}>
                     {preread.verdict === 'accept' ? '判定为流水' : preread.verdict === 'reject' ? '判定非流水' : '需人工确认'}
                   </span>
@@ -320,6 +395,8 @@ export function ReportView({ taskId }: { taskId: number }) {
 
             <InsightSection txns={txns} />
 
+            {view === 'detail' && (
+              <>
             <h3>指标（{report.metrics.filter(m => m.value !== null).length}/{report.metrics.length} 有值）</h3>
             <p className="muted">按业务域分块；点任意一行展开：看这条指标怎么算、用了哪些输入、按原始数据画出来的图。</p>
             {METRIC_GROUPS.map(g => {
@@ -393,6 +470,8 @@ export function ReportView({ taskId }: { taskId: number }) {
               </table>
             )}
             </details>
+              </>
+            )}
           </section>
         )}
       </div>
