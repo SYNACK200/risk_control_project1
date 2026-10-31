@@ -364,6 +364,38 @@ export function AnnotatePage() {
     }
   }
 
+  async function saveAsTemplate(allowInvalid: boolean) {
+    if (!source || source.file.type !== 'application/pdf') { hint('请先载入 PDF 样例'); return; }
+    const marks = marksFromMap(map);
+    if (marks.length === 0) { hint('先给表格列指定字段，再保存模板'); return; }
+    setInferring(true);
+    try {
+      const form = new FormData();
+      form.append('file', source.file);
+      form.append('marks', JSON.stringify(marks));
+      form.append('bank_code', map.bank_code || 'UNKNOWN');
+      if (source.password) form.append('password', source.password);
+      form.append('save_draft', 'true');
+      if (allowInvalid) form.append('allow_invalid', 'true');
+      const res = await inferTemplate(form);
+      setInference(res);
+      if (res.template_id) {
+        setNotice({
+          level: res.saved_invalid ? 'warning' : 'info',
+          text: res.saved_invalid
+            ? "已保存为草稿 #" + res.template_id + "（反验未通过，仅供人工确认后使用）"
+            : "已保存为模板草稿 #" + res.template_id + "，可在「模板管理」里启用",
+        });
+      } else {
+        setNotice({ level: 'error', text: '反验未通过，未生成模板：' + (res.warnings[0] || '请修正标注') });
+      }
+    } catch (err) {
+      setNotice({ level: 'error', text: '保存失败：' + (err instanceof Error ? err.message : String(err)) });
+    } finally {
+      setInferring(false);
+    }
+  }
+
   return (
     <div className="app">
       <Toolbar
@@ -387,6 +419,14 @@ export function AnnotatePage() {
         <button className="btn" onClick={() => { void runInfer(); }} disabled={inferring}>
           {inferring ? '正在试解析…' : '用当前标注试解析'}
         </button>
+        <button className="btn" onClick={() => { void saveAsTemplate(false); }} disabled={inferring}>
+          保存为模板草稿
+        </button>
+        {inference && inference.valid === false && (
+          <button className="btn" onClick={() => { void saveAsTemplate(true); }} disabled={inferring}>
+            反验未通过，仍保存为草稿
+          </button>
+        )}
         <span className="muted">
           {source ? '调用本机后端 /templates/infer，只做列外推；不保存模板、不生成报告。' : '先载入 PDF 样例（内置示例页不能试解析）'}
         </span>
