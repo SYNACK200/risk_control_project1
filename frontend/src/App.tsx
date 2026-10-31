@@ -5,7 +5,7 @@ import { UploadPage } from './pages/UploadPage';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
       <Routes>
         <Route path="/" element={<UploadPage />} />
         <Route path="/tasks/:taskId" element={<ProgressPage />} />

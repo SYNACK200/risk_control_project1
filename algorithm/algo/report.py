@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from ..ocr.models import Transaction
 from .hits import HitResult
+from .scores import ScoreResult, compute_scores
 from .metrics import MetricSet, MetricValue, MonthlyFlow
 from .models import Evidence, LayerStatus
 from .thresholds import (
@@ -64,6 +65,7 @@ class Report(BaseModel):
     metric_set_version: int
     threshold_version: int
     conclusions: list[Conclusion] = Field(default_factory=list)
+    scores: ScoreResult | None = None
     trend: list[MonthlyFlow] = Field(default_factory=list)
     evidence: list[ReportEvidence] = Field(default_factory=list)
     materials: list[ReportMaterial] = Field(default_factory=list)
@@ -184,6 +186,7 @@ def build_report(
         metric_set_version=metrics.metric_set_version,
         threshold_version=threshold_result.version,
         conclusions=threshold_result.conclusions,
+        scores=compute_scores(metrics.metrics, threshold_result.conclusions),
         trend=metrics.trend,
         evidence=evidence,
         materials=report_materials,

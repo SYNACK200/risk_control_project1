@@ -7,6 +7,7 @@ export function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -17,6 +18,7 @@ export function LoginPage() {
     if (sessionStorage) sessionStorage.clear();
     if (username.trim().length < 3) { setError('用户名至少 3 个字符'); return; }
     if (password.length < 6) { setError('密码至少 6 位'); return; }
+    if (mode === 'register' && password !== confirm) { setError('两次输入的密码不一致'); return; }
     setBusy(true);
     try {
       const path = mode === 'login' ? '/auth/login' : '/auth/register';
@@ -49,11 +51,14 @@ export function LoginPage() {
         <input placeholder="用户名" value={username} onChange={e => setUsername(e.target.value)} autoFocus />
         <input type="password" placeholder="密码（至少 6 位）" value={password} onChange={e => setPassword(e.target.value)} />
         {mode === 'register' && (
+          <input type="password" placeholder="再输入一次密码" value={confirm} onChange={e => setConfirm(e.target.value)} />
+        )}
+        {mode === 'register' && (
           <input placeholder="显示名称（可选，如：张三）" value={displayName} onChange={e => setDisplayName(e.target.value)} />
         )}
         {error && <p className="me-warn">{error}</p>}
         <button className="btn" type="submit" disabled={busy}>{busy ? '处理中…' : mode === 'login' ? '登录' : '注册并登录'}</button>
-        <button className="link-btn" type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>
+        <button className="link-btn" type="button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setConfirm(''); }}>
           {mode === 'login' ? '没有账号？去注册' : '已有账号？去登录'}
         </button>
       </form>
