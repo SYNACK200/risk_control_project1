@@ -33,6 +33,10 @@ export function LoginPage() {
         setError(data?.detail?.message || '操作失败（' + res.status + '）');
         return;
       }
+      if (data.user?.role !== 'borrower') {
+        setError('这是银行侧账号，请回首页选择「银行侧」登录');
+        return;
+      }
       setToken(data.token);
       localStorage.setItem('bs_user', JSON.stringify(data.user));
       window.location.reload();
