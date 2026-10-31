@@ -145,6 +145,8 @@ class Template(Base):
     # 建模板时用的样本文件与当时的框选（供事后可视化回看）
     sample_file_id: Mapped[int | None] = mapped_column(Integer)
     layout: Mapped[dict | None] = mapped_column(JSON)
+    # 有历史流水引用时不允许物理删除，改为从列表移除（审计可查）
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

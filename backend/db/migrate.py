@@ -34,4 +34,7 @@ def ensure_columns() -> list[str]:
             if "layout" not in tcols:
                 conn.execute(text("ALTER TABLE template ADD COLUMN layout JSON NULL"))
                 done.append("template.layout")
+            if "deleted_at" not in tcols:
+                conn.execute(text("ALTER TABLE template ADD COLUMN deleted_at DATETIME NULL"))
+                done.append("template.deleted_at")
     return done
