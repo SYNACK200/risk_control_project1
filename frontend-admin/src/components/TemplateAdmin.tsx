@@ -2,12 +2,38 @@ import { TemplateLayoutView } from './TemplateLayoutView';
 import { useEffect, useMemo, useState } from 'react';
 import {
   createTemplate, deleteTemplate, disableTemplate, downloadAttachment, duplicateTemplate,
-  importTemplate, inferTemplate, listTemplates, previewTemplate, publishTemplate, templateStats,
+  importTemplate, inferTemplate, listTemplates, previewTemplate, probeTemplate, publishTemplate, templateStats,
   updateTemplate,
   type InferResult, type TemplatePreview, type TemplateRow, type TemplateStats,
 } from '../lib/api';
 
 const FIELDS = ['txn_date', 'summary', 'amount', 'income', 'expense', 'balance', 'counterparty', 'channel', 'account_no', 'currency'];
+
+function parseMarks(raw: string, headers: { text: string; x: number; y: number }[] | null): string {
+  const text = raw.trim();
+  if (!text) return '[]';
+  if (text.startsWith('[')) return text;  // 已经是 JSON，原样使用
+  const out: { field: string; page: number; x: number; y: number }[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const item = line.trim();
+    if (!item) continue;
+    // 形式一：字段 表头词（中文，靠预读坐标定位）
+    const byHeader = item.match(/^([A-Za-z_]+)\s+([^\d\s].*)$/);
+    if (byHeader && headers) {
+      const hit = headers.find(h => h.text === byHeader[2].trim());
+      if (hit) {
+        out.push({ field: byHeader[1], page: 0, x: hit.x, y: hit.y });
+        continue;
+      }
+    }
+    // 形式二：字段 x y
+    const byPoint = item.match(/^([A-Za-z_]+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/);
+    if (byPoint) {
+      out.push({ field: byPoint[1], page: 0, x: Number(byPoint[2]), y: Number(byPoint[3]) });
+    }
+  }
+  return JSON.stringify(out);
+}
 
 export function TemplateAdmin() {
   const [rows, setRows] = useState<TemplateRow[]>([]);
@@ -27,7 +53,8 @@ export function TemplateAdmin() {
   const [preview, setPreview] = useState<TemplatePreview | null>(null);
   const [importJson, setImportJson] = useState('');
   const [inferFile, setInferFile] = useState<File | null>(null);
-  const [marks, setMarks] = useState('[{"field":"txn_date","page":0,"x":105,"y":60}]');
+  const [marks, setMarks] = useState('txn_date 交易日期');
+  const [probeHeaders, setProbeHeaders] = useState<{ text: string; x: number; y: number }[] | null>(null);
   const [infer, setInfer] = useState<InferResult | null>(null);
 
   async function refresh() {
@@ -236,13 +263,23 @@ export function TemplateAdmin() {
         <details className="tpl-panel">
           <summary>只标几处，让系统外推整张表（原有能力）</summary>
           <div className="tpl-row">
-            <input type="file" accept=".pdf" onChange={e => setInferFile(e.target.files?.[0] ?? null)} />
-            <input className="thr-input" value={marks} onChange={e => setMarks(e.target.value)} style={{ minWidth: 320 }} />
+            <input type="file" accept=".pdf" onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setInferFile(f);
+              setProbeHeaders(null);
+              if (!f) return;
+              const form = new FormData();
+              form.append('file', f);
+              void probeTemplate(form).then(r => setProbeHeaders(r.headers.map(h => ({ text: h.text, x: h.x, y: h.y })))).catch(() => undefined);
+            }} />
+            <textarea className="thr-input" rows={4} value={marks} onChange={e => setMarks(e.target.value)}
+              style={{ minWidth: 320, fontFamily: 'monospace', fontSize: 12 }}
+              placeholder={'每行一个：字段 表头词\n例如：txn_date 交易日期\namount 收入/支出金额\n也可写坐标：txn_date 105 60'} />
             <button className="btn secondary" type="button" disabled={busy || !inferFile} onClick={() => {
               if (!inferFile) return;
               const form = new FormData();
               form.append('file', inferFile);
-              form.append('marks', marks);
+              form.append('marks', parseMarks(marks, probeHeaders));
               form.append('bank_code', newBank);
               setBusy(true); setError('');
               inferTemplate(form)
