@@ -5,6 +5,14 @@ import { InsightSection } from './Charts';
 import { MetricExplain } from './MetricExplain';
 import { CheckTable } from './CheckTable';
 
+const METRIC_GROUPS = [
+  { key: 'income', prefix: 'A', name: '收入能力' },
+  { key: 'debt', prefix: 'B', name: '负债与还款' },
+  { key: 'cash', prefix: 'C', name: '资金与余额' },
+  { key: 'abnormal', prefix: 'D', name: '异常行为' },
+  { key: 'counterparty', prefix: 'E', name: '对手方与集中度' },
+];
+
 const LAYER_NAMES: Record<string, string> = { file: '载体层', content: '内容层', ledger: '账务层', external: '外部层' };
 
 type AuthLevel = 'pass' | 'grant' | 'supplement' | 'fail' | 'unknown';
@@ -210,6 +218,41 @@ export function ReportView({ taskId }: { taskId: number }) {
                       onClick={() => setOpenLayers({})}
                     >全部收起</button>
                   </div>
+                  {authOpen && (
+                  <div className="auth-inline-layers">
+                <h3>四层核验（点卡片展开，逐项看「怎么验」与本次结果）</h3>
+                {!report.layers.some(l => (l.checks?.length ?? 0) > 0) && (
+                  <p className="me-warn">
+                    这份报告生成于逐项明细上线之前（v2.4.0 以前），只有层结论、没有逐项结果。
+                    点「重算逐项结果」用原文件补齐；加密件重算需要再输一次口令。
+                    <button className="link-btn" type="button" onClick={() => { void reanalyze(); }}>重算逐项结果 ▸</button>
+                  </p>
+                )}
+                {report.layers.map(l => {
+                  const items = l.checks ?? [];
+                  const cnt = (st: string) => items.filter(i => i.status === st).length;
+                  const open = Boolean(openLayers[l.layer]);
+                  return (
+                    <div key={l.layer} className={'check-card' + (open ? ' open' : '')}>
+                      <button type="button" className="card-head" onClick={() => toggleLayer(l.layer)} aria-expanded={open}>
+                        <span className={'check-status ' + l.status}>{l.status}</span>
+                        <strong>{LAYER_NAMES[l.layer] ?? l.layer}</strong>
+                        <span className="muted card-summary">
+                          {items.length} 项：通过 {cnt('pass')} · 部分/受限 {cnt('partial') + cnt('limited')} · 未执行 {cnt('skipped')} · 不通过 {cnt('fail') + cnt('inconsistent')}
+                        </span>
+                        <span className="card-caret">{open ? '▾ 收起' : '▸ 展开'}</span>
+                      </button>
+                      {open && (
+                        <div className="card-body">
+                          <div className="muted layer-detail">{l.detail}</div>
+                          <CheckTable items={items} methods={vmethods} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                  </div>
+                  )}
                 </div>
               );
             })()}
@@ -279,65 +322,47 @@ export function ReportView({ taskId }: { taskId: number }) {
             <InsightSection txns={txns} />
 
             <h3>指标（{report.metrics.filter(m => m.value !== null).length}/{report.metrics.length} 有值）</h3>
-            <p className="muted">点任意一行展开：看这条指标怎么算、用了哪些输入、按原始数据画出来的图。</p>
-            <table className="mini metric-table">
-              <thead><tr><th></th><th>编码</th><th>指标</th><th>值</th><th>单位</th><th>口径说明</th></tr></thead>
-              <tbody>
-                {report.metrics.map(m => (
-                  <Fragment key={m.code}>
-                    <tr
-                      className={'metric-row' + (openMetric === m.code ? ' open' : '')}
-                      onClick={() => setOpenMetric(openMetric === m.code ? null : m.code)}
-                    >
-                      <td className="caret">{openMetric === m.code ? '▾' : '▸'}</td>
-                      <td className="mono">{m.code}</td><td>{m.name}</td>
-                      <td className="num">{m.value ?? '不可算'}</td><td>{m.unit ?? '—'}</td>
-                      <td className="muted">{m.note ?? '—'}</td>
-                    </tr>
-                    {openMetric === m.code && (
-                      <tr className="metric-detail-row">
-                        <td />
-                        <td colSpan={5}>
-                          <MetricExplain metric={m} def={defs[m.code]} trend={report.trend ?? []} txns={txns} metricSetVersion={report.metric_set_version} />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-
-            <h3>四层核验（点卡片展开，逐项看「怎么验」与本次结果）</h3>
-            {!report.layers.some(l => (l.checks?.length ?? 0) > 0) && (
-              <p className="me-warn">
-                这份报告生成于逐项明细上线之前（v2.4.0 以前），只有层结论、没有逐项结果。
-                点「重算逐项结果」用原文件补齐；加密件重算需要再输一次口令。
-                <button className="link-btn" type="button" onClick={() => { void reanalyze(); }}>重算逐项结果 ▸</button>
-              </p>
-            )}
-            {report.layers.map(l => {
-              const items = l.checks ?? [];
-              const cnt = (st: string) => items.filter(i => i.status === st).length;
-              const open = Boolean(openLayers[l.layer]);
+            <p className="muted">按业务域分块；点任意一行展开：看这条指标怎么算、用了哪些输入、按原始数据画出来的图。</p>
+            {METRIC_GROUPS.map(g => {
+              const items = report.metrics.filter(m => m.code.startsWith(g.prefix));
+              const score = report.scores?.domains.find(d => d.key === g.key);
               return (
-                <div key={l.layer} className={'check-card' + (open ? ' open' : '')}>
-                  <button type="button" className="card-head" onClick={() => toggleLayer(l.layer)} aria-expanded={open}>
-                    <span className={'check-status ' + l.status}>{l.status}</span>
-                    <strong>{LAYER_NAMES[l.layer] ?? l.layer}</strong>
-                    <span className="muted card-summary">
-                      {items.length} 项：通过 {cnt('pass')} · 部分/受限 {cnt('partial') + cnt('limited')} · 未执行 {cnt('skipped')} · 不通过 {cnt('fail') + cnt('inconsistent')}
-                    </span>
-                    <span className="card-caret">{open ? '▾ 收起' : '▸ 展开'}</span>
-                  </button>
-                  {open && (
-                    <div className="card-body">
-                      <div className="muted layer-detail">{l.detail}</div>
-                      <CheckTable items={items} methods={vmethods} />
-                    </div>
-                  )}
+                <div className="metric-group" key={g.key}>
+                  <div className="metric-group-head">
+                    <span className="metric-group-name">{g.name}</span>
+                    <span className="muted small">{g.prefix} 类 · {items.filter(m => m.value !== null).length}/{items.length} 有值</span>
+                    {score && <span className={"metric-group-score " + score.key}>{score.score.toFixed(1)} 分</span>}
+                  </div>
+                  <table className="mini metric-table">
+                    <thead><tr><th></th><th>编码</th><th>指标</th><th>值</th><th>单位</th><th>口径说明</th></tr></thead>
+                    <tbody>
+                      {items.map(m => (
+                        <Fragment key={m.code}>
+                          <tr
+                            className={'metric-row' + (openMetric === m.code ? ' open' : '')}
+                            onClick={() => setOpenMetric(openMetric === m.code ? null : m.code)}
+                          >
+                            <td className="caret">{openMetric === m.code ? '▾' : '▸'}</td>
+                            <td className="mono">{m.code}</td><td>{m.name}</td>
+                            <td className="num">{m.value ?? '不可算'}</td><td>{m.unit ?? '—'}</td>
+                            <td className="muted">{m.note ?? '—'}</td>
+                          </tr>
+                          {openMetric === m.code && (
+                            <tr className="metric-detail-row">
+                              <td />
+                              <td colSpan={5}>
+                                <MetricExplain metric={m} def={defs[m.code]} trend={report.trend ?? []} txns={txns} metricSetVersion={report.metric_set_version} />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               );
             })}
+
 
             <div className={'check-card' + (openSelf ? ' open' : '')}>
               <button type="button" className="card-head" onClick={() => setOpenSelf(v => !v)} aria-expanded={openSelf}>
