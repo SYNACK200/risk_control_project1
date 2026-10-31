@@ -1,0 +1,17 @@
+{
+  "status": "NOT APPROVED; not part of core DDL or migration",
+  "interest_data": {
+    "storage": "versioned external document until additional tables approved",
+    "required": ["bank_code", "effective_from", "effective_to", "rate", "rate_unit", "day_count_basis", "source", "version"],
+    "demo_rate": null,
+    "owner": "bank and algorithm team",
+    "blocker": "DA-05 additional tables conflict with frozen eleven-table scope"
+  },
+  "ocr": {
+    "storage": "immutable object-store artifact proposal",
+    "required": ["file_id", "parser_version", "page_no", "coordinates", "confidence", "masked_text", "artifact_hash"],
+    "blocker": "DA-18 additional table and service payload need approval"
+  },
+  "business_decisions": ["transaction timestamp meaning", "balance meaning", "hits representation", "report-version binding", "supplement and logical deletion persistence", "appeal workflow"],
+  "demo_parameters": {"tasks": 500, "transactions_per_task": 3000, "opening_balance": "10000.00", "note": "synthetic only; not risk or interest thresholds"}
+}

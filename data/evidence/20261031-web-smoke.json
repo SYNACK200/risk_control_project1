@@ -1,0 +1,9 @@
+{
+  "source": "real_browser",
+  "homepage": true,
+  "consent_guard": true,
+  "invalid_file_rejected": true,
+  "page_errors": 0,
+  "database_writes": false,
+  "full_pipeline_tested": false
+}

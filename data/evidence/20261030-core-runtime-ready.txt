@@ -1,0 +1,13 @@
+Scope: migration runtime preparation ONLY; no real DB connection, password input, DDL or business DML.
+Authorized interpreter: D:/RiskControlDemo/python312-venv/Scripts/python.exe
+Installed: alembic 1.20.1; SQLAlchemy 2.0.55; Mako 1.4.3; MarkupSafe 3.0.4; greenlet 3.5.6; typing-extensions 4.16.0
+pip check: No broken requirements found.
+Real Alembic API: ScriptDirectory/EnvironmentContext resolve 0001_core; head resolves 0002_views and is excluded by production entry.
+Real MySQL dialect compilation: 11 CREATE TABLE, 9 CHECK; no grants, views, users or drops; PASS. Compilation output NOT executed.
+Core schema targeted regression: Ran 12 tests; OK. In-memory DB/temporary baseline only.
+Native pipe protocol: CorePlan/CoreVerify/CoreApply 3 PASS; synthetic credentials and fake migration only.
+PowerShell Parser: files=13 errors=0; scripts not executed by parser.
+git diff --check: EXIT=0
+Reviewed schema.sql SHA256: 9861A8C428C1A77878CF2C2199951660E43A170C841D8CA8DDE77B6FE9FEACE5
+Real execution pending: local administrator terminal password input through 08_core_schema.ps1.
+No claim of live table creation, partition boundary testing, index selection, migration upgrade or downgrade in this receipt.
