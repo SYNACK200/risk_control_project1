@@ -47,6 +47,8 @@ class InferResult:
     provenance: list[Provenance]
     columns: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # 反验未通过时模板为 None，但推断出的映射仍保留，供人工确认后存草稿
+    draft_map: dict = field(default_factory=dict)
 
     @property
     def valid(self) -> bool:
@@ -277,14 +279,14 @@ def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNO
     missing = [f for f in ("txn_date", "amount", "balance") if f not in field_map]
     if missing:
         warnings.append(f"未能推断出必需字段：{', '.join(missing)}，需补充标注")
-        return InferResult(template=None, provenance=_sorted(prov), columns=_columns(cols), warnings=warnings)
+        return InferResult(template=None, provenance=_sorted(prov), columns=_columns(cols), warnings=warnings, draft_map=field_map)
 
     template = Template(bank_code=bank_code.upper(), version=1, field_map=field_map)
     problems = _validate(file_bytes, template)
     if problems:
         warnings.extend(problems)
         warnings.append("反验未通过，未生成模板；请修正标注后重试")
-        return InferResult(template=None, provenance=_sorted(prov), columns=_columns(cols), warnings=warnings)
+        return InferResult(template=None, provenance=_sorted(prov), columns=_columns(cols), warnings=warnings, draft_map=field_map)
     return InferResult(
         template=template,
         provenance=_sorted(prov),

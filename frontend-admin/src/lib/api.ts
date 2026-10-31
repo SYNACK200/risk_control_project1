@@ -214,6 +214,7 @@ export interface InferResult {
   columns: { index: number; x0: number; x1: number; samples: string[] }[];
   warnings: string[];
   template_id?: number;
+  saved_invalid?: boolean;
 }
 
 export async function inferTemplate(form: FormData): Promise<InferResult> {
