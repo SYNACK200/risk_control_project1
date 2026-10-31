@@ -496,3 +496,7 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .merge-metrics > summary::-webkit-details-marker { display: none; }
 .merge-metrics > summary::before { content: "▸ "; color: #7a8ba1; }
 .merge-metrics[open] > summary::before { content: "▾ "; }
+
+/* ---- 页头行（标题 + 刷新） ---- */
+.page-head-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.page-head-row h2 { margin: 0; }
