@@ -7,7 +7,7 @@ export interface MetaBox {
   rect: Rect;
 }
 
-export interface Column { field: string; x: number; w: number }
+export interface Column { field: string; x: number; w: number; fields?: string[] }
 
 export interface TableSpec {
   id: string;
