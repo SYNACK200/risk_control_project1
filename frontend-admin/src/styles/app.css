@@ -552,3 +552,11 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .column-row select { padding: 3px 6px; border-radius: 6px; border: 1px solid #cfd9e6; }
 .field-chip { display: inline-flex; align-items: center; gap: 4px;
   background: #eef5ff; border-radius: 999px; padding: 2px 8px; font-size: 12px; color: #2a5db0; }
+
+/* ---- 提示关闭按钮 ---- */
+.notice { position: relative; padding-right: 34px; }
+.notice-close { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; font-size: 18px; line-height: 1; cursor: pointer;
+  color: #6b7c92; padding: 2px 6px; }
+.notice-close:hover { color: #1f2d3d; }
+.probe-card { position: relative; padding-right: 34px; }
