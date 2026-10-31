@@ -535,3 +535,9 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .view-summary .tiles,
 .view-summary h3 { display: none !important; }
 .view-detail .summary-panel { display: none !important; }
+
+/* ---- 标注页：预读识别 ---- */
+.probe-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px solid #dfe8f5; border-radius: 10px; background: #f7fbff;
+  padding: 8px 12px; margin: 8px 12px; font-size: 13px; }
+.probe-item { color: #33455c; }
