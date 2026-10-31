@@ -70,3 +70,9 @@
 .role-block-card p { margin: 0; font-size: 13.5px; line-height: 1.6; }
 .role-block-actions { display: flex; gap: 10px; margin-top: 6px; }
 .role-block-actions a { text-decoration: none; }
+
+/* ---- 多文件上传 ---- */
+.multi-files { border: 1px solid #dfe8f5; border-radius: 10px; padding: 10px 12px; background: #fbfdff; margin-bottom: 10px; }
+.multi-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.multi-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.multi-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
