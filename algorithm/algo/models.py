@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-CheckStatus = Literal["pass", "fail", "partial", "skipped"]
+CheckStatus = Literal["pass", "fail", "hint", "partial", "skipped"]
 LayerStatus = Literal["pass", "fail", "limited", "skipped", "unavailable", "undetermined"]
 Cause = Literal["recognition", "data"]
 Action = Literal["manual", "stop"]

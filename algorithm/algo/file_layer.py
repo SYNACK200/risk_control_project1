@@ -448,11 +448,14 @@ def _check_signature(doc: fitz.Document) -> CheckResult:
     )
 
 
-def _text_bounds(page: fitz.Page) -> tuple[float, float] | None:
+def _text_bounds(page: fitz.Page) -> tuple[float, float, str] | None:
+    """返回 (左边距, 顶边距, 首行文字)；文字块不足 5 块视为无可比版面。"""
     blocks = [b for b in page.get_text("blocks") if b[4].strip()]
     if len(blocks) < 5:
         return None
-    return min(b[0] for b in blocks), min(b[1] for b in blocks)
+    top_block = min(blocks, key=lambda b: b[1])
+    first = re.sub(r"\s+", "", top_block[4].splitlines()[0])[:20] if top_block[4].strip() else ""
+    return min(b[0] for b in blocks), top_block[1], first
 
 
 def _check_layout(doc: fitz.Document) -> CheckResult:
@@ -482,20 +485,40 @@ def _check_layout(doc: fitz.Document) -> CheckResult:
     bounds = [(page, _text_bounds(page)) for page in doc]
     bounds = [(page, bound) for page, bound in bounds if bound is not None]
     if len(bounds) >= 2:
-        xs = sorted(bound[0] for _, bound in bounds)
-        ys = sorted(bound[1] for _, bound in bounds)
-        median_x = xs[len(xs) // 2]
-        median_y = ys[len(ys) // 2]
-        for page, (x, y) in bounds:
-            if abs(x - median_x) > 3 or abs(y - median_y) > 3:
+        lefts = sorted(bound[0] for _, bound in bounds)
+        median_left = lefts[len(lefts) // 2]
+        # 只有起始行相同的页才比顶边距：续页不重复抬头时起点天然不同，不是拼页痕迹
+        tops: dict[str, list[float]] = {}
+        for _, bound in bounds:
+            tops.setdefault(bound[2], []).append(bound[1])
+        top_text = max(tops, key=lambda key: (len(tops[key]), key))
+        top_sorted = sorted(tops[top_text])
+        median_top = top_sorted[len(top_sorted) // 2]
+        skipped_top = 0
+        for page, (left, top, first_text) in bounds:
+            if abs(left - median_left) > 3:
                 return CheckResult(
                     code=code,
                     name=name,
                     status="fail",
-                    detail=f"第 {_page_no(page)} 页左边距/顶边距偏离 {abs(x - median_x):.1f}/{abs(y - median_y):.1f} pt",
+                    detail=f"第 {_page_no(page)} 页左边距偏离 {abs(left - median_left):.1f} pt",
                     evidence=[page_evidence(_page_no(page), tuple(page.rect), code)],
                 )
-    return CheckResult(code=code, name=name, status="pass", detail="页尺寸、旋转与页边距一致")
+            if first_text == top_text and abs(top - median_top) > 3:
+                return CheckResult(
+                    code=code,
+                    name=name,
+                    status="fail",
+                    detail=f"第 {_page_no(page)} 页顶边距偏离 {abs(top - median_top):.1f} pt",
+                    evidence=[page_evidence(_page_no(page), tuple(page.rect), code)],
+                )
+            if first_text != top_text:
+                skipped_top += 1
+        detail = "页尺寸、旋转与左边距一致"
+        if skipped_top:
+            detail += f"（{skipped_top} 页起始行与首页不同，顶边距未比对）"
+        return CheckResult(code=code, name=name, status="pass", detail=detail)
+    return CheckResult(code=code, name=name, status="pass", detail="页尺寸、旋转与左边距一致")
 
 
 def _check_volume(

@@ -18,6 +18,8 @@
 | refs/archived_20261024_do_not_use/design_20261024.md | 本人旧稿（2026-10-24，算法 MVP） | **仅归档，禁止用于实现** | 否 | 2026-10-29 |
 | refs/archived_20261024_do_not_use/tasks_20261024.md | 本人旧稿（2026-10-24，算法 MVP） | **仅归档，禁止用于实现** | 否 | 2026-10-29 |
 | samples/icbc_desensitized.pdf | 本人工行借记账户流水（已脱敏，原件未入库，samples/.gitignore 忽略） | 电子件真实版式回归（AL-01/02） | 已脱敏（保留日期/金额/余额） | 2026-10-29 |
+| samples/wechat_desensitized.pdf | 微信支付交易明细证明真件（22 页，脱敏后入，原件未入库，samples/.gitignore 忽略） | 第三方支付账单版式验证（当前 0 笔，五态无法判定） | 已脱敏（姓名/证件/微信号/单号/卡尾/个人对手方替换为等长掩码，金额与版式保留） | 2026-10-29 |
+| samples/cmb_desensitized.pdf | 本人招商银行借记账户流水（原件在 OneDrive，未入库，samples/.gitignore 忽略） | 招行版式匹配回归（AL-47） | 已脱敏（户名/账号/开户行/验证码打码，对手信息整列抹除，保留日期/金额/余额/摘要） | 2026-10-30 |
 | samples/synthetic/（manifest + 6 PDF） | 算法合成造数（`python -m algorithm.algo.samples` 重建，不入库） | 四类版式 + 两类伪造回归（AL-15/16） | 否 | 2026-10-29 |
 
 说明：refs/ 下均为只读副本，原文在根目录对应位置；口径以原文与 contract.md 为准，副本不单独修改。

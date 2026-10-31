@@ -208,6 +208,7 @@ export async function publishTemplate(id: number): Promise<{ status: string }> {
 export interface InferRow { field: string; column: number | null; source: string; confidence: number; why: string }
 export interface InferResult {
   bank_code: string;
+  valid?: boolean;
   field_map: Record<string, string | number>;
   provenance: InferRow[];
   columns: { index: number; x0: number; x1: number; samples: string[] }[];

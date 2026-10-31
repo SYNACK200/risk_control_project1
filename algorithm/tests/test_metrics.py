@@ -136,6 +136,20 @@ def test_trade_time_enables_night_ratio():
     assert result.by_code("D02").value == Decimal("0.3333")
 
 
+def test_trade_time_defaults_to_transaction_field():
+    history = _history()
+    history[0].trade_time = "23:10:00"
+    history[1].trade_time = "09:00:00"
+    result = compute_metrics(
+        history,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 3, 31),
+        holder_name="张三",
+        opening_balance=Decimal("0"),
+    )
+    assert result.by_code("D02").value == Decimal("0.5")
+
+
 def test_large_amount_threshold():
     result = _compute(large_amount_threshold=Decimal("5000"))
     assert result.by_code("D04").value == Decimal("3")

@@ -3,7 +3,7 @@ from decimal import Decimal
 from algorithm.algo import analyze_content, conclude
 from algorithm.algo.models import ContentLayerResult, Evidence
 from algorithm.algo.verdict import LayerConclusion
-from algorithm.ocr.models import PageSummary, ParseResult, Transaction
+from algorithm.ocr.models import HeaderField, PageHeader, PageSummary, ParseResult, Transaction
 
 
 def clean_txns() -> list[Transaction]:
@@ -12,6 +12,10 @@ def clean_txns() -> list[Transaction]:
             page_no=1,
             row_no=1,
             txn_date="2025-01-01",
+            trade_time="09:00:00",
+            reference_no="1001",
+            summary="工资",
+            counterparty_name="某公司",
             direction="in",
             amount=Decimal("100.00"),
             balance=Decimal("1100.00"),
@@ -20,9 +24,25 @@ def clean_txns() -> list[Transaction]:
             page_no=1,
             row_no=2,
             txn_date="2025-01-02",
+            trade_time="10:00:00",
+            reference_no="1002",
+            summary="消费",
+            counterparty_name="某超市",
             direction="out",
             amount=Decimal("50.00"),
             balance=Decimal("1050.00"),
+        ),
+        Transaction(
+            page_no=1,
+            row_no=3,
+            txn_date="2025-01-03",
+            trade_time="11:00:00",
+            reference_no="1003",
+            summary="转账",
+            counterparty_name="某公司",
+            direction="in",
+            amount=Decimal("200.00"),
+            balance=Decimal("1250.00"),
         ),
     ]
 
@@ -34,15 +54,26 @@ def clean_content() -> ContentLayerResult:
             page_summaries=[
                 PageSummary(
                     page_no=1,
-                    printed_count=2,
-                    printed_in=Decimal("100.00"),
+                    printed_count=3,
+                    printed_in=Decimal("300.00"),
                     printed_out=Decimal("50.00"),
                 )
             ],
-            footer_count=2,
+            footer_count=3,
+            page_count=2,
+            headers=[
+                PageHeader(
+                    page_no=page_no,
+                    account_no=HeaderField(value="6222021234567890"),
+                    account_name=HeaderField(value="张三"),
+                    period_start=HeaderField(value="2025-01-01"),
+                    period_end=HeaderField(value="2025-12-31"),
+                )
+                for page_no in (1, 2)
+            ],
         ),
         opening_balance=Decimal("1000.00"),
-        closing_balance=Decimal("1050.00"),
+        closing_balance=Decimal("1250.00"),
     )
 
 
@@ -121,6 +152,7 @@ def test_undefined_when_only_low_confidence_rows_break():
 def test_undefined_when_nothing_parsed():
     out = conclude(analyze_content(ParseResult()))
     assert out.verdict == "无法判定"
+    assert out.verdict_reason == "未解析到交易明细，无法核对"
 
 
 def test_all_clear_is_not_found_but_limited_without_other_layers():
@@ -130,7 +162,7 @@ def test_all_clear_is_not_found_but_limited_without_other_layers():
     assert any(layer.status == "skipped" and layer.layer == "file" for layer in out.layers)
 
 
-def test_all_layers_pass_is_not_found_without_limitations():
+def test_all_layers_pass_is_not_found_with_only_statistics_hint():
     passing = lambda name: LayerConclusion(layer=name, status="pass", detail="通过")  # noqa: E731
     out = conclude(
         clean_content(),
@@ -140,7 +172,7 @@ def test_all_layers_pass_is_not_found_without_limitations():
     )
     assert out.verdict == "未发现异常"
     assert out.verdict_reason == "内容层核对通过，未发现矛盾"
-    assert out.limitations == []
+    assert all(item.startswith("提示（不影响结论）：C8 金额形态") for item in out.limitations)
 
 
 def test_layer_labels_are_normalised():

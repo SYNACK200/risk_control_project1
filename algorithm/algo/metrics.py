@@ -280,7 +280,9 @@ def compute_metrics(
         exclusions = analyze_exclusions(transactions, holder_name=holder_name)
     if labels is None and hits is not None:
         labels = hits.labels
-    if trade_times is not None and len(trade_times) != len(transactions):
+    if trade_times is None:
+        trade_times = [txn.trade_time for txn in transactions]
+    elif len(trade_times) != len(transactions):
         raise ValueError("trade_times 长度必须与交易笔数一致")
     if labels is not None and len(labels) != len(transactions):
         raise ValueError("labels 长度必须与交易笔数一致")
@@ -613,7 +615,7 @@ def compute_metrics(
         night = sum(1 for _, hour in timed if hour >= 22 or hour < 6)
         put("D02", _ratio(Decimal(night) / Decimal(len(timed))), "22 时至次日 6 时笔数 ÷ 有交易时间笔数")
     else:
-        put("D02", None, "缺交易时间字段（合同未含 trade_time）")
+        put("D02", None, "交易明细无 trade_time（原件未印时分秒），无法计算夜间占比")
 
     with_amount = [value for value in amounts if value is not None]
     if with_amount:
