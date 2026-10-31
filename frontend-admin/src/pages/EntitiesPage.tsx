@@ -18,6 +18,7 @@ export function EntitiesPage() {
   const [results, setResults] = useState<{ subject: string; data: SubjectMergeResult }[]>([]);
   const [active, setActive] = useState(0);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [acctOpen, setAcctOpen] = useState<Record<number, boolean>>({});
   const result = results[active]?.data ?? null;
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -263,110 +264,150 @@ export function EntitiesPage() {
                 系数 ×{result.sync.amplify_factor}（超可加：合并风险高于简单相加）
               </div>
             )}
-            <div className="merge-head">
-              <span className={'tag risk-' + result.risk.level}>信用风险 {RISK_TEXT[result.risk.level] ?? result.risk.level}</span>
-              <span className="muted">命中 {result.risk.hits} 项 · 覆盖 {result.coverage.months} 个月（{result.coverage.from} ~ {result.coverage.to}）· 重叠 {result.coverage.overlap_months.length} 个月</span>
+            {/* 一、为什么建议合并：先讲依据，不摆指标 */}
+            <div className="merge-why">
+              <div className="merge-why-head">
+                <strong>为什么建议合并</strong>
+                <span className={"tag risk-" + result.risk.level}>合并后信用风险 {RISK_TEXT[result.risk.level] ?? result.risk.level}</span>
+                {result.sync && result.sync.sync_months.length > 0 && (
+                  <span className="tag limited">多账户同步抽资 {result.sync.sync_months.length} 个月</span>
+                )}
+              </div>
+              <p className="merge-why-text">{(() => {
+                const accs = result.accounts.map(a => (a.bank_name ?? "银行未识别") + " " + (a.account_masked ?? "账号未识别"));
+                const overlap = result.coverage.overlap_months.length;
+                const total = result.accounts.reduce((n, a) => n + a.txn_count, 0);
+                return `户名「${result.subject}」出现在 ${result.accounts.length} 个不同账号（${accs.join("、")}）的 ${result.accounts.length} 份材料中，合计 ${total} 笔交易；这些账号的流水期间重叠 ${overlap} 个月。`;
+              })()}</p>
+              <ul className="merge-criteria">
+                <li className="ok"><span className="crit-icon">✓</span><span className="crit-name">同一户名</span><span className="crit-value">{result.subject}</span></li>
+                <li className={result.accounts.length >= 2 ? "ok" : ""}><span className="crit-icon">{result.accounts.length >= 2 ? "✓" : "—"}</span><span className="crit-name">账号不唯一</span><span className="crit-value">{result.accounts.length} 个账号</span></li>
+                <li className={result.coverage.overlap_months.length > 0 ? "ok" : ""}><span className="crit-icon">{result.coverage.overlap_months.length > 0 ? "✓" : "—"}</span><span className="crit-name">期间重叠</span><span className="crit-value">{result.coverage.overlap_months.length} 个月（{result.coverage.from} ~ {result.coverage.to}）</span></li>
+                <li className="ok"><span className="crit-icon">✓</span><span className="crit-name">材料份数</span><span className="crit-value">{result.accounts.length} 份 / {result.accounts.reduce((n, a) => n + a.txn_count, 0)} 笔</span></li>
+              </ul>
+              <div className="merge-why-rule">
+                判据：<b>户名一致 + 账号不同 + 期间有重叠</b> → 视为同一客户分散在多个账户。
+                不合并时，收入、负债与余额会按账户各算一遍（重复）或只取其中一份（低估）。
+              </div>
             </div>
 
-            <div className="metric-toolbar">
-              <span className="muted small">共 {result.metrics.length} 项 · 点任意一行看「口径 / 标准参考 / 本次合并怎么算」</span>
-              <button className="pill-btn" type="button" onClick={() => setOpenAll(true)}>展开全部</button>
-              <button className="pill-btn" type="button" onClick={() => setOpenAll(false)}>全部收起</button>
+            {/* 二、涉及的账户：每个账号单独展开 */}
+            <h3>涉及的账户（{result.accounts.length}）</h3>
+            <p className="muted small">点任一账户展开它自己的信息；不点开就只看这一行摘要。</p>
+            <div className="acct-list">
+              {result.accounts.map(a => {
+                const open = Boolean(acctOpen[a.task_id]);
+                return (
+                  <div className={"acct-card" + (open ? " open" : "")} key={a.task_id}>
+                    <button type="button" className="acct-head" onClick={() => setAcctOpen(prev => ({ ...prev, [a.task_id]: !prev[a.task_id] }))}>
+                      <span className="acct-caret">{open ? "▾" : "▸"}</span>
+                      <strong>{a.bank_name ?? "银行未识别"}</strong>
+                      <span className="mono">{a.account_masked ?? "账号未识别"}</span>
+                      <span className="muted small">{a.months} 个月 · {a.txn_count} 笔</span>
+                      {a.risk_hits > 0 && <span className="tag fail">本账户命中 {a.risk_hits} 项</span>}
+                    </button>
+                    {open && (
+                      <div className="acct-body">
+                        <div><span className="me-k">任务</span><span className="me-v mono">#{a.task_id}</span></div>
+                        <div><span className="me-k">银行</span><span className="me-v">{a.bank_name ?? "—"}</span></div>
+                        <div><span className="me-k">账号</span><span className="me-v mono">{a.account_masked ?? "—"}</span></div>
+                        <div><span className="me-k">有数据月数</span><span className="me-v">{a.months}</span></div>
+                        <div><span className="me-k">交易笔数</span><span className="me-v">{a.txn_count}</span></div>
+                        <div><span className="me-k">期末余额</span><span className="me-v">{a.balance_end ?? "—"}</span></div>
+                        <div><span className="me-k">单账户风险命中</span><span className="me-v">{a.risk_hits} 项</span></div>
+                        <div><span className="me-k">材料结论</span><span className="me-v">{a.verdict ?? "未判定"}</span></div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            {groupedMetrics.map(g => (
-              <div className="metric-group" key={g.name}>
-                <div className="metric-group-head">
-                  <span className="metric-group-name">{g.name}</span>
-                  <span className="muted small">{g.items.length} 项</span>
-                </div>
-                <table className="mini metric-table">
-                  <thead><tr><th></th><th>指标</th><th>合并值</th><th>单位</th><th>怎么来的</th></tr></thead>
-                  <tbody>
-                    {g.items.map(m => {
-                      const def = defs[m.code];
-                      const open = Boolean(openMap[m.code]);
-                      const gname = def ? (GROUP_NAME[def.group] ?? def.group) : '';
-                      const refs = gname ? tdefs.filter(t => t.group === gname) : [];
-                      return (
-                        <Fragment key={m.code}>
-                          <tr
-                            className={'metric-row' + (open ? ' open' : '')}
-                            onClick={() => setOpenMap(prev => ({ ...prev, [m.code]: !prev[m.code] }))}
-                          >
-                            <td className="caret">{open ? '▾' : '▸'}</td>
-                            <td>{m.name} <span className="muted small">{m.code}</span></td>
-                            <td className="num">{m.value === null ? '不可算' : m.value.toLocaleString()}</td>
-                            <td>{m.unit}</td>
-                            <td className="muted">{m.how}</td>
-                          </tr>
-                          {open && (
-                            <tr className="metric-detail-row">
-                              <td />
-                              <td colSpan={4}>
-                                <div className="me-grid">
-                                  <div><span className="me-k">所属分区</span><span className="me-v">{def ? (GROUP_NAME[def.group] ?? def.group) : "未分组"}</span></div>
-                                  <div><span className="me-k">计算公式</span><span className="me-v mono">{def?.formula ?? "—"}</span></div>
-                                  <div><span className="me-k">输入字段</span><span className="me-v">{def?.inputs ?? "—"}</span></div>
-                                  <div><span className="me-k">本次合并口径</span><span className="me-v">{m.how}</span></div>
-                                  <div><span className="me-k">备注</span><span className="me-v">{m.note || "—"}</span></div>
-                                </div>
-                                <div className="metric-ref">
-                                  <div className="metric-ref-title">标准参考（阈值口径）</div>
-                                  {refs.length === 0 ? (
-                                    <div className="muted small">该指标所在分区没有可调阈值，仅作参考展示。</div>
-                                  ) : (
-                                    <ul className="metric-ref-list">
-                                      {refs.map(t => (
-                                        <li key={t.key}>
-                                          <span className="me-k">{t.label}</span>
-                                          <span className="me-v">{t.desc}</span>
-                                          <span className="muted small">默认 {t.default}{t.unit ? " " + t.unit : ""} · 影响 {t.impacts.join("、") || "—"}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                </div>
-                              </td>
+            {/* 三、风控指标默认收起 */}
+            <details className="merge-metrics">
+              <summary>
+                合并后的风控指标（{result.metrics.length} 项 · 默认收起）
+                <span className="muted small"> — 需要核数时再展开</span>
+              </summary>
+              <div className="metric-toolbar">
+                <span className="muted small">点任意一行看「口径 / 标准参考 / 本次合并怎么算」</span>
+                <button className="pill-btn" type="button" onClick={() => setOpenAll(true)}>展开全部</button>
+                <button className="pill-btn" type="button" onClick={() => setOpenAll(false)}>全部收起</button>
+              </div>
+
+              {groupedMetrics.map(g => (
+                <div className="metric-group" key={g.name}>
+                  <div className="metric-group-head">
+                    <span className="metric-group-name">{g.name}</span>
+                    <span className="muted small">{g.items.length} 项</span>
+                  </div>
+                  <table className="mini metric-table">
+                    <thead><tr><th></th><th>指标</th><th>合并值</th><th>单位</th><th>怎么来的</th></tr></thead>
+                    <tbody>
+                      {g.items.map(m => {
+                        const def = defs[m.code];
+                        const open = Boolean(openMap[m.code]);
+                        const gname = def ? (GROUP_NAME[def.group] ?? def.group) : "未分组";
+                        const refs = (tdefs ?? []).filter(t => t.group === gname);
+                        return (
+                          <Fragment key={m.code}>
+                            <tr className="metric-row" onClick={() => setOpenMap(prev => ({ ...prev, [m.code]: !prev[m.code] }))}>
+                              <td className="metric-caret">{open ? "▾" : "▸"}</td>
+                              <td><strong>{m.name}</strong><span className="muted small mono"> {m.code}</span></td>
+                              <td className="num">{m.value === null ? "—" : m.value}</td>
+                              <td>{m.unit}</td>
+                              <td className="muted">{m.how}</td>
                             </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+                            {open && (
+                              <tr className="metric-detail-row">
+                                <td />
+                                <td colSpan={4}>
+                                  <div className="me-grid">
+                                    <div><span className="me-k">所属分区</span><span className="me-v">{gname}</span></div>
+                                    <div><span className="me-k">计算公式</span><span className="me-v mono">{def?.formula ?? "—"}</span></div>
+                                    <div><span className="me-k">输入字段</span><span className="me-v">{def?.inputs ?? "—"}</span></div>
+                                    <div><span className="me-k">本次合并口径</span><span className="me-v">{m.how}</span></div>
+                                    <div><span className="me-k">备注</span><span className="me-v">{m.note || "—"}</span></div>
+                                  </div>
+                                  <div className="metric-ref">
+                                    <div className="metric-ref-title">标准参考（阈值口径）</div>
+                                    {refs.length === 0 ? (
+                                      <div className="muted small">该指标所在分区没有可调阈值，仅作参考展示。</div>
+                                    ) : (
+                                      <ul className="metric-ref-list">
+                                        {refs.map(t => (
+                                          <li key={t.key}>
+                                            <span className="me-k">{t.label}</span>
+                                            <span className="me-v">{t.desc}</span>
+                                            <span className="muted small">默认 {t.default}{t.unit ? " " + t.unit : ""} · 影响 {t.impacts.join("、") || "—"}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
 
-            {result.warnings.length > 0 && (
-              <div className="why-box">
-                <span className="me-k">需要留意</span>
-                <ul className="muted">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
-              </div>
-            )}
+              {result.warnings.length > 0 && (
+                <div className="why-box">
+                  <span className="me-k">需要留意</span>
+                  <ul className="muted">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                </div>
+              )}
 
-            <h3>参与合并的账户（{result.accounts.length}）</h3>
-            <table className="mini">
-              <thead><tr><th>任务</th><th>银行</th><th>账号</th><th>有数据月数</th><th>笔数</th><th>期末余额</th><th>风险命中</th></tr></thead>
-              <tbody>
-                {result.accounts.map(a => (
-                  <tr key={a.task_id}>
-                    <td className="mono">{a.task_id}</td>
-                    <td>{a.bank_name ?? '—'}</td>
-                    <td className="mono">{a.account_masked ?? '—'}</td>
-                    <td className="num">{a.months}</td>
-                    <td className="num">{a.txn_count}</td>
-                    <td className="num">{a.balance_end ?? '—'}</td>
-                    <td className="num">{a.risk_hits}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <h3>不参与合并的指标</h3>
-            <ul className="muted">
-              {result.unsupported.map(u => <li key={u.code}>{u.code} {u.name}：{u.reason}</li>)}
-            </ul>
+              <h3>不参与合并的指标</h3>
+              <ul className="muted">
+                {result.unsupported.map(u => <li key={u.code}>{u.code} {u.name}：{u.reason}</li>)}
+              </ul>
+            </details>
           </section>
         )}
       </div>
