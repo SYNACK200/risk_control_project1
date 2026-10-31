@@ -1,3 +1,4 @@
+import { TemplateLayoutView } from './TemplateLayoutView';
 import { useEffect, useMemo, useState } from 'react';
 import {
   createTemplate, deleteTemplate, disableTemplate, downloadAttachment, duplicateTemplate,
@@ -19,6 +20,7 @@ export function TemplateAdmin() {
   const [editBank, setEditBank] = useState('');
   const [editJson, setEditJson] = useState('');
   const [stats, setStats] = useState<Record<number, TemplateStats>>({});
+  const [layoutTarget, setLayoutTarget] = useState<TemplateRow | null>(null);
   const [previewTarget, setPreviewTarget] = useState<TemplateRow | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewPw, setPreviewPw] = useState('');
@@ -131,6 +133,7 @@ export function TemplateAdmin() {
                   <td className="row-actions">
                     {t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}
                     {t.status === 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已停用 #' + t.id, () => disableTemplate(t.id)); }}>停用</button>}
+                    <button className="link-btn" type="button" onClick={() => { setLayoutTarget(layoutTarget?.id === t.id ? null : t); }}>{layoutTarget?.id === t.id ? '收起框选' : '回看框选'}</button>
                     <button className="link-btn" type="button" onClick={() => startEdit(t)}>编辑</button>
                     <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已复制为新草稿', () => duplicateTemplate(t.id)); }}>复制</button>
                     <button className="link-btn" type="button" onClick={() => { setPreviewTarget(t); setPreview(null); setMsg('试跑目标：#' + t.id + ' ' + t.bank_code + ' v' + t.version); }}>试跑</button>
@@ -143,6 +146,18 @@ export function TemplateAdmin() {
             {rows.length === 0 && <tr><td colSpan={8} className="muted">还没有模板：可以新建，或用下面的标注外推。</td></tr>}
           </tbody>
         </table>
+
+        {layoutTarget && (
+          <section className="card">
+            <div className="card-head-static">
+              <strong>模板 #{layoutTarget.id} · {layoutTarget.bank_code} v{layoutTarget.version}</strong>
+              <span className="muted small">下面这张就是建模板时用的样本页，方框就是当时选中的列</span>
+            </div>
+            <div className="card-body">
+              <TemplateLayoutView templateId={layoutTarget.id} />
+            </div>
+          </section>
+        )}
 
         {editing && (
           <section className="tpl-panel">

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path as _Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -13,6 +14,7 @@ from db.models import Task, Template, Txn
 from db.session import get_session
 from helpers.security import require_banker
 from services.analysis import infer_from_marks
+from services import template_layout as tlayout
 
 router = APIRouter(prefix="/templates", tags=["templates"], dependencies=[Depends(require_banker)])
 
@@ -90,7 +92,6 @@ def infer_template_api(
             if not password or doc.authenticate(password) <= 0:
                 raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "PDF 需要打开口令"})
             import tempfile
-            from pathlib import Path as _Path
 
             tmp = _Path(tempfile.gettempdir()) / "infer_plain.pdf"
             doc.save(tmp, encryption=pymupdf.PDF_ENCRYPT_NONE)
@@ -107,10 +108,23 @@ def infer_template_api(
         "columns": result["columns"],
         "warnings": result["warnings"],
     }
+    layout = None
+    try:
+        layout = tlayout.build_layout(data, parsed_marks, result["columns"], result["field_map"])
+    except Exception:  # noqa: BLE001 - 布局失败不影响建模板
+        layout = None
+    payload["layout"] = layout
+
     if save_draft:
+        file_id = None
+        try:
+            file_id = _store_sample(db, file.filename or "template_sample.pdf", data)
+        except Exception:  # noqa: BLE001
+            file_id = None
         row = Template(bank_code=bank_code.upper(), version=1, status="draft",
                        field_map=result["field_map"],
-                       header_columns=[c.get("alias") for c in result["columns"]])
+                       header_columns=[c.get("alias") for c in result["columns"]],
+                       sample_file_id=file_id, layout=layout)
         db.add(row); db.commit(); db.refresh(row)
         payload["template_id"] = row.id
     return payload
@@ -283,3 +297,60 @@ def import_template(payload: dict, db: Session = Depends(get_session)):
     db.refresh(row)
     return {"id": row.id, "version": row.version, "bank_code": row.bank_code}
 
+
+def _store_sample(db: Session, filename: str, data: bytes) -> int:
+    """把建模板用的样本存进 file_obj + 磁盘，供之后渲染「当时的框选」。"""
+    import hashlib
+
+    from db.models import FileObj
+
+    digest = hashlib.sha256(data).hexdigest()
+    exists = db.execute(select(FileObj).where(FileObj.sha256 == digest)).scalars().first()
+    if exists:
+        return exists.id
+    storage = _Path(__file__).resolve().parents[1] / "storage" / "uploads"
+    storage.mkdir(parents=True, exist_ok=True)
+    path = storage / (digest + ".pdf")
+    if not path.exists():
+        path.write_bytes(data)
+    row = FileObj(sha256=digest, mime="application/pdf", carrier="electronic",
+                  pages=None, has_text_layer=True, storage_path=str(path))
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row.id
+
+
+@router.get("/{template_id}/layout")
+def get_template_layout(template_id: int, db: Session = Depends(get_session)):
+    """模板当时的框选（页面尺寸 + 每个字段的方框）与样本是否可回看。"""
+    row = db.get(Template, template_id)
+    if row is None:
+        raise HTTPException(404, "模板不存在")
+    return {
+        "template_id": row.id,
+        "has_sample": row.sample_file_id is not None,
+        "layout": row.layout,
+        "field_map": row.field_map,
+        "header_columns": row.header_columns,
+    }
+
+
+@router.get("/{template_id}/layout.png")
+def get_template_layout_png(template_id: int, page: int = 0, dpi: int = 140, db: Session = Depends(get_session)):
+    """渲染「当时的框选」：原页面 + 方框 + 字段名，直接给工作人员看。"""
+    from fastapi.responses import Response
+
+    from db.models import FileObj
+
+    row = db.get(Template, template_id)
+    if row is None:
+        raise HTTPException(404, "模板不存在")
+    if not row.sample_file_id or not row.layout:
+        raise HTTPException(404, detail={"code": "E_NO_SAMPLE", "message": "该模板没有可回看的样本（旧版本模板）"})
+    file_row = db.get(FileObj, row.sample_file_id)
+    if file_row is None or not file_row.storage_path:
+        raise HTTPException(404, detail={"code": "E_NO_SAMPLE", "message": "样本文件已不存在"})
+    data = _Path(file_row.storage_path).read_bytes()
+    png = tlayout.render_page_png(data, row.layout, max(0, page), dpi=max(80, min(200, dpi)))
+    return Response(content=png, media_type="image/png")

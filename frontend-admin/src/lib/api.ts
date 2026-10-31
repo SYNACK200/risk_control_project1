@@ -421,3 +421,21 @@ export async function importTemplate(payload: { bank_code: string; field_map: Re
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }));
 }
+
+export interface TemplateLayoutBox { field: string; column: string; page: number; x0: number; y0: number; x1: number; y1: number }
+export interface TemplateLayoutPayload {
+  template_id: number; has_sample: boolean;
+  layout: { pages: Record<string, { width: number; height: number }>; page_count: number; boxes: TemplateLayoutBox[] } | null;
+  field_map: Record<string, unknown> | null;
+  header_columns: string[] | null;
+}
+
+export async function getTemplateLayout(id: number): Promise<TemplateLayoutPayload> {
+  return json<TemplateLayoutPayload>(await authFetch(BASE + '/templates/' + id + '/layout'));
+}
+
+export async function getTemplateLayoutPng(id: number, page = 0): Promise<Blob> {
+  const res = await authFetch(BASE + '/templates/' + id + '/layout.png?page=' + page);
+  if (!res.ok) throw new Error('没有可回看的样本');
+  return await res.blob();
+}
