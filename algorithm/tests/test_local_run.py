@@ -66,3 +66,15 @@ def test_template_without_mapping_is_rejected(tmp_path):
     path.write_text(json.dumps({"bank_code": "X"}), encoding="utf-8")
     with pytest.raises(ValueError, match="field_map"):
         load_template(path)
+
+
+def test_summary_limitations_only_truncates_with_count():
+    from algorithm.local_run import summary_limitations
+
+    short = [f"项{i}" for i in range(3)]
+    assert summary_limitations(short) == short
+
+    shown = summary_limitations([f"项{i}" for i in range(25)])
+    assert len(shown) == 11
+    assert shown[0] == "项0" and shown[9] == "项9"
+    assert "其余 15 条" in shown[-1] and "共 25 条" in shown[-1]

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 
 import fitz
 import pytest
@@ -402,3 +403,38 @@ def test_image_block_before_text_keeps_fitz_words():
 
     assert len(result.transactions) == 3
     assert not any("回退 pdfplumber" in warning for warning in result.warnings)
+
+
+ICBC_TEMPLATE = (
+    Path(__file__).resolve().parents[2]
+    / "algorithm"
+    / "integration"
+    / "samples"
+    / "icbc_template.json"
+)
+
+
+def test_icbc_template_maps_counterparty_not_channel():
+    """模板曾把渠道指到 10（实际是对方户名），导致带模板时对手方整列为空。"""
+    from algorithm.local_run import load_template
+
+    header = [
+        "交易日期", "账号", "储种", "序号", "币种", "钞汇", "摘要",
+        "地区", "收入/支出金额", "余额", "对方户名", "对方账号", "渠道",
+    ]
+    xs = [40, 130, 200, 250, 300, 350, 400, 460, 520, 640, 720, 830, 900]
+    row = [
+        "2026-01-05", "12", "活期", "00000", "人民币", "钞", "消费",
+        "4301", "-29.00", "210.59", "中移支付有限公司", "2353****0115", "快捷支付",
+    ]
+    data = make_pdf([[row]], header, xs)
+
+    result = parse(data, load_template(ICBC_TEMPLATE))
+
+    assert len(result.transactions) == 1
+    txn = result.transactions[0]
+    assert txn.counterparty_name == "中移支付有限公司"
+    assert txn.amount == Decimal("29.00")
+    assert txn.direction == "out"
+    assert txn.balance == Decimal("210.59")
+    assert txn.reference_no is None

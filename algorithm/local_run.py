@@ -56,6 +56,19 @@ def load_template(path: pathlib.Path) -> Template:
     )
 
 
+SUMMARY_LIMITATIONS = 10
+
+
+def summary_limitations(items: list[str]) -> list[str]:
+    """摘要只列前 N 条，其余给条数；完整清单留在报告 JSON。"""
+    shown = list(items[:SUMMARY_LIMITATIONS])
+    if len(items) > SUMMARY_LIMITATIONS:
+        shown.append(
+            f"……其余 {len(items) - SUMMARY_LIMITATIONS} 条见报告 JSON 的 limitations（共 {len(items)} 条）"
+        )
+    return shown
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("path")
@@ -121,7 +134,7 @@ def main() -> int:
         "笔数": len(parsed.transactions),
         "覆盖期": [parsed.transactions[0].txn_date, parsed.transactions[-1].txn_date] if parsed.transactions else None,
         "结论": data["verdict"], "理由": data["verdict_reason"],
-        "受限": data["limitations"][:10],
+        "受限": summary_limitations(data["limitations"]),
         "自检": [{"项": f"{i.code} {i.name}", "结果": i.status, "说明": i.detail} for i in sc.items],
         "步骤": steps,
     }
