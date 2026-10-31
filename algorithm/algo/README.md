@@ -16,7 +16,7 @@
 | hits.py | 摘要/对手方词库：精确词、正则、标签、行级位置与证据 | 已实现（AL-12；词库待业务评审） |
 | thresholds.py | 默认阈值、阈值版本、提示结论、整版导出 | 已实现（AL-13；v2 共 13 项，未校准项待业务确认） |
 | report.py | contract 报告聚合：五态、四层、指标、趋势、阈值结论、证据 | 已实现（AL-13） |
-| samples.py | AL-15 合成样本：四类版式 + 四类伪造、manifest 清单、加载与校验 | 已实现（AL-15） |
+| samples.py | AL-15 合成样本：四类版式 + 五类伪造、manifest 清单、加载与校验 | 已实现（AL-15） |
 | eval.py | AL-16 样本回归：五态/笔数/失败码比对、抽错归因、JSON 报告 | 已实现（AL-16） |
 | perf.py | AL-17 性能压测：三千笔造数、全链路计时、P50/P95/P99 与 SLA 判定 | 已实现（AL-17） |
 
@@ -245,12 +245,13 @@ AL-15 的样本全部是造数，不含真实客户信息；生成到 `algorithm
 | forged_overlay_icbc | 文件伪造 | 增量更新 + 白底覆盖后重写金额 | 来源可疑；F3、F7 fail |
 | forged_row_deleted_icbc | 内容篡改 | 删一笔但保留原页脚 | 存在不一致；C1、C2、C3 fail |
 | forged_page_splice_icbc | 内容伪造 | 两时段拼页，页内各自闭合 | 存在不一致；接缝处 C1 fail |
+| forged_duplicate_ref_icbc | 内容篡改 | 整行复制一笔，参考号同号，余额链同步改写 | 存在不一致；C6、C10 fail，证据定位到两行 |
 
 换利率与整份重排暂不造样：前者需要银行挂牌利率表，后者需要同版式真件基线，缺参数时造出来也无法判定。
 
 - `manifest.json` 每项含 `id、path、layout、carrier、forgery、expectation{verdict,txn_count,fail_codes}、notes`；`path` 相对样本目录。
-- `build_sample_set()` 生成并回读；`load_samples()` 校验 id 唯一、路径不越界、文件存在、四类版式与四类伪造齐全；`load_manifest()` 只读清单。
-- 样本集 v2（2026-10-31）新增删行、拼页两类伪造；换利率、整份重排仍缺利率表与同版式基线。
+- `build_sample_set()` 生成并回读；`load_samples()` 校验 id 唯一、路径不越界、文件存在、四类版式与五类伪造齐全；`load_manifest()` 只读清单。
+- 样本集 v2（2026-10-31）新增删行、拼页两类伪造；v3（同日）新增同参考号复制一笔的样本，带「交易流水号」列，复制行及其后余额同步改写，用于端到端覆盖 C6/C10 fail。换利率、整份重排仍缺利率表与同版式基线。
 - 样本 PDF 嵌入 Droid Sans Fallback 子集，固定元数据与页脚；F1/F2/F5 可通过，F4/F10 仍因无真件基线跳过。
 - 干净样本只覆盖解析与算术链，不冒充真件：文件层结论仍是 limited，内容层因缺期初期末为 limited。
 
@@ -279,7 +280,7 @@ CI 严格模式：python -m algorithm.algo.eval --strict
 - 抽错归因：`recognition` 识别问题、`parsing` 版式/行列问题、`rule_gap` 规则未命中、`parameter_missing` 缺基线/利率/授权、`false_positive` 干净件误报、`verdict_logic` 五态合成偏差。
 - 内容层失败若已归因为识别问题，评测继承为 `recognition`，不判成材料问题（对应 V3）。
 - 报告不含时间戳，同一输入两次输出一致（对应 V5）；失败样本带页码、行号与坐标（对应 V6）。
-- 当前样本 8 份（样本集 v2）：通过 8，五态/笔数/失败码召回/伪造检出均 100%，干净件误判 0%；仅代表合成样本，不代表真实客群分布（V2 的十份真件尚未具备）。
+- 当前样本 9 份（样本集 v3）：通过 9，五态/笔数/失败码召回/伪造检出均 100%，干净件误判 0%；仅代表合成样本，不代表真实客群分布（V2 的十份真件尚未具备）。
 
 # 性能压测当前口径
 

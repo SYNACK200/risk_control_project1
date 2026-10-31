@@ -32,8 +32,8 @@ def test_current_sample_set_passes(sample_dir):
     report = evaluate_samples(sample_dir)
     summary = report.summary
 
-    assert summary.total == 8
-    assert summary.passed == 8
+    assert summary.total == 9
+    assert summary.passed == 9
     assert summary.failed == 0
     assert summary.sample_pass_rate == 1.0
     assert summary.verdict_accuracy == 1.0
@@ -111,9 +111,9 @@ def test_cli_writes_json_report(sample_dir, tmp_path, capsys):
     output = capsys.readouterr().out
     assert "AL-16 样本评测报告" in output
     report = json.loads(target.read_text(encoding="utf-8"))
-    assert report["summary"]["total"] == 8
-    assert report["summary"]["passed"] == 8
-    assert report["sample_set_version"] == 2
+    assert report["summary"]["total"] == 9
+    assert report["summary"]["passed"] == 9
+    assert report["sample_set_version"] == 3
 
 
 def test_cli_missing_samples_returns_error(tmp_path, capsys):

@@ -25,8 +25,8 @@ def test_build_sample_set_covers_four_layouts_and_four_forgeries(built):
     directory, samples = built
     manifest = load_manifest(directory)
 
-    assert manifest.version == 2
-    assert len(samples) == 8
+    assert manifest.version == 3
+    assert len(samples) == 9
     assert {case.layout for case in manifest.cases} == set(SAMPLE_LAYOUTS)
     assert {case.forgery for case in manifest.cases if case.forgery} == set(SAMPLE_FORGERY_TYPES)
     assert all(sample.path.is_file() for sample in samples.values())
@@ -108,6 +108,20 @@ def test_forged_page_splice_breaks_chain_at_seam(built):
     failed = [check for check in content.checks if check.status == "fail"]
     assert [check.code for check in failed] == ["C1"]
     assert "-10000.00" in failed[0].detail
+    assert conclude(content, file_layer=analyze_file(raw)).verdict == "存在不一致"
+
+
+def test_forged_duplicate_reference_hits_c6_and_c10(built):
+    _, samples = built
+    sample = samples["forged_duplicate_ref_icbc"]
+    raw = sample.read_bytes()
+    parsed = parse(raw)
+    content = analyze_content(parsed)
+
+    assert len(parsed.transactions) == 7
+    assert {check.code for check in content.checks if check.status == "fail"} == {"C6", "C10"}
+    detail = {check.code: check.detail for check in content.checks if check.status == "fail"}
+    assert "202601050002" in detail["C6"]
     assert conclude(content, file_layer=analyze_file(raw)).verdict == "存在不一致"
 
 

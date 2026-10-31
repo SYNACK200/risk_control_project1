@@ -17,6 +17,7 @@ ForgeryType = Literal[
     "file_incremental_overlay",
     "content_row_deleted",
     "content_page_splice",
+    "content_duplicate_reference",
 ]
 Carrier = Literal["electronic", "image", "screenshot"]
 SampleVerdict = Literal["未发现异常", "存在不一致", "余额可疑", "来源可疑", "无法判定"]
@@ -27,6 +28,7 @@ SAMPLE_FORGERY_TYPES: tuple[str, ...] = (
     "file_incremental_overlay",
     "content_row_deleted",
     "content_page_splice",
+    "content_duplicate_reference",
 )
 LAYOUT_LABELS = {
     "icbc": "工行式：借贷标志 + 单列交易金额 + 余额，跨两页",
@@ -39,8 +41,9 @@ FORGERY_LABELS = {
     "file_incremental_overlay": "文件伪造：增量更新 + 白底覆盖后重写金额",
     "content_row_deleted": "内容篡改：删一笔但保留原页脚，余额链、页合计、笔数同时暴露",
     "content_page_splice": "内容伪造：两个时段拼页，页内各自闭合、接缝余额链断",
+    "content_duplicate_reference": "内容篡改：整行复制一笔（含同一参考号），余额链同步改写，重号暴露",
 }
-SAMPLE_SET_VERSION = 2
+SAMPLE_SET_VERSION = 3
 
 
 class SampleExpectation(BaseModel):
@@ -78,6 +81,8 @@ class LoadedSample:
 
 _ICBC_HEADER = ["交易日期", "摘要", "对方户名", "借贷标志", "交易金额", "余额"]
 _ICBC_XS = [40, 200, 380, 480, 560, 660]
+_ICBC_REF_HEADER = [*_ICBC_HEADER, "交易流水号"]
+_ICBC_REF_XS = [*_ICBC_XS, 730]
 _CCB_HEADER = ["交易日期", "摘要", "对方户名", "收入金额", "支出金额", "账户余额"]
 _CCB_XS = [40, 170, 300, 430, 510, 610]
 _CMB_HEADER = ["交易日期", "交易类型", "对手方", "借贷方向", "交易金额", "交易后余额"]
@@ -107,6 +112,22 @@ _BANK_ROWS = [
 
 def _icbc_rows() -> list[tuple[str, ...]]:
     return list(_BANK_ROWS)
+
+
+def _icbc_duplicate_reference_rows() -> list[tuple[str, ...]]:
+    """复制第 2 笔（连参考号一起）并把其后余额整体下调，保证余额链仍闭合。"""
+    shift = Decimal(_BANK_ROWS[1][4].replace(",", ""))
+    base = [_BANK_ROWS[0], _BANK_ROWS[1], _BANK_ROWS[1], *_BANK_ROWS[2:]]
+    references = [f"20260105{index:04d}" for index in (1, 2, 2, 3, 4, 5, 6)]
+    rows: list[tuple[str, ...]] = []
+    for index, ((day, summary, party, direction, amount, balance), reference) in enumerate(
+        zip(base, references)
+    ):
+        value = Decimal(balance.replace(",", ""))
+        if index >= 2:
+            value -= shift
+        rows.append((day, summary, party, direction, amount, f"{value:,.2f}", reference))
+    return rows
 
 
 def _ccb_rows() -> list[tuple[str, ...]]:
@@ -364,6 +385,18 @@ def build_sample_set(directory: str | Path) -> list[LoadedSample]:
     splice_first.unlink(missing_ok=True)
     splice_second.unlink(missing_ok=True)
 
+    duplicate_rows = _icbc_duplicate_reference_rows()
+    duplicate_pages = [duplicate_rows[:4], duplicate_rows[4:]]
+    duplicate_path = forged / "icbc_duplicate_reference.pdf"
+    _write_pdf(
+        duplicate_path,
+        title="银行账户交易明细",
+        header=_ICBC_REF_HEADER,
+        xs=_ICBC_REF_XS,
+        pages=duplicate_pages,
+        footers=[_bank_footer(page, "icbc") for page in duplicate_pages],
+    )
+
     cases = [
         _clean_case("clean_icbc", clean / "icbc.pdf", root, "icbc", 6, LAYOUT_LABELS["icbc"]),
         _clean_case("clean_ccb", clean / "ccb.pdf", root, "ccb", 6, LAYOUT_LABELS["ccb"]),
@@ -416,6 +449,18 @@ def build_sample_set(directory: str | Path) -> list[LoadedSample]:
                 fail_codes=["C1"],
             ),
             notes=FORGERY_LABELS["content_page_splice"],
+        ),
+        SampleCase(
+            id="forged_duplicate_ref_icbc",
+            path=_relative(duplicate_path, root),
+            layout="icbc",
+            forgery="content_duplicate_reference",
+            expectation=SampleExpectation(
+                verdict="存在不一致",
+                txn_count=7,
+                fail_codes=["C6", "C10"],
+            ),
+            notes=FORGERY_LABELS["content_duplicate_reference"],
         ),
     ]
 
