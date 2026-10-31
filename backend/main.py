@@ -43,6 +43,8 @@ from db.migrate import ensure_columns
 
 app = FastAPI(title=settings.app_name, version="2.0.0", lifespan=lifespan)
 
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://127.0.0.1:5174",
@@ -58,6 +60,16 @@ app.include_router(entities.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(thresholds.router, prefix=settings.api_prefix)
+
+
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+def _api_not_found(path: str):
+    """未匹配的 /api 请求返回 JSON 404（必须注册在所有 API 路由之后）。"""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=404, content={
+        "detail": {"code": "E_NOT_FOUND", "message": f"接口不存在：/api/{path}"}})
+
 
 
 @app.get("/health")
@@ -119,4 +131,6 @@ if _ADMIN_DIST.exists():
 if _BORROWER_DIST.exists():
     app.mount("/app", _SpaStaticFiles(directory=_BORROWER_DIST, html=True), name="borrower")
 if _PORTAL_DIR.exists():
+
+
     app.mount("/", _StaticFiles(directory=_PORTAL_DIR, html=True), name="portal")
