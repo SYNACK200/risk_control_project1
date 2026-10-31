@@ -8,12 +8,28 @@ from pydantic import BaseModel, Field
 Direction = Literal["in", "out"]
 
 
+class MetaBox(BaseModel):
+    """标注的页内单值字段框，坐标为相对页面的比例（左上原点）。"""
+
+    field: str
+    page: int
+    x: float
+    y: float
+    w: float
+    h: float
+
+
 class Template(BaseModel):
-    """银行版式模板。field_map 的键为规范字段名，值为表头别名或 0 起的列序号。"""
+    """银行版式模板。field_map 的键为规范字段名，值为表头别名或 0 起的列序号。
+
+    meta_boxes/page_size 来自标注导出：前者提供页眉框位，后者是框坐标的基准页面尺寸（pt）。
+    """
 
     bank_code: str
     version: int
     field_map: dict[str, str | int] = Field(default_factory=dict)
+    meta_boxes: list[MetaBox] = Field(default_factory=list)
+    page_size: tuple[float, float] | None = None
 
 
 class Transaction(BaseModel):

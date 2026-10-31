@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | 1 | 拉代码 | `git pull origin dev` | 最新提交 |
 | 2 | 装依赖 | `cd algorithm && pip install -r requirements.txt` | 无报错 |
-| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 207 passed |
+| 3 | 跑单测 | `python -m pytest algorithm/tests -q` | 272 passed |
 | 4 | 跑样本 | `python algorithm/local_run.py 样例.pdf --password 口令 --template algorithm/integration/samples/icbc_template.json` | 输出 summary 与报告 JSON |
 | 5 | 看自检 | 同上输出里的 S1~S7 | 金额/日期/余额回查 100% |
 
@@ -41,7 +41,7 @@
 | [x] | AL-31 | 版式缺列写入 limitations（无对手方列 → E 类不可算） | 审批人看到 E 全空会以为系统坏了 | 工行/招行报告均含「明细无对手方名称，E01/E02 不可算」（2026-10-31） |
 | [x] | AL-24 | 证据坐标：每条结论带页码 + 坐标 | 现在 evidence 基本为空 | 报告 evidence 每条有 page/坐标；工行件 4 条阈值结论共 27 条证据，坐标非 0（2026-10-31） |
 | [x] | C5–C10 | 按判据 v1 实现内容层 6 项（判据见 `design.md` 第四节；2026-10-31 全部完成，见 `history/20261031-03.md`～`20261031-05.md`） | 调研有方向但无可执行判据；v1 已定 fail/hint/skip 三档 | 三份真件无 fail 误报：工行 C6 skipped / C7 hint / C8 hint / C9 pass / C10 partial；招行 C6、C7 skipped / C8 hint / C9 partial / C10 skipped；微信 0 笔全 skipped；五态不变。`pytest algorithm/tests -q` 250 passed，eval 9/9；C6/C10 fail 已由合成件覆盖（样本集 v3），含参考号真件仍待补 |
-| [ ] | AL-34 | 模板转换层：标注页坐标框 → 解析模板 | 标注产物目前不能直接用 | 标注导出后可直接喂 parse() |
+| [x] | AL-34 | 模板转换层：标注页坐标框 → 解析模板 | 标注产物目前不能直接用 | 标注导出后可直接喂 parse()：`convert_annotation()` 校验 T001–T009/W001–W005，按 header_y + 表头指纹定位列→`field_map`，meta 框→`Template.meta_boxes`；`parse(bytes, 导出dict)` 可直接解析（2026-10-31，`history/20261031-09.md`） |
 | [ ] | AL-28/29 | 对手方列识别 + 续行合并；表头关键词按银行配置 | 招行对手方全空 | 代码已实现；当前脱敏件对手方整列抹除，命中率验收需原件本机核验后删除 |
 
 ## P2
@@ -68,6 +68,7 @@
 | AL-01~AL-17 | 解析、自检三项、四层、五态、剔除、40 指标、报告 |
 | AL-15 v2 | 样本集扩至 8 份：四类版式 + 四类伪造（改金额、增量更新、删行、拼页）；换利率/整份重排待参数与基线 |
 | AL-15 v3 | 样本集扩至 9 份：新增同参考号复制件（带「交易流水号」列），C6/C10 fail 进 eval 端到端（2026-10-31，`history/20261031-06.md`） |
+| AL-34 | 标注导出转换层：T001–T009/W001–W005 校验、列框→`field_map`（表头指纹优先定位）、meta 框→页眉抽取；`parse()` 直接接收导出 dict；招行模板 30 笔 0 差异（2026-10-31，`history/20261031-09.md`） |
 | 工行模板 v2 | `icbc_template.json` 修正 `channel` 10→12、补 `counterparty=10`；带模板与不带模板解析逐字段 0 差异（2026-10-31，`history/20261031-07.md`） |
 | AL-05 补 | 未解析到明细时「无法判定」原因写「未解析到交易明细，无法核对」，不再取首个 skipped 检查（2026-10-31） |
 | 阈值留痕 | 触发未校准默认值时报告 limitations 注明，银行改值后不再标注（2026-10-31） |

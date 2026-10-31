@@ -20,45 +20,55 @@ def test_loads_legacy_field_map(tmp_path):
     assert template.field_map == {"amount": 8}
 
 
+def _box_export(**extra):
+    data = {
+        "bank_code": "CMB",
+        "schema_version": 1,
+        "match_rule": {"header_fingerprint": ["记账日期", "摘要", "交易金额", "联机余额"]},
+        "meta_boxes": [
+            {"field": "account_no", "page": 1, "rect": {"x": 0.05, "y": 0.04, "w": 0.2, "h": 0.02}},
+            {"field": "period", "page": 1, "rect": {"x": 0.05, "y": 0.07, "w": 0.3, "h": 0.02}},
+        ],
+        "tables": [
+            {
+                "page": 1,
+                "columns": [
+                    {"field": "txn_date", "x": 0.05, "w": 0.1},
+                    {"field": "summary", "x": 0.3, "w": 0.2},
+                    {"field": "amount", "x": 0.55, "w": 0.15},
+                    {"field": "balance", "x": 0.75, "w": 0.2},
+                ],
+            }
+        ],
+    }
+    data.update(extra)
+    return data
+
+
 def test_box_template_uses_header_fingerprint(tmp_path):
     path = tmp_path / "box.json"
-    path.write_text(
-        json.dumps(
-            {
-                "bank_code": "CMB",
-                "schema_version": 1,
-                "match_rule": {"header_fingerprint": ["记账日期", "交易金额"]},
-                "tables": [
-                    {
-                        "columns": [
-                            {"field": "txn_date", "x": 0.06, "w": 0.1},
-                            {"field": "amount", "x": 0.26, "w": 0.13},
-                        ]
-                    }
-                ],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps(_box_export(), ensure_ascii=False), encoding="utf-8")
+
     template = load_template(path)
+
     assert template.version == 1
-    assert template.field_map == {"txn_date": "记账日期", "amount": "交易金额"}
+    assert template.field_map == {
+        "txn_date": "记账日期",
+        "summary": "摘要",
+        "amount": "交易金额",
+        "balance": "联机余额",
+    }
+    assert {box.field for box in template.meta_boxes} == {"account_no", "period"}
 
 
-def test_box_template_without_fingerprint_falls_back_to_index(tmp_path):
+def test_box_template_without_fingerprint_is_rejected(tmp_path):
+    export = _box_export()
+    export["match_rule"]["header_fingerprint"] = []
     path = tmp_path / "box.json"
-    path.write_text(
-        json.dumps(
-            {
-                "bank_code": "CMB",
-                "tables": [{"columns": [{"field": "txn_date"}, {"field": "balance"}]}],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    assert load_template(path).field_map == {"txn_date": 0, "balance": 1}
+    path.write_text(json.dumps(export, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="T009"):
+        load_template(path)
 
 
 def test_template_without_mapping_is_rejected(tmp_path):

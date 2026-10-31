@@ -303,14 +303,79 @@ def _clean_name(text: str) -> str:
     return re.sub(r"\s", "", text).replace("＊", "*")
 
 
+def _box_words(lines: list[Line], box, width: float, height: float) -> list[Word]:
+    x0, y0 = box.x * width, box.y * height
+    x1, y1 = (box.x + box.w) * width, (box.y + box.h) * height
+    hits = [
+        word
+        for line in lines
+        for word in line.words
+        if x0 <= word.cx <= x1 and y0 <= (word.top + word.bottom) / 2 <= y1
+    ]
+    return sorted(hits, key=lambda word: (word.top, word.x0))
+
+
+def _boxes_match_page(lines: list[Line], template: Template | None) -> bool:
+    """标注框按模板基准页尺寸换算；影像件像素坐标与 pt 差数倍，不能套用。"""
+    if template is None or not template.meta_boxes or not template.page_size:
+        return False
+    width, height = template.page_size
+    max_x = max((word.x1 for line in lines for word in line.words), default=0.0)
+    max_y = max((word.bottom for line in lines for word in line.words), default=0.0)
+    return max_x <= width * 1.2 and max_y <= height * 1.2
+
+
+def _fill_header_from_boxes(
+    header: PageHeader,
+    page_no: int,
+    lines: list[Line],
+    template: Template | None,
+) -> None:
+    """标注框优先：框内取到值就填，取不到再由文字标签兜底。"""
+    if not _boxes_match_page(lines, template):
+        return
+    width, height = template.page_size  # type: ignore[misc]
+    for box in template.meta_boxes:
+        if box.page != page_no:
+            continue
+        words = _box_words(lines, box, width, height)
+        if not words:
+            continue
+        text = "".join(word.text for word in words)
+        compact = re.sub(r"\s+", "", text)
+        bbox = _bbox(words)
+        confidence = min(word.confidence for word in words)
+        if box.field == "account_no" and header.account_no is None:
+            match = ACCOUNT_LABEL_RE.search(compact)
+            value = _clean_account(match.group(1) if match else compact)
+            if any(ch.isdigit() for ch in value):
+                header.account_no = HeaderField(value=value, bbox=bbox, confidence=confidence)
+        elif box.field == "account_name" and header.account_name is None:
+            match = NAME_LABEL_RE.search(text)
+            value = _clean_name(match.group(1) if match else text)
+            if value:
+                header.account_name = HeaderField(value=value, bbox=bbox, confidence=confidence)
+        elif box.field == "period" and header.period_start is None:
+            match = PERIOD_RE.search(compact)
+            if not match:
+                continue
+            start = parse_date(f"{match.group(1)}-{match.group(2)}-{match.group(3)}")
+            end = parse_date(f"{match.group(4)}-{match.group(5)}-{match.group(6)}")
+            if start and end:
+                header.period_start = HeaderField(value=start, bbox=bbox, confidence=confidence)
+                header.period_end = HeaderField(value=end, bbox=bbox, confidence=confidence)
+
+
 def _page_header(
     page_no: int,
     lines: list[Line],
     header_top: float,
     has_table_header: bool,
+    template: Template | None = None,
 ) -> PageHeader:
     """抽取表头上方的页眉字段；没有标签的续页不靠猜，字段留空。"""
     header = PageHeader(page_no=page_no)
+    _fill_header_from_boxes(header, page_no, lines, template)
     for line in lines:
         if line.top > HEADER_ZONE_BOTTOM:
             break
@@ -387,7 +452,7 @@ def _transactions_from_pages(
             continue
         else:
             header_top = -1.0
-        headers.append(_page_header(page_no, lines, header_top, header is not None))
+        headers.append(_page_header(page_no, lines, header_top, header is not None, template))
         if not lines:
             continue
 
@@ -532,11 +597,12 @@ def _ocr_to_words(page) -> list[Word]:
     ]
 
 
-def _parse_ocr(file_bytes: bytes, template: Template | None) -> ParseResult:
+def _parse_ocr(file_bytes: bytes, template: Template | None, warnings: list[str] | None = None) -> ParseResult:
     from .engine import get_default_engine
 
     ocr = get_default_engine().recognize(file_bytes)
-    warnings = [f"经 OCR 识别（{ocr.engine}），结果需人工核对"]
+    warnings = list(warnings or [])
+    warnings.append(f"经 OCR 识别（{ocr.engine}），结果需人工核对")
     if not ocr.pages:
         warnings.append("OCR 未返回页面")
         return _build_result([], None, 0, warnings)
@@ -608,16 +674,29 @@ def _build_result(
     )
 
 
-def parse(file_bytes: bytes, template: Template | None = None) -> ParseResult:
-    """解析电子件 PDF 与影像件；影像件走本机 OCR 引擎（RapidOCR）。"""
+def parse(file_bytes: bytes, template: Template | dict | None = None) -> ParseResult:
+    """解析电子件 PDF 与影像件；template 可为解析模板或标注导出（template-spec v1）。"""
     if not file_bytes:
         return ParseResult(warnings=["空文件"])
+
+    template_warnings: list[str] = []
+    if isinstance(template, dict):
+        from .template_convert import convert_annotation
+
+        conversion = convert_annotation(template, file_bytes)
+        if conversion.template is None:
+            return ParseResult(warnings=["标注模板无效：" + "；".join(conversion.errors)])
+        template = conversion.template
+        template_warnings = [
+            f"标注转换：{item}" for item in (*conversion.warnings, *conversion.notes)
+        ]
+
     if file_bytes.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")):
-        return _parse_ocr(file_bytes, template)
+        return _parse_ocr(file_bytes, template, template_warnings)
     if not file_bytes.startswith(b"%PDF"):
         return ParseResult(warnings=["不支持的文件格式"])
 
-    warnings: list[str] = []
+    warnings: list[str] = list(template_warnings)
     try:
         pages, page_count, body_dates, has_text, encrypted = _fitz_extract(file_bytes)
     except Exception as exc:
@@ -638,7 +717,7 @@ def parse(file_bytes: bytes, template: Template | None = None) -> ParseResult:
     if pages is not None and page_count == 0:
         return ParseResult(warnings=["PDF 无页面"])
     if not has_text:
-        return _parse_ocr(file_bytes, template)
+        return _parse_ocr(file_bytes, template, warnings)
 
     if pages is not None:
         transactions, footer_count, page_summaries, headers = _transactions_from_pages(

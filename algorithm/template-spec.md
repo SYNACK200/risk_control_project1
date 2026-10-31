@@ -212,6 +212,20 @@ page_size.w/h : 标注时使用的基准页面尺寸（pt），仅作记录
 | 留存 | 与业务数据同期限（三年），到期归档 |
 | 禁止 | 样本不得进 Git、不得出现在公开仓库的任何位置 |
 
+## 标注转解析模板（AL-34，2026-10-31 实现）
+
+标注导出要能直接进解析，否则标注页与解析器之间永远差一层手工映射。
+
+| 项 | 约定 |
+| --- | --- |
+| 入口 | `algorithm/ocr/template_convert.py::convert_annotation(export, file_bytes=None)`；`parse(file_bytes, export)` 也可直接接收导出 dict |
+| 输出 | `ConversionResult{template, errors, warnings, notes}`；任一 T 错误 → `template=None`，不产出半份结果 |
+| 列 → 字段 | `tables[].columns` 的 x/w 按页面实际宽度换成点，在 `header_y` 附近找表头行，按横向位置取表头文字作 `field_map` 别名；表头指纹命中 ≥ 一半时优先按指纹定位（实测招行标注页与脱敏件表头纵向差 47pt，纯按 header_y 会落到数据行） |
+| 兜底 | 没有可读样本或列未定位时，列数与 `match_rule.header_fingerprint` 一致则按顺序映射；必需列仍缺 → T003 |
+| 重复字段 | T005 按“同一表格内重复列 / 同页重复框”判；跨页同字段按第九节允许，抽取侧取首个非空 |
+| meta_boxes | 仅 `account_no` / `account_name` / `period` 进入解析（`Template.meta_boxes`），页眉优先按框取值、取不到退回文字标签；其余字段保留在标注中不消费 |
+| 坐标基准 | `Template.page_size` 取导出 `page_size`，缺失时取样本第 1 页尺寸；影像件词坐标是像素，与模板 pt 不一致时页眉框自动跳过 |
+
 ## 标注外推（v2）
 
 | 输入 | 输出 |

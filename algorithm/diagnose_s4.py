@@ -110,7 +110,7 @@ def main() -> int:
         doc.save(tmp, encryption=pymupdf.PDF_ENCRYPT_NONE)
         raw = tmp.read_bytes()
 
-    tpl = load_template(pathlib.Path(a.template)) if a.template else None
+    tpl = load_template(pathlib.Path(a.template), raw) if a.template else None
 
     parsed = parse(raw, tpl)
     texts = _page_text(raw)

@@ -12,6 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import pymupdf
 from algorithm.ocr.parse import parse
 from algorithm.ocr.models import Template
+from algorithm.ocr.template_convert import convert_annotation
 from algorithm.algo.file_layer import analyze_file
 from algorithm.algo.content_layer import analyze_content
 from algorithm.algo.ledger_layer import analyze_ledger
@@ -27,33 +28,22 @@ def mask(text: str, keep: int = 4) -> str:
     return text[:keep] + "*" * max(1, len(text) - keep)
 
 
-def load_template(path: pathlib.Path) -> Template:
-    """兼容旧版 field_map 与 v2 箱体模板；后者按表头指纹转成字段别名。"""
+def load_template(path: pathlib.Path, file_bytes: bytes | None = None) -> Template:
+    """旧版 field_map 直接用；标注导出（v1 箱体）走 ocr.template_convert 转换。"""
     data = json.loads(path.read_text(encoding="utf-8"))
     field_map = data.get("field_map")
-    if field_map is None:
-        columns = [
-            column
-            for table in data.get("tables", [])
-            for column in table.get("columns", [])
-            if column.get("field")
-        ]
-        fingerprint = data.get("match_rule", {}).get("header_fingerprint", [])
-        if columns and len(columns) == len(fingerprint):
-            field_map = {
-                column["field"]: name for column, name in zip(columns, fingerprint)
-            }
-        elif columns:
-            field_map = {
-                column["field"]: index for index, column in enumerate(columns)
-            }
-    if not field_map:
+    if field_map:
+        return Template(
+            bank_code=data.get("bank_code", "UNKNOWN"),
+            version=data.get("version", 1),
+            field_map=field_map,
+        )
+    if not data.get("tables") and not data.get("meta_boxes"):
         raise ValueError("模板缺少 field_map，tables 里也没有可用的 columns")
-    return Template(
-        bank_code=data.get("bank_code", "UNKNOWN"),
-        version=data.get("version", data.get("schema_version", 1)),
-        field_map=field_map,
-    )
+    result = convert_annotation(data, file_bytes)
+    if result.template is None:
+        raise ValueError("标注模板无法转换：" + "；".join(result.errors))
+    return result.template
 
 
 SUMMARY_LIMITATIONS = 10
@@ -103,7 +93,7 @@ def main() -> int:
     # 2 解析（可选模板）
     tpl = None
     if a.template:
-        tpl = load_template(pathlib.Path(a.template))
+        tpl = load_template(pathlib.Path(a.template), raw)
     parsed = parse(raw, tpl)
     steps.append(("解析", "成功" if parsed.transactions else "失败",
                   f"{len(parsed.transactions)} 笔；完整率 {parsed.field_completeness}；低置信 {parsed.low_conf_ratio}；警告 {len(parsed.warnings)} 条"))

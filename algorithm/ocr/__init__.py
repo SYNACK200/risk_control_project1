@@ -3,8 +3,17 @@
 影像件才需要的引擎（numpy/onnx 依赖）改为惰性加载，
 这样纯电子件环境（如服务器）装最小依赖也能跑通解析。
 """
-from .models import HeaderField, PageHeader, PageSummary, ParseResult, Template, Transaction
+from .models import (
+    HeaderField,
+    MetaBox,
+    PageHeader,
+    PageSummary,
+    ParseResult,
+    Template,
+    Transaction,
+)
 from .parse import OcrUnavailable, parse
+from .template_convert import ConversionResult, convert_annotation
 
 _LAZY = {
     "OcrEngine",
@@ -16,13 +25,16 @@ _LAZY = {
 }
 
 __all__ = [
+    "ConversionResult",
     "HeaderField",
+    "MetaBox",
     "OcrUnavailable",
     "PageHeader",
     "PageSummary",
     "ParseResult",
     "Template",
     "Transaction",
+    "convert_annotation",
     "parse",
     *_LAZY,
 ]
