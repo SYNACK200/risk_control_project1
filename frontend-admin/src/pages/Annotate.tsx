@@ -73,6 +73,7 @@ export function AnnotatePage() {
   const [inference, setInference] = useState<InferResult | null>(null);
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
+  const [probeNote, setProbeNote] = useState('');
   const [inferring, setInferring] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [events, setEvents] = useState<SpecialEvent[]>([]);
@@ -125,7 +126,12 @@ export function AnnotatePage() {
 
   /** 标注前预读：识别银行/表头，给出建议标注（只读第 1 页）。 */
   async function runProbe(file: File, password?: string) {
-    if (!file.name.toLowerCase().endsWith('.pdf')) { setProbeResult(null); return; }
+    setProbeNote('');
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setProbeResult(null);
+      setProbeNote('当前文件不是 PDF，图片件没有文字层，请手动框选。');
+      return;
+    }
     setProbing(true);
     setProbeResult(null);
     try {
@@ -134,8 +140,11 @@ export function AnnotatePage() {
       if (password) form.append('password', password);
       const res = await probeTemplate(form);
       setProbeResult(res);
-    } catch {
+    } catch (err) {
       setProbeResult(null);
+      const msg = err instanceof Error ? err.message : String(err);
+      setProbeNote('预读失败：' + msg);
+      setNotice({ level: 'warning', text: '预读失败（不影响手动标注）：' + msg });
     } finally {
       setProbing(false);
     }
@@ -495,10 +504,12 @@ export function AnnotatePage() {
 
       {notice && <div className={`notice ${notice.level}`}>{notice.text}</div>}
 
-      {(probing || probeResult) && (
+      {(probing || probeResult || probeNote) && (
         <div className="probe-card">
           {probing ? (
             <span className="muted">正在识别银行与表头…</span>
+          ) : probeNote ? (
+            <span className="muted">{probeNote}</span>
           ) : probeResult && (
             <>
               <span className="probe-item">银行：<strong>{probeResult.bank_name ?? '未识别'}</strong>
