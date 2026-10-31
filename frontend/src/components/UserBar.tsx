@@ -24,7 +24,7 @@ export function UserBar() {
         onClick={() => {
           localStorage.removeItem('bs_user');
           localStorage.removeItem('bs_token');
-          window.location.reload();
+          window.location.href = '/';
         }}
       >退出登录</button>
     </div>

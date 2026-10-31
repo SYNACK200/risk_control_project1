@@ -61,3 +61,12 @@
 .auth-detail > summary:hover { background: #f4f8fe; border-color: #b9cbe4; }
 .auth-detail > summary::before { content: "▸"; font-size: 11px; opacity: .8; }
 .auth-detail[open] > summary::before { content: "▾"; }
+
+/* ---- 角色不符拦截 ---- */
+.role-block { display: flex; justify-content: center; padding: 48px 16px; }
+.role-block-card { max-width: 460px; width: 100%; border: 1px solid #e2e9f3; border-radius: 14px;
+  background: #fbfdff; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
+.role-block-card strong { font-size: 16px; }
+.role-block-card p { margin: 0; font-size: 13.5px; line-height: 1.6; }
+.role-block-actions { display: flex; gap: 10px; margin-top: 6px; }
+.role-block-actions a { text-decoration: none; }
