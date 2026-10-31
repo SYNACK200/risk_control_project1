@@ -211,7 +211,7 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .chip-btn:hover { border-color: currentColor; }
 .layer-focus { outline: 2px solid #2f6fed; outline-offset: 4px; border-radius: 6px; transition: outline-color .2s; }
 
-.link-btn { background: none; border: none; padding: 0; color: #2f6fed; cursor: pointer; font: inherit; text-decoration: underline; }
+
 .auth-meta-line { margin: 2px 0 6px; }
 
 /* 解析结果列表：筛选与标签 */
@@ -361,3 +361,39 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .metric-group-head { display: flex; align-items: baseline; gap: 10px; padding: 2px 2px 8px; border-bottom: 1px solid #f1f5fa; margin-bottom: 4px; }
 .metric-group-name { font-weight: 600; font-size: 14px; }
 .metric-group-score { margin-left: auto; font-size: 12px; padding: 2px 10px; border-radius: 999px; background: #eef4fb; color: #23578f; }
+
+/* ---- 报告页：胶囊按钮（展开/收起） ---- */
+.auth-meta-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 6px; }
+.pill-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13px; line-height: 1.2;
+  border-radius: 999px; border: 1px solid #d5ddea; background: #fff; color: #33455c; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .06s ease; }
+.pill-btn:hover { background: #f4f7fc; border-color: #b9c8dd; box-shadow: 0 2px 8px rgba(31,45,61,.06); }
+.pill-btn:active { transform: translateY(1px); }
+.pill-btn:focus-visible { outline: 2px solid #7aa7e8; outline-offset: 2px; }
+.pill-btn-primary { background: #eef4ff; border-color: #b8cdf0; color: #1f4c9c; font-weight: 600; }
+.pill-btn-primary:hover { background: #e3edff; border-color: #9dbce9; }
+.pill-icon { font-size: 12px; opacity: .85; }
+
+/* ---- 统一：可点击控件一律呈现为按钮，避免纯文字链接 ---- */
+.link-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 11px; line-height: 1.25; font-family: inherit; font-size: 12.5px;
+  border-radius: 8px; border: 1px solid #d9e2ee; background: #fff; color: #2a5db0;
+  cursor: pointer; text-decoration: none;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .06s ease;
+}
+.link-btn:hover { background: #f4f8fe; border-color: #b9cbe4; box-shadow: 0 1px 4px rgba(31,45,61,.06); }
+.link-btn:active { transform: translateY(1px); }
+.link-btn:focus-visible { outline: 2px solid #7aa7e8; outline-offset: 2px; }
+.link-btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
+.link-btn.danger-text { color: #b3261e; border-color: #f0cdc9; }
+.link-btn.danger-text:hover { background: #fdf3f2; border-color: #e5a9a3; }
+
+/* 可折叠区域标题也做成按钮 */
+.auth-detail > summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 6px 12px; border: 1px solid #d9e2ee; border-radius: 8px; background: #fff;
+  font-size: 13px; color: #2a5db0; list-style: none; }
+.auth-detail > summary::-webkit-details-marker { display: none; }
+.auth-detail > summary:hover { background: #f4f8fe; border-color: #b9cbe4; }
+.auth-detail > summary::before { content: "▸"; font-size: 11px; opacity: .8; }
+.auth-detail[open] > summary::before { content: "▾"; }
