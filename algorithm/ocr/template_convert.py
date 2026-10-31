@@ -57,7 +57,7 @@ CUSTOM_CODE_RE = re.compile(r"^[a-z][a-z0-9_]{1,30}$")
 EPS = 1e-6
 MIN_BOX = 0.002
 HEADER_GAP = 18.0
-LINE_Y_TOLERANCE = 4.0
+LINE_Y_TOLERANCE = 10.0  # 与 parse 的自适应行容差保持一致（写死 4 会拆碎广发等版式的行）
 
 
 @dataclass(frozen=True)

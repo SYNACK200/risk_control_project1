@@ -15,10 +15,29 @@ BANK_ALIASES: tuple[tuple[str, str], ...] = (
     ("中国工商银行", "ICBC"), ("工商银行", "ICBC"),
     ("中国建设银行", "CCB"), ("建设银行", "CCB"),
     ("中国农业银行", "ABC"), ("农业银行", "ABC"),
-    ("中国银行", "BOC"), ("中国交通银行", "BOCOM"), ("交通银行", "BOCOM"),
-    ("招商银行", "CMB"), ("中国邮政储蓄银行", "PSBC"), ("邮储银行", "PSBC"),
-    ("浦发银行", "SPDB"), ("中信银行", "CITIC"), ("民生银行", "CMBC"),
-    ("兴业银行", "CIB"), ("光大银行", "CEB"), ("平安银行", "PAB"),
+    ("中国交通银行", "BOCOM"), ("交通银行", "BOCOM"),
+    ("中国邮政储蓄银行", "PSBC"), ("邮政储蓄银行", "PSBC"),
+    ("邮储银行", "PSBC"), ("中国银行", "BOC"),
+    ("招商银行", "CMB"), ("上海浦东发展银行", "SPDB"),
+    ("浦东发展银行", "SPDB"), ("浦发银行", "SPDB"),
+    ("中信银行", "CITIC"), ("中国民生银行", "CMBC"),
+    ("民生银行", "CMBC"), ("兴业银行", "CIB"),
+    ("中国光大银行", "CEB"), ("光大银行", "CEB"),
+    ("平安银行", "PAB"), ("广东发展银行", "CGB"),
+    ("广发银行", "CGB"), ("华夏银行", "HXB"),
+    ("浙商银行", "CZB"), ("渤海银行", "CBHB"),
+    ("恒丰银行", "HFB"), ("宁波银行", "NBCB"),
+    ("上海农商银行", "SRCB"), ("北京农商银行", "BRCB"),
+    ("广州农商银行", "GRCB"), ("上海银行", "BOS"),
+    ("北京银行", "BOB"), ("江苏银行", "JSB"),
+    ("南京银行", "NJB"), ("杭州银行", "HZB"),
+    ("徽商银行", "HSB"), ("长沙银行", "CSB"),
+    ("成都银行", "CDB"), ("重庆银行", "CQB"),
+    ("天津银行", "TJB"), ("青岛银行", "QDB"),
+    ("苏州银行", "SZB"), ("郑州银行", "ZZB"),
+    ("盛京银行", "SJB"), ("锦州银行", "JZB"),
+    ("哈尔滨银行", "HRB"), ("东莞银行", "DGB"),
+    ("微众银行", "WEBANK"), ("网商银行", "MYB"),
 )
 
 STATEMENT_TOKENS = (
@@ -236,3 +255,11 @@ def run_preread(raw: bytes, password: str | None = None) -> PrereadResult:
         reasons=reasons,
     )
 
+
+def bank_from_filename(name: str) -> tuple[str | None, str | None]:
+    """从文件名里猜银行（很多导出件把银行名放在文件名里，正文里反而没有）。"""
+    text = name or ""
+    for alias, code in BANK_ALIASES:
+        if alias in text:
+            return alias, code
+    return None, None

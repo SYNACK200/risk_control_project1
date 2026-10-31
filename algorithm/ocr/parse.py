@@ -57,6 +57,15 @@ MIN_BODY_SIZE = 5.0
 MAX_BODY_SIZE = 12.0
 WORD_X_TOLERANCE = 4.0
 LINE_Y_TOLERANCE = 4.0
+
+
+def _auto_y_tol(words) -> float:
+    """按字高自适应行容差（写死 4pt 会把字高 7–9pt 的版式拆成碎行）。"""
+    heights = sorted(w.bottom - w.top for w in words if w.bottom > w.top)
+    if not heights:
+        return 6.0
+    mid = heights[len(heights) // 2]
+    return max(6.0, min(14.0, mid * 1.4))
 CLOCK_JOIN_GAP = 6.0
 CONT_MAX_GAP = 24.0
 HEADER_ZONE_BOTTOM = 220.0
@@ -422,6 +431,7 @@ def _transactions_from_pages(
     warnings: list[str],
     allow_date_in_line: bool = False,
     strip_date_from_summary: bool = False,
+    y_tol: float | None = None,
 ) -> tuple[list[Transaction], int | None, list[PageSummary], list[PageHeader]]:
     transactions: list[Transaction] = []
     columns = None
@@ -436,7 +446,7 @@ def _transactions_from_pages(
         page_footer: int | None = None
         page_summary = PageSummary(page_no=page_no)
         summaries.append(page_summary)
-        lines = group_lines(words, y_tol=LINE_Y_TOLERANCE)
+        lines = group_lines(words, y_tol=y_tol if y_tol else LINE_Y_TOLERANCE)
 
         header = find_header(lines, template.field_map if template else None)
         if header is not None:
@@ -597,7 +607,7 @@ def _ocr_to_words(page) -> list[Word]:
     ]
 
 
-def _parse_ocr(file_bytes: bytes, template: Template | None, warnings: list[str] | None = None) -> ParseResult:
+def _parse_ocr(file_bytes: bytes, template: Template | None, warnings: list[str] | None = None, y_tol: float | None = None) -> ParseResult:
     from .engine import get_default_engine
 
     ocr = get_default_engine().recognize(file_bytes)
@@ -614,6 +624,7 @@ def _parse_ocr(file_bytes: bytes, template: Template | None, warnings: list[str]
         warnings,
         allow_date_in_line=True,
         strip_date_from_summary=True,
+        y_tol=y_tol,
     )
     if not transactions:
         warnings.append("未解析到交易明细")
@@ -675,6 +686,24 @@ def _build_result(
 
 
 def parse(file_bytes: bytes, template: Template | dict | None = None) -> ParseResult:
+    """解析入口：先按自适应行容差解析；若明显漏行（笔数远少于页脚声明），
+    再放大行容差重解析一次，取笔数更多的那份。"""
+    is_image = len(file_bytes) >= 3 and file_bytes[0] == 0xFF and file_bytes[1] == 0xD8 and file_bytes[2] == 0xFF
+    first = _parse_impl(file_bytes, template, y_tol=None)
+    footer = first.footer_count
+    got = len(first.transactions)
+    if not is_image and footer and footer > 0 and got < footer * 0.6:
+        for tol in (10.0, 14.0):
+            alt = _parse_impl(file_bytes, template, y_tol=tol)
+            if len(alt.transactions) > got:
+                alt.warnings = list(alt.warnings) + [
+                    "行容差自适应（%gpt）重解析：%d 笔 → %d 笔" % (tol, got, len(alt.transactions))
+                ]
+                return alt
+    return first
+
+
+def _parse_impl(file_bytes: bytes, template: Template | dict | None = None, y_tol: float | None = None) -> ParseResult:
     """解析电子件 PDF 与影像件；template 可为解析模板或标注导出（template-spec v1）。"""
     if not file_bytes:
         return ParseResult(warnings=["空文件"])
@@ -692,7 +721,7 @@ def parse(file_bytes: bytes, template: Template | dict | None = None) -> ParseRe
         ]
 
     if file_bytes.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")):
-        return _parse_ocr(file_bytes, template, template_warnings)
+        return _parse_ocr(file_bytes, template, template_warnings, y_tol=y_tol)
     if not file_bytes.startswith(b"%PDF"):
         return ParseResult(warnings=["不支持的文件格式"])
 
@@ -717,11 +746,11 @@ def parse(file_bytes: bytes, template: Template | dict | None = None) -> ParseRe
     if pages is not None and page_count == 0:
         return ParseResult(warnings=["PDF 无页面"])
     if not has_text:
-        return _parse_ocr(file_bytes, template, warnings)
+        return _parse_ocr(file_bytes, template, warnings, y_tol=y_tol)
 
     if pages is not None:
         transactions, footer_count, page_summaries, headers = _transactions_from_pages(
-            iter(pages), template, warnings
+            iter(pages), template, warnings, y_tol=y_tol
         )
     else:
         transactions, footer_count, page_summaries, headers = [], None, [], []
