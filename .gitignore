@@ -82,6 +82,8 @@ inputs/raw/
 inputs/samples/*.pdf
 inputs/samples/*.jpg
 inputs/samples/*.png
+# 本地收到的银行流水与截图（含真实个人信息，禁止入库）
+/流水文件/
 
 # ===== 后端运行产物（v2）=====
 backend/storage/
