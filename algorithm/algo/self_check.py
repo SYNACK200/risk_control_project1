@@ -53,11 +53,21 @@ def _page_text(raw: bytes) -> list[str]:
 
 
 def _plumber_page_texts(raw: bytes, pages: int) -> list[str]:
+    """pdfplumber 交叉校对；影像件（jpg/png）没有 PDF 结构，直接跳过。
+
+    历史 bug：对 jpg 调用 pdfplumber.open 抛 PDFSyntaxError("No /Root object!")，
+    导致影像件任务整单失败。
+    """
     out: list[str] = []
-    with pdfplumber.open(io.BytesIO(raw)) as pdf:
-        for page in pdf.pages[:pages]:
-            words = page.extract_words() or []
-            out.append(_norm("".join(w["text"] for w in words)))
+    if not raw[:4] == b"%PDF":
+        return out
+    try:
+        with pdfplumber.open(io.BytesIO(raw)) as pdf:
+            for page in pdf.pages[:pages]:
+                words = page.extract_words() or []
+                out.append(_norm("".join(w["text"] for w in words)))
+    except Exception:  # noqa: BLE001 - 校对失败不应让任务失败
+        return []
     return out
 
 

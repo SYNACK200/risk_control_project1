@@ -229,6 +229,25 @@ def create_task(
             template_row = row
             template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
             matched_template = {"id": row.id, "bank_code": row.bank_code, "by": "preread_bank_name"}
+    # 正文里没有银行名时（很多导出件银行名只在文件名），用文件名兜底
+    if template_row is None:
+        from algorithm.algo.preread import bank_from_filename
+        from db.models import Template
+
+        alias, code = bank_from_filename(file.filename or "")
+        if code:
+            row = db.execute(
+                select(Template).where(
+                    Template.bank_code == code, Template.status == "enabled",
+                    Template.deleted_at.is_(None))
+            ).scalars().first()
+            if row is not None:
+                template_row = row
+                template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
+                matched_template = {"id": row.id, "bank_code": row.bank_code, "by": "filename_bank_name"}
+            elif preread is not None and not preread.bank_code:
+                preread.bank_code = code
+                preread.bank_name = alias
     if preread.verdict == "reject":
         db.add(AuditLog(action="preread_rejected", object_type="file", object_id=0,
                         detail=f"not_statement; rows={preread.txn_like_rows}; reasons={'；'.join(preread.reasons)[:180]}"))
@@ -253,8 +272,19 @@ def create_task(
         status="PENDING",
         template_id=template_row.id if template_row else None,
         template_version=template_row.version if template_row else None,
-        period_start=period_start, period_end=period_end,
-        check_result={"matched_template": matched_template, "preread": preread.to_dict()},
+        period_start=period_start or (preread.period_start if preread else None),
+        period_end=period_end or (preread.period_end if preread else None),
+        check_result={
+            "matched_template": matched_template,
+            "template_match": {
+                "template_id": template_row.id if template_row else None,
+                "by": ("preread_bank_name" if matched_template else ("explicit_bank_code" if template_row else None)),
+                "reason": None if template_row else (
+                    "未识别到银行" if not (preread and preread.bank_code)
+                    else ("银行 " + str(preread.bank_code) + " 没有启用的模板")),
+            },
+            "preread": preread.to_dict(),
+        },
     )
     db.add(task); db.flush()
     db.add(TaskFile(task_id=task.id, file_id=file_obj.id, role="original", seq=1))

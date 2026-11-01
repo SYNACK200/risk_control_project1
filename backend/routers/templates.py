@@ -41,7 +41,12 @@ def list_templates(bank_code: str | None = None, include_deleted: bool = False,
 
 @router.post("")
 def create_template(payload: TemplateIn, db: Session = Depends(get_session)):
-    row = Template(bank_code=payload.bank_code.upper(), version=payload.version,
+    bank = payload.bank_code.upper()
+    latest = db.execute(
+        select(func.max(Template.version)).where(
+            Template.bank_code == bank, Template.deleted_at.is_(None))
+    ).scalar() or 0
+    row = Template(bank_code=bank, version=latest + 1,
                    status="draft", field_map=payload.field_map, header_columns=payload.header_columns)
     db.add(row); db.commit(); db.refresh(row)
     return {"id": row.id, "status": row.status}
@@ -261,7 +266,11 @@ def infer_template_api(
             file_id = _store_sample(db, file.filename or "template_sample.pdf", data)
         except Exception:  # noqa: BLE001
             file_id = None
-        row = Template(bank_code=bank_code.upper(), version=1, status="draft",
+        _latest = db.execute(
+            select(func.max(Template.version)).where(
+                Template.bank_code == bank_code.upper(), Template.deleted_at.is_(None))
+        ).scalar() or 0
+        row = Template(bank_code=bank_code.upper(), version=_latest + 1, status="draft",
                        field_map=result["field_map"],
                        header_columns=[c.get("alias") for c in result["columns"]],
                        sample_file_id=file_id, layout=layout)
