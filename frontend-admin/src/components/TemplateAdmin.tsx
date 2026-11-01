@@ -1,45 +1,36 @@
-import { TemplateLayoutView } from './TemplateLayoutView';
 import { useEffect, useMemo, useState } from 'react';
-import { deleteTemplate, disableTemplate, downloadAttachment, duplicateTemplate, listTemplates, previewTemplate, publishTemplate, templateStats,
-  updateTemplate,
-  type TemplatePreview, type TemplateRow, type TemplateStats,
+import { useNavigate } from 'react-router-dom';
+import {
+  deleteTemplate, disableTemplate, listTemplates, publishTemplate, templateStats,
+  type TemplateRow, type TemplateStats,
 } from '../lib/api';
 
-const FIELDS = ['txn_date', 'summary', 'amount', 'income', 'expense', 'balance', 'counterparty', 'channel', 'account_no', 'currency'];
-
+/** 模板库：只看清单与状态，详情/试跑/编辑/框选都进详情页。 */
 export function TemplateAdmin() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<TemplateRow[]>([]);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState<TemplateRow | null>(null);
-  const [editBank, setEditBank] = useState('');
-  const [editJson, setEditJson] = useState('');
   const [stats, setStats] = useState<Record<number, TemplateStats>>({});
-  const [layoutTarget, setLayoutTarget] = useState<TemplateRow | null>(null);
-  const [previewTarget, setPreviewTarget] = useState<TemplateRow | null>(null);
-  const [previewFile, setPreviewFile] = useState<File | null>(null);
-  const [previewPw, setPreviewPw] = useState('');
-  const [preview, setPreview] = useState<TemplatePreview | null>(null);
 
   async function refresh() {
     try {
-      const list = await listTemplates();
-      setRows(list);
+      setRows(await listTemplates());
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }
-
   useEffect(() => { void refresh(); }, []);
+
   const banks = useMemo(() => Array.from(new Set(rows.map(r => r.bank_code))).sort(), [rows]);
 
   async function act(label: string, fn: () => Promise<unknown>) {
     setBusy(true); setMsg(''); setError('');
     try {
-      const out = await fn();
-      setMsg(typeof out === 'string' && out ? out : label);
+      await fn();
+      setMsg(label);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -52,158 +43,58 @@ export function TemplateAdmin() {
     try {
       const s = await templateStats(id);
       setStats(prev => ({ ...prev, [id]: s }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  function startEdit(row: TemplateRow) {
-    setEditing(row);
-    setEditBank(row.bank_code);
-    setEditJson(JSON.stringify(row.field_map ?? {}, null, 2));
-    setMsg('正在编辑 #' + row.id + '，保存会生成新版本（旧版本保留）');
-  }
-
-  async function saveEdit() {
-    if (!editing) return;
-    let fieldMap: Record<string, unknown>;
-    try {
-      fieldMap = JSON.parse(editJson);
-    } catch (e) {
-      setError('JSON 不合法：' + (e instanceof Error ? e.message : String(e)));
-      return;
-    }
-    if (!fieldMap || typeof fieldMap !== 'object' || Object.keys(fieldMap).length === 0) {
-      setError('字段映射不能为空');
-      return;
-    }
-    await act('已保存为新版本（草稿），需要时点启用', () => updateTemplate(editing.id, { bank_code: editBank, field_map: fieldMap }));
-    setEditing(null);
-  }
-
-  async function runPreview() {
-    if (!previewTarget || !previewFile) { setError('请选择模板与样例文件'); return; }
-    setBusy(true); setError(''); setPreview(null);
-    try {
-      const res = await previewTemplate(previewTarget.id, previewFile, previewPw || undefined);
-      setPreview(res);
-      setMsg('试跑完成：' + res.txn_count + ' 笔 / ' + res.page_count + ' 页');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    } catch { /* ignore */ }
   }
 
   return (
-    <div className="result-wrap">
-      <div className="result">
-        <div className="result-head">
-          <h2>模板管理</h2>
-          <span className="muted">{rows.length} 个版本 · {banks.length} 家银行 · 同一银行只允许一个启用版本</span>
-        </div>
-        {msg && <div className="notice ok">{msg}</div>}
-        {error && <div className="notice error">{error}</div>}
-
-        <table className="mini">
-          <thead><tr><th>ID</th><th>银行</th><th>版本</th><th>状态</th><th>使用</th><th>成功率</th><th>字段</th><th>操作</th></tr></thead>
-          <tbody>
-            {rows.map(t => {
-              const s = stats[t.id];
-              return (
-                <tr key={t.id}>
-                  <td className="mono">{t.id}</td>
-                  <td>{t.bank_code}</td>
-                  <td>v{t.version}</td>
-                  <td><span className={'tag ' + (t.status === 'enabled' ? 'pass' : t.status === 'draft' ? 'limited' : '')}>{t.status}</span></td>
-                  <td>
-                    <button className="link-btn" type="button" onClick={() => { void loadStats(t.id); }}>{s ? s.tasks_total + ' 条' : '查看'}</button>
-                    {s && <span className="muted small"> 成功 {s.tasks_done} · 失败 {s.tasks_failed} · 平均 {s.avg_txn_count ?? '—'} 笔</span>}
-                  </td>
-                  <td className="num">{s?.success_rate === null || s?.success_rate === undefined ? '—' : Math.round(s.success_rate * 100) + '%'}</td>
-                  <td className="muted small">{Object.keys(t.field_map ?? {}).length} 项</td>
-                  <td className="row-actions">
-                    {t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}
-                    {t.status === 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已停用 #' + t.id, () => disableTemplate(t.id)); }}>停用</button>}
-                    <button className="link-btn" type="button" onClick={() => { setLayoutTarget(layoutTarget?.id === t.id ? null : t); }}>{layoutTarget?.id === t.id ? '收起框选' : '回看框选'}</button>
-                    <button className="link-btn" type="button" onClick={() => startEdit(t)}>编辑</button>
-                    <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已复制为新草稿', () => duplicateTemplate(t.id)); }}>复制</button>
-                    <button className="link-btn" type="button" onClick={() => { setPreviewTarget(t); setPreview(null); setMsg('试跑目标：#' + t.id + ' ' + t.bank_code + ' v' + t.version); }}>试跑</button>
-                    <button className="link-btn" type="button" onClick={() => { void downloadAttachment('/templates/' + t.id + '/export', 'template-' + t.bank_code + '-v' + t.version + '.json').catch(e => setError(String(e))); }}>导出</button>
-                    <button className="link-btn danger-text" type="button" disabled={busy} onClick={() => { void act('已删除 #' + t.id, async () => { const r = await deleteTemplate(t.id); return r.message || ('已删除 #' + t.id); }); }}>删除</button>
-                  </td>
-                </tr>
-              );
-            })}
-            {rows.length === 0 && <tr><td colSpan={8} className="muted">还没有模板：可以新建，或用下面的标注外推。</td></tr>}
-          </tbody>
-        </table>
-
-        {layoutTarget && (
-          <section className="card">
-            <div className="card-head-static">
-              <strong>模板 #{layoutTarget.id} · {layoutTarget.bank_code} v{layoutTarget.version}</strong>
-              <span className="muted small">下面这张就是建模板时用的样本页，方框就是当时选中的列</span>
-            </div>
-            <div className="card-body">
-              <TemplateLayoutView templateId={layoutTarget.id} />
-            </div>
-          </section>
-        )}
-
-        {editing && (
-          <section className="tpl-panel">
-            <h3>编辑模板 #{editing.id}（保存生成 v{editing.version + 1} 草稿）</h3>
-            <div className="tpl-row">
-              <label>银行代码</label>
-              <input className="thr-input" value={editBank} onChange={e => setEditBank(e.target.value.toUpperCase())} />
-            </div>
-            <label className="muted small">字段映射（键 = 字段名，值 = 列下标，从 0 开始）：{FIELDS.join(' / ')}</label>
-            <textarea className="tpl-json" rows={8} value={editJson} onChange={e => setEditJson(e.target.value)} />
-            <div className="tpl-row">
-              <button className="btn" type="button" disabled={busy} onClick={() => { void saveEdit(); }}>保存为新版本</button>
-              <button className="link-btn" type="button" onClick={() => setEditing(null)}>取消</button>
-            </div>
-          </section>
-        )}
-
-        {previewTarget && (
-          <section className="tpl-panel">
-            <h3>试跑模板 #{previewTarget.id}（{previewTarget.bank_code} v{previewTarget.version}）</h3>
-            <p className="muted">上传一份样例流水，用该模板解析，不写入数据库；用来验证列映射对不对。</p>
-            <div className="tpl-row">
-              <input type="file" accept=".pdf" onChange={e => setPreviewFile(e.target.files?.[0] ?? null)} />
-              <input className="thr-input" type="password" placeholder="打开口令（可选）" value={previewPw} onChange={e => setPreviewPw(e.target.value)} />
-              <button className="btn" type="button" disabled={busy || !previewFile} onClick={() => { void runPreview(); }}>开始试跑</button>
-              <button className="link-btn" type="button" onClick={() => { setPreviewTarget(null); setPreview(null); }}>关闭</button>
-            </div>
-            {preview && (
-              <div>
-                <p className="muted">解析出 <b>{preview.txn_count}</b> 笔 / {preview.page_count} 页</p>
-                {preview.warnings.length > 0 && <ul className="muted small">{preview.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
-                {preview.rows.length > 0 && (
-                  <table className="mini">
-                    <thead><tr><th>日期</th><th>摘要</th><th>方向</th><th>金额</th><th>余额</th><th>页</th></tr></thead>
-                    <tbody>
-                      {preview.rows.map((r, i) => (
-                        <tr key={i}>
-                          <td className="mono">{r.txn_date ?? '—'}</td>
-                          <td>{r.summary ?? '—'}</td>
-                          <td>{r.direction === 'in' ? '收入' : r.direction === 'out' ? '支出' : '—'}</td>
-                          <td className="num">{r.amount ?? '—'}</td>
-                          <td className="num">{r.balance ?? '—'}</td>
-                          <td className="num">{r.page_no}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-          </section>
-        )}
-
+    <div className="result">
+      <div className="result-head">
+        <h2>模板库</h2>
+        <span className="muted">{rows.length} 个版本 · {banks.length} 家银行 · 同一银行只允许一个启用版本</span>
       </div>
+      {msg && <div className="notice ok">{msg}</div>}
+      {error && <div className="notice error">{error}</div>}
+
+      <section className="card">
+        <div className="card-body">
+          <table className="mini">
+            <thead>
+              <tr><th>ID</th><th>银行</th><th>版本</th><th>状态</th><th>使用</th><th>成功率</th><th>字段</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {rows.map(t => {
+                const s = stats[t.id];
+                return (
+                  <tr key={t.id}>
+                    <td className="mono">{t.id}</td>
+                    <td>{t.bank_code}</td>
+                    <td>v{t.version}</td>
+                    <td><span className={'tag ' + (t.status === 'enabled' ? 'pass' : t.status === 'draft' ? 'limited' : '')}>{t.status}</span></td>
+                    <td>
+                      <button className="link-btn" type="button" onClick={() => { void loadStats(t.id); }}>{s ? s.tasks_total + ' 条' : '查看'}</button>
+                      {s && <span className="muted small"> 成功 {s.tasks_done} · 失败 {s.tasks_failed} · 平均 {s.avg_txn_count ?? '—'} 笔</span>}
+                    </td>
+                    <td className="num">{s?.success_rate === null || s?.success_rate === undefined ? '—' : Math.round(s.success_rate * 100) + '%'}</td>
+                    <td className="muted small">{Object.keys(t.field_map ?? {}).length} 项</td>
+                    <td className="row-actions">
+                      <button className="link-btn" type="button" onClick={() => navigate('/templates/' + t.id)}>详情</button>
+                      {t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}
+                      {t.status === 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已停用 #' + t.id, () => disableTemplate(t.id)); }}>停用</button>}
+                      <button className="link-btn danger-text" type="button" disabled={busy} onClick={() => {
+                        if (!window.confirm('删除模板 #' + t.id + '？被任务引用时只会软删除。')) return;
+                        void act('已删除 #' + t.id, () => deleteTemplate(t.id));
+                      }}>删除</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {rows.length === 0 && <p className="muted">还没有模板。去「新建模板」标注一份样例。</p>}
+        </div>
+      </section>
+
+      <p className="muted small">看字段映射、框选回看、试跑验证、编辑新版本，点任意一行「详情」。</p>
     </div>
   );
 }

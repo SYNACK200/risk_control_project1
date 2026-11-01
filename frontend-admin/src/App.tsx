@@ -4,6 +4,7 @@ import { TaskListPage } from './pages/TaskListPage';
 import { EntitiesPage } from './pages/EntitiesPage';
 import { ThresholdsPage } from './pages/ThresholdsPage';
 import { TemplateAdmin } from './components/TemplateAdmin';
+import { TemplateDetailPage } from './pages/TemplateDetailPage';
 import { ReportView } from './components/ReportView';
 import { UserBar } from './components/UserBar';
 
@@ -89,6 +90,14 @@ function Home() {
   );
 }
 
+function TemplateDetailShell() {
+  return (
+    <Shell active="templates">
+      <TemplateDetailPage />
+    </Shell>
+  );
+}
+
 function ReportPage() {
   const { id } = useParams();
   const taskId = Number(id);
@@ -104,6 +113,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/:tab" element={<Home />} />
+      <Route path="/templates/:id" element={<TemplateDetailShell />} />
       <Route path="/report/:id" element={<ReportPage />} />
       <Route path="*" element={<Home />} />
     </Routes>
