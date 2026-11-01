@@ -28,7 +28,8 @@ function formatSize(bytes: number) {
 export function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const [multiTasks, setMultiTasks] = useState<number[]>([]);
+  type Job = { id: number; name: string; size: number; status: 'waiting' | 'uploading' | 'done' | 'error'; taskId?: number; error?: string };
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(false);
   const [start, setStart] = useState('');
@@ -65,7 +66,7 @@ export function UploadPage() {
   async function selectFiles(list: FileList | File[] | null) {
     const arr = Array.from(list ?? []);
     if (!arr.length) return;
-    setError(''); setMultiTasks([]); setNeedPassword(false); setPassword('');
+    setError(''); setJobs([]); setNeedPassword(false); setPassword('');
     let lowQuality = 0;
     for (const f of arr) {
       const problem = await checkOne(f);
@@ -129,7 +130,7 @@ export function UploadPage() {
 
   async function submit() {
     if (files.length > 1) {
-      setSubmitting(true); setError(''); setMultiTasks([]);
+      setSubmitting(true); setError(''); setJobs([]);
       try {
         const allImages = files.every(f => !/\.pdf$/i.test(f.name));
         if (allImages) {
@@ -143,18 +144,31 @@ export function UploadPage() {
           navigate('/tasks/' + created.task_id, { replace: true });
           return;
         }
-        // 多份流水：每份单独受理
-        const ids: number[] = [];
-        for (const f of files) {
-          const form = new FormData();
-          form.append('file', f);
-          if (password) form.append('password', password);
-          if (start) form.append('period_start', toMonthStart(start));
-          if (end) form.append('period_end', toMonthEnd(end));
-          const created = await createTask(form);
-          ids.push(created.task_id);
-        }
-        setMultiTasks(ids);
+        // 多份流水：并发受理（默认 3 路并发），每份独立成任务
+        // 服务端提交阶段目前是同步 preread（单进程），并发过高会互相拖慢，先取 2
+        setJobs(files.map((f, i) => ({ id: i, name: f.name, size: f.size, status: 'waiting' as const })));
+        let cursor = 0;
+        const worker = async () => {
+          while (true) {
+            const i = cursor++;
+            if (i >= files.length) return;
+            const f = files[i];
+            setJobs(prev => prev.map(j => (j.id === i ? { ...j, status: 'uploading' } : j)));
+            try {
+              const form = new FormData();
+              form.append('file', f);
+              if (password) form.append('password', password);
+              if (start) form.append('period_start', toMonthStart(start));
+              if (end) form.append('period_end', toMonthEnd(end));
+              const created = await createTask(form);
+              setJobs(prev => prev.map(j => (j.id === i ? { ...j, status: 'done', taskId: created.task_id } : j)));
+            } catch (err) {
+              const msg = getErrorMessage(err, 'borrower');
+              setJobs(prev => prev.map(j => (j.id === i ? { ...j, status: 'error', error: msg } : j)));
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
       } catch (err) {
         if (err instanceof ApiError && err.code === 'E_ENCRYPT') {
           setNeedPassword(true);
@@ -202,6 +216,13 @@ export function UploadPage() {
   // 业务口径：唯一必填是流水文件；授权确认只提示不阻断（合规口径由 PM/PD 定）
   const canSubmit = Boolean((files.length > 1 || file) && !submitting && !periodError && (!needPassword || password.trim()));
 
+  function onPaste(event: React.ClipboardEvent) {
+    const pasted = Array.from(event.clipboardData?.files ?? []);
+    if (pasted.length === 0) return;
+    event.preventDefault();
+    void selectFiles(pasted);
+  }
+
   return (
     <>
       <header className="top"><div className="wrap nav-wrap"><span className="brand"><span className="mark" aria-hidden="true">◈</span>银行流水材料提交</span></div></header>
@@ -210,14 +231,34 @@ export function UploadPage() {
         <p className="desc">只需提交流水文件，其他信息都可以不填。</p>
         <aside className="notice" role="note">提交后由银行处理；本页不展示任何结论或指标。</aside>
 
-        {multiTasks.length > 0 && (
-          <aside className="notice info">
-            已受理 {multiTasks.length} 份材料：
-            {multiTasks.map(id => (
-              <button key={id} type="button" className="link-btn" style={{ marginLeft: 8 }}
-                onClick={() => navigate('/tasks/' + id)}>#{id} 查看进度</button>
-            ))}
-          </aside>
+        {jobs.length > 0 && (
+          <section className="panel">
+            <div className="page-head-row" onPaste={onPaste}>
+              <h2>上传队列（{jobs.filter(j => j.status === 'done').length}/{jobs.length} 已完成）</h2>
+              <span className="muted small">并发 2 路；每份材料独立生成一条记录</span>
+            </div>
+            <table className="mini">
+              <thead><tr><th>#</th><th>文件</th><th>大小</th><th>状态</th><th>结果</th></tr></thead>
+              <tbody>
+                {jobs.map((j, i) => (
+                  <tr key={j.id}>
+                    <td>{i + 1}</td>
+                    <td className="job-name">{j.name}</td>
+                    <td className="muted small">{formatSize(j.size)}</td>
+                    <td>{j.status === 'waiting' ? '排队中' : j.status === 'uploading' ? '上传中…'
+                      : j.status === 'done' ? '已受理' : '失败'}</td>
+                    <td>
+                      {j.taskId ? (
+                        <button type="button" className="link-btn" onClick={() => navigate('/tasks/' + j.taskId)}>
+                          #{j.taskId} 查看进度
+                        </button>
+                      ) : j.error ? <span className="muted small danger-text">{j.error}</span> : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         )}
 
         <section className="panel">
@@ -225,6 +266,7 @@ export function UploadPage() {
           <ul className="material-help">
             <li>电子 PDF：推荐从手机银行直接导出，最大 20MB。</li>
             <li>拍照或扫描图片：JPG/PNG，单张 ≤20MB；清晰度低也能提交，但可能影响识别，建议重拍。</li>
+            <li>也可以直接在此页 <strong>Ctrl+V 粘贴</strong> 截图；手机可点「拍照」直接拍摄。</li>
             <li>截图：可以选择，但来源难以核验，可能无法作为授信依据。</li>
           </ul>
           <p className="muted">实际载体类型、清晰度和文件完整性以后端检查为准。</p>
@@ -324,4 +366,3 @@ export function UploadPage() {
     </>
   );
 }
-

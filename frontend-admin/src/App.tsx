@@ -5,6 +5,7 @@ import { EntitiesPage } from './pages/EntitiesPage';
 import { ThresholdsPage } from './pages/ThresholdsPage';
 import { TemplateAdmin } from './components/TemplateAdmin';
 import { ReportView } from './components/ReportView';
+import { UserBar } from './components/UserBar';
 
 type NavItem = { key: string; label: string; desc: string };
 type NavGroup = { group: string; items: NavItem[] };
@@ -65,6 +66,7 @@ function Shell({ active, children }: { active: string; children: React.ReactNode
           <button type="button" className="nav-item" onClick={() => navigate('/tasks')}>
             <span className="nav-label">返回解析结果</span>
           </button>
+          <UserBar />
         </div>
       </aside>
       <main className="content">{children}</main>
