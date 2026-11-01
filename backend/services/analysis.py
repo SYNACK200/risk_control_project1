@@ -103,12 +103,43 @@ def run_analysis(
     )
     payload = json.loads(report.model_dump_json())
 
+    # 解析覆盖率门禁：笔数远少于页脚声明时，报告必须自我说明并降级，避免「只读到 12 笔还给良好」
+    footer_count = getattr(parsed, "footer_count", None)
+    txn_total = len(parsed.transactions)
+    parse_coverage = round(txn_total / footer_count, 4) if footer_count else None
+    # 第二个信号：每页笔数异常低（12 页只有 12 笔这种），不依赖页脚也能发现漏行
+    per_page = (txn_total / pages) if pages else None
+    low_density = bool(pages >= 3 and per_page is not None and per_page < 2)
+    if (parse_coverage is not None and parse_coverage < 0.8 and footer_count >= 10) or low_density:
+        if parse_coverage is not None and footer_count >= 10:
+            message = (
+                f"解析不完整：只解析出 {txn_total} 笔，文件声明 {footer_count} 笔"
+                f"（覆盖率 {parse_coverage:.0%}），指标与结论可能失真，请人工复核或修正模板"
+            )
+        else:
+            message = (
+                f"解析不完整：{pages} 页只解析出 {txn_total} 笔（每页 {per_page:.1f} 笔），"
+                "疑似表格结构未还原，指标与结论可能失真，请人工复核或修正模板"
+            )
+        payload["limitations"] = [message] + list(payload.get("limitations") or [])
+        scores = payload.get("scores")
+        if isinstance(scores, dict):
+            base = scores.get("overall")
+            if isinstance(base, (int, float)):
+                factor = (0.5 + 0.5 * parse_coverage) if parse_coverage is not None else 0.6
+                scores["overall"] = round(float(base) * factor, 1)
+            label = str(scores.get("grade_label") or "")
+            if "解析不完整" not in label:
+                scores["grade_label"] = (label + "·解析不完整").strip("·")
+
     return {
         "carrier": carrier,
         "pages": pages,
         "has_text_layer": has_text,
         "password_protected": password_protected,
-        "txn_count": len(parsed.transactions),
+        "txn_count": txn_total,
+        "footer_count": footer_count,
+        "parse_coverage": parse_coverage,
         "warnings": list(parsed.warnings),
         "preread": preread.to_dict() if preread is not None else None,
         "self_check": {

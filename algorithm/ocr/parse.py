@@ -29,13 +29,21 @@ from .table import (
 
 DATE_RE = re.compile(r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})")
 MONEY_RE = re.compile(r"[-+]?[¥￥]?\d[\d,]*(?:\.\d+)?")
-FOOTER_RE = re.compile(r"(?:共|合计|总计)\s*(\d+)\s*笔")
+FOOTER_RE = re.compile(r"(?:共|合计|总计)\s*(\d{1,5})\s*笔")
+FOOTER_LABEL_RE = re.compile(r"(?:交易笔数|总笔数|笔数)\s*[:：]?\s*(\d{1,5})")
 TIME_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
 CLOCK_RE = re.compile(r"(?<![\d.:])(\d{1,2}):([0-5]\d)(?::([0-5]\d))?(?!\d)")
 PAGE_COUNT_RE = re.compile(r"(?<![\d.])(\d+)\s*$")
 PAGE_COUNT_LABEL_RE = re.compile(r"本页交易笔数[:：]?\s*(\d+)")
 PAGE_IN_RE = re.compile(r"(?:本页)?收入(?:算术)?合计[:：]?\s*([-+]?[¥￥]?[\d,]+\.\d{2})")
 PAGE_OUT_RE = re.compile(r"(?:本页)?支出(?:算术)?合计[:：]?\s*([-+]?[¥￥]?[\d,]+\.\d{2})")
+def _plausible_count(value: int | None) -> int | None:
+    """页脚笔数的合理性校验：1–5000 之外一律不认（OCR 曾把 19 位卡号当成"共 N 笔"）。"""
+    if value is None:
+        return None
+    return value if 1 <= value <= 5000 else None
+
+
 TOTAL_LINE_RE = re.compile(r"[-+]?[\d,]+\.\d{2}\s*$")
 DECIMAL_MONEY_RE = re.compile(r"[-+]?[¥￥]?\d[\d,]*\.\d{2}")
 PAGE_MARK_RE = re.compile(r"(第\s*\d+\s*页|page\s*\d+|共\s*\d+\s*页)", re.IGNORECASE)
@@ -483,14 +491,14 @@ def _transactions_from_pages(
                 continue
 
             count_label = PAGE_COUNT_LABEL_RE.search(text)
-            if count_label:
+            if count_label and _plausible_count(int(count_label.group(1))) is not None:
                 page_footer = int(count_label.group(1))
                 page_summary.printed_count = page_footer
                 page_summary.footer_bbox = _bbox(line.words)
                 break
 
-            footer = FOOTER_RE.search(text)
-            if footer:
+            footer = FOOTER_RE.search(text) or FOOTER_LABEL_RE.search(text)
+            if footer and _plausible_count(int(footer.group(1))) is not None:
                 footer_count = int(footer.group(1))
                 page_summary.printed_count = footer_count
                 page_summary.footer_bbox = _bbox(line.words)
@@ -504,7 +512,9 @@ def _transactions_from_pages(
 
             if txn_date is None:
                 if PAGE_COUNT_RE.search(date_text) and not TIME_RE.match(date_text):
-                    page_footer = int(PAGE_COUNT_RE.search(date_text).group(1))
+                    candidate = int(PAGE_COUNT_RE.search(date_text).group(1))
+                    if _plausible_count(candidate) is not None:
+                        page_footer = candidate
                     page_summary.printed_count = page_footer
                     page_summary.footer_bbox = page_summary.footer_bbox or _bbox(line.words)
                     break

@@ -1,47 +1,17 @@
 import { TemplateLayoutView } from './TemplateLayoutView';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  createTemplate, deleteTemplate, disableTemplate, downloadAttachment, duplicateTemplate,
-  importTemplate, inferTemplate, listTemplates, previewTemplate, probeTemplate, publishTemplate, templateStats,
+import { deleteTemplate, disableTemplate, downloadAttachment, duplicateTemplate, listTemplates, previewTemplate, publishTemplate, templateStats,
   updateTemplate,
-  type InferResult, type TemplatePreview, type TemplateRow, type TemplateStats,
+  type TemplatePreview, type TemplateRow, type TemplateStats,
 } from '../lib/api';
 
 const FIELDS = ['txn_date', 'summary', 'amount', 'income', 'expense', 'balance', 'counterparty', 'channel', 'account_no', 'currency'];
-
-function parseMarks(raw: string, headers: { text: string; x: number; y: number }[] | null): string {
-  const text = raw.trim();
-  if (!text) return '[]';
-  if (text.startsWith('[')) return text;  // 已经是 JSON，原样使用
-  const out: { field: string; page: number; x: number; y: number }[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const item = line.trim();
-    if (!item) continue;
-    // 形式一：字段 表头词（中文，靠预读坐标定位）
-    const byHeader = item.match(/^([A-Za-z_]+)\s+([^\d\s].*)$/);
-    if (byHeader && headers) {
-      const hit = headers.find(h => h.text === byHeader[2].trim());
-      if (hit) {
-        out.push({ field: byHeader[1], page: 0, x: hit.x, y: hit.y });
-        continue;
-      }
-    }
-    // 形式二：字段 x y
-    const byPoint = item.match(/^([A-Za-z_]+)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/);
-    if (byPoint) {
-      out.push({ field: byPoint[1], page: 0, x: Number(byPoint[2]), y: Number(byPoint[3]) });
-    }
-  }
-  return JSON.stringify(out);
-}
 
 export function TemplateAdmin() {
   const [rows, setRows] = useState<TemplateRow[]>([]);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [newBank, setNewBank] = useState('CMB');
-  const [newJson, setNewJson] = useState('{\n  "txn_date": 0,\n  "summary": 2,\n  "amount": 4,\n  "balance": 6\n}');
   const [editing, setEditing] = useState<TemplateRow | null>(null);
   const [editBank, setEditBank] = useState('');
   const [editJson, setEditJson] = useState('');
@@ -51,11 +21,6 @@ export function TemplateAdmin() {
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewPw, setPreviewPw] = useState('');
   const [preview, setPreview] = useState<TemplatePreview | null>(null);
-  const [importJson, setImportJson] = useState('');
-  const [inferFile, setInferFile] = useState<File | null>(null);
-  const [marks, setMarks] = useState('txn_date 交易日期');
-  const [probeHeaders, setProbeHeaders] = useState<{ text: string; x: number; y: number }[] | null>(null);
-  const [infer, setInfer] = useState<InferResult | null>(null);
 
   async function refresh() {
     try {
@@ -238,64 +203,6 @@ export function TemplateAdmin() {
           </section>
         )}
 
-        <section className="tpl-panel">
-          <h3>新建模板 / 导入 JSON</h3>
-          <div className="tpl-row">
-            <label>银行代码</label>
-            <input className="thr-input" value={newBank} onChange={e => setNewBank(e.target.value.toUpperCase())} />
-            <button className="btn" type="button" disabled={busy} onClick={() => {
-              let fm: Record<string, unknown>;
-              try { fm = JSON.parse(newJson); } catch (e) { setError('JSON 不合法：' + (e instanceof Error ? e.message : String(e))); return; }
-              void act('已新建草稿模板', () => createTemplate({ bank_code: newBank, field_map: fm }));
-            }}>新建草稿</button>
-          </div>
-          <textarea className="tpl-json" rows={6} value={newJson} onChange={e => setNewJson(e.target.value)} />
-          <div className="tpl-row">
-            <textarea className="tpl-json" rows={4} placeholder="或粘贴导出的模板 JSON" value={importJson} onChange={e => setImportJson(e.target.value)} />
-            <button className="btn secondary" type="button" disabled={busy || !importJson.trim()} onClick={() => {
-              let payload: { bank_code: string; field_map: Record<string, unknown>; header_columns?: unknown[] };
-              try { payload = JSON.parse(importJson); } catch (e) { setError('JSON 不合法：' + (e instanceof Error ? e.message : String(e))); return; }
-              void act('已导入为新草稿', () => importTemplate(payload));
-            }}>导入</button>
-          </div>
-        </section>
-
-        <details className="tpl-panel">
-          <summary>只标几处，让系统外推整张表（原有能力）</summary>
-          <div className="tpl-row">
-            <input type="file" accept=".pdf" onChange={(e) => {
-              const f = e.target.files?.[0] ?? null;
-              setInferFile(f);
-              setProbeHeaders(null);
-              if (!f) return;
-              const form = new FormData();
-              form.append('file', f);
-              void probeTemplate(form).then(r => setProbeHeaders(r.headers.map(h => ({ text: h.text, x: h.x, y: h.y })))).catch(() => undefined);
-            }} />
-            <textarea className="thr-input" rows={4} value={marks} onChange={e => setMarks(e.target.value)}
-              style={{ minWidth: 320, fontFamily: 'monospace', fontSize: 12 }}
-              placeholder={'每行一个：字段 表头词\n例如：txn_date 交易日期\namount 收入/支出金额\n也可写坐标：txn_date 105 60'} />
-            <button className="btn secondary" type="button" disabled={busy || !inferFile} onClick={() => {
-              if (!inferFile) return;
-              const form = new FormData();
-              form.append('file', inferFile);
-              form.append('marks', parseMarks(marks, probeHeaders));
-              form.append('bank_code', newBank);
-              setBusy(true); setError('');
-              inferTemplate(form)
-                .then(r => { setInfer(r); setMsg('外推完成：' + r.columns.length + ' 列，映射 ' + Object.keys(r.field_map).length + ' 个字段'); })
-                .catch(e => setError(e instanceof Error ? e.message : String(e)))
-                .finally(() => setBusy(false));
-            }}>外推</button>
-          </div>
-          {infer && (
-            <div>
-              <p className="muted">银行 {infer.bank_code} · {infer.columns.length} 列 · 映射 {Object.keys(infer.field_map).length} 个字段</p>
-              <pre className="tpl-pre">{JSON.stringify(infer.field_map, null, 2)}</pre>
-              <button className="btn" type="button" onClick={() => { void act('已保存外推结果', () => createTemplate({ bank_code: infer.bank_code, field_map: infer.field_map })); }}>保存为草稿</button>
-            </div>
-          )}
-        </details>
       </div>
     </div>
   );

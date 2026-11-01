@@ -107,6 +107,8 @@ def run_task(task_id: int, password: str | None = None) -> dict:
             "warnings": result["warnings"],
             "self_check": result.get("self_check"),
             "preread": result.get("preread"),
+            "footer_count": result.get("footer_count"),
+            "parse_coverage": result.get("parse_coverage"),
         }
         task.finished_at = datetime.now()
 
