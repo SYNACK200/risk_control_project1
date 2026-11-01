@@ -130,6 +130,15 @@ if _ADMIN_DIST.exists():
     app.mount("/bank", _SpaStaticFiles(directory=_ADMIN_DIST, html=True), name="bank")
 if _BORROWER_DIST.exists():
     app.mount("/app", _SpaStaticFiles(directory=_BORROWER_DIST, html=True), name="borrower")
+@app.get("/portal", include_in_schema=False)
+@app.get("/portal/", include_in_schema=False)
+def _portal_redirect():
+    """兼容旧地址：/portal 不是有效入口，首页挂在根路径。"""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/", status_code=307)
+
+
 if _PORTAL_DIR.exists():
 
 
