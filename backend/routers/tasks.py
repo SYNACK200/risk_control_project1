@@ -63,6 +63,13 @@ def _find_or_create_file(
         row = FileObj(sha256=digest, mime=mime, storage_path=str(storage_path))
         db.add(row)
         db.flush()
+        return row
+    # 同内容文件复用原记录；但原文件可能已被清理（storage 清空、迁移换机器），
+    # 此时必须把记录指回本次落盘的文件，否则分析阶段会报「原始文件已被清理」。
+    old_path = row.storage_path or ""
+    if not old_path or not Path(old_path).exists():
+        row.storage_path = str(storage_path)
+        db.flush()
     return row
 
 
@@ -733,4 +740,3 @@ def add_supplement(
     ))
     db.commit()
     return {"task_id": task.id, "status": task.status, "file_id": file_obj.id, "material_count": int(max_seq) + 1}
-
