@@ -146,6 +146,7 @@ export function UploadPage() {
         }
         // 多份流水：并发受理（默认 3 路并发），每份独立成任务
         // 服务端提交阶段目前是同步 preread（单进程），并发过高会互相拖慢，先取 2
+        const CONCURRENCY = 2;
         setJobs(files.map((f, i) => ({ id: i, name: f.name, size: f.size, status: 'waiting' as const })));
         let cursor = 0;
         const worker = async () => {
