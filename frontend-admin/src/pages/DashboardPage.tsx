@@ -122,7 +122,7 @@ export function DashboardPage() {
                   <thead><tr><th>结论</th><th>名称</th><th>命中次数</th></tr></thead>
                   <tbody>
                     {data.threshold_hits.map(h => (
-                      <tr key={h.code} className="clickable" onClick={() => navigate('/thresholds#def-' + h.code)}>
+                      <tr key={h.code} className="clickable" onClick={() => navigate('/thresholds' + (h.threshold_key ? '#def-' + h.threshold_key : ''))}>
                         <td className="mono">{h.code}</td>
                         <td>{h.name}</td>
                         <td className="num">{h.count}</td>
