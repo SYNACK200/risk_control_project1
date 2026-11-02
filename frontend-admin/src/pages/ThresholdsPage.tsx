@@ -13,6 +13,21 @@ export function ThresholdsPage() {
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // 看板钻取：#def-<param> 定位并高亮对应阈值行
+  const [focusKey, setFocusKey] = useState('');
+  useEffect(() => {
+    function sync() {
+      const key = window.location.hash.replace(/^#def-/, '');
+      if (!key) { setFocusKey(''); return; }
+      setFocusKey(key);
+      const el = document.getElementById('def-' + key);
+      if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    sync();
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
+
   async function load() {
     try {
       const payload = await getThresholds();
@@ -137,7 +152,8 @@ export function ThresholdsPage() {
                 {defs.map(def => {
                   const changed = (draft[def.key] ?? '').trim() !== asText(data.values[def.key]).trim();
                   return (
-                    <tr key={def.key} className={changed ? 'thr-changed' : ''}>
+                    <tr key={def.key} id={'def-' + def.key}
+                      className={(changed ? 'thr-changed' : '') + (focusKey === def.key ? ' thr-focus' : '')}>
                       <td>
                         {def.label}
                         <span className="muted small"> {def.key}</span>

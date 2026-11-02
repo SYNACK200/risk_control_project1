@@ -623,3 +623,5 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .dash-bar-num { width: 42px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover { background: #f6f8fb; }
+/* 阈值页：从看板钻取定位到的那一行 */
+.thr-focus { outline: 2px solid #1f6feb; outline-offset: -2px; background: #eef4ff; }

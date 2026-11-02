@@ -11,13 +11,30 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import Report, Task, Txn
+from db.models import Report, Task, Template, Txn
 from db.session import get_session
 from helpers.security import require_banker
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_banker)])
 
 GRADE_LABEL = {"good": "良好", "fair": "一般", "poor": "较差", "unknown": "未评级"}
+
+# 风险结论 -> 判定阈值参数 key（用于看板钻取到阈值页对应行）
+CONCLUSION_TO_PARAM = {
+    "DTI_HIGH": "dti_high",
+    "INCOME_UNSTABLE": "income_cv_high",
+    "LOW_BALANCE": "low_balance_multiple",
+    "MULTI_LOAN": "loan_platform_count",
+    "GAMBLING_HIT": "gambling_hit_count",
+    "NIGHT_TRADING": "night_ratio",
+    "NET_OUTFLOW": "net_outflow_ratio",
+    "BALANCE_DECLINE": "balance_decline_ratio",
+    "FAST_IN_OUT": "fast_in_out_ratio",
+    "COUNTERPARTY_CONCENTRATED": "counterparty_hhi",
+    "NEW_LOAN": "new_loan_min_count",
+    "SMALL_LOAN_REPAY": "small_loan_repay_min_monthly",
+    "CRYPTO_HIT": "crypto_min_count",
+}
 
 
 def _num(value) -> float | None:
@@ -47,6 +64,10 @@ def get_dashboard(db: Session = Depends(get_session)):
         txn_by_task = {int(tid): int(n) for tid, n in rows}
         txn_total = sum(txn_by_task.values())
 
+    template_banks: dict[int, str] = {}
+    tpl_rows = db.execute(select(Template.id, Template.bank_code).where(Template.deleted_at.is_(None))).all()
+    template_banks = {int(tid): str(code) for tid, code in tpl_rows}
+
     reports: dict[int, Report] = {}
     if task_ids:
         rep_rows = db.execute(
@@ -65,7 +86,15 @@ def get_dashboard(db: Session = Depends(get_session)):
     for task in tasks:
         cr = task.check_result or {}
         preread = cr.get("preread") or {}
-        bank_code = (preread.get("bank_code") or "未识别") if isinstance(preread, dict) else "未识别"
+        # 银行识别兜底：预读识别 -> 预读给的 bank_guess -> 模板所属银行 -> 未识别
+        bank_code = None
+        if isinstance(preread, dict):
+            bank_code = preread.get("bank_code") or preread.get("bank_guess")
+        if not bank_code and task.template_id:
+            tpl = template_banks.get(task.template_id)
+            if tpl:
+                bank_code = tpl
+        bank_code = bank_code or "未识别"
         slot = banks.setdefault(bank_code, {"tasks": 0, "txn": 0})
         slot["tasks"] += 1
         slot["txn"] += txn_by_task.get(task.id, 0)
@@ -135,7 +164,7 @@ def get_dashboard(db: Session = Depends(get_session)):
             {"bank_code": k, **v} for k, v in sorted(banks.items(), key=lambda kv: -kv[1]["tasks"])
         ],
         "threshold_hits": [
-            {"code": code, "name": name, "count": n}
+            {"code": code, "name": name, "count": n, "threshold_key": CONCLUSION_TO_PARAM.get(code)}
             for (code, name), n in hit_counter.most_common(15)
         ],
         "recent": recent,
