@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Toolbar } from '../components/Toolbar';
 import { Stage } from '../components/Stage';
 import { Inspector } from '../components/Inspector';
@@ -61,6 +62,10 @@ function marksFromMap(map: FieldMapV1): { field: string; page: number; x: number
 }
 
 export function AnnotatePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const step: 1 | 2 | 3 = location.pathname.endsWith('/mark') ? 2 : location.pathname.endsWith('/check') ? 3 : 1;
+  const uploadRef = useRef<HTMLInputElement | null>(null);
   const [map, setMap] = useState<FieldMapV1>(() => loadDraft() ?? createEmpty());
   const [sample, setSample] = useState<SamplePage | null>(null);
   const [sampleName, setSampleName] = useState('');
@@ -74,7 +79,6 @@ export function AnnotatePage() {
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [probeNote, setProbeNote] = useState('');
-  const [toolsOpen, setToolsOpen] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -556,7 +560,6 @@ export function AnnotatePage() {
       setInferring(false);
     }
   }
-
   return (
     <div className="app">
       <Toolbar
@@ -574,247 +577,332 @@ export function AnnotatePage() {
         blocking={blocking}
       />
 
+      <nav className="wizard-bar" aria-label="新建模板步骤">
+        {([1, 2, 3] as const).map(n => (
+          <button
+            key={n}
+            type="button"
+            className={'wizard-step-btn' + (step === n ? ' active' : '') + (step > n ? ' done' : '')}
+            onClick={() => {
+              if (n === 1) navigate('/templates/new');
+              if (n === 2 && sample) navigate('/templates/new/mark');
+              if (n === 3 && sample) navigate('/templates/new/check');
+            }}
+            disabled={n > 1 && !sample}
+          >
+            <span className="wizard-num">{n}</span>
+            {n === 1 ? '载入样例' : n === 2 ? '标注列' : '试解析与保存'}
+          </button>
+        ))}
+      </nav>
+
       {notice && (<div className={"notice " + notice.level}>{notice.text}<button className="notice-close" type="button" onClick={() => setNotice(null)}>×</button></div>)}
 
-      {(probing || probeResult || probeNote) && (
-        <div className="probe-card">
-          {probing ? (
-            <span className="muted">正在识别银行与表头…</span>
-          ) : probeNote ? (
-            <span className="muted">{probeNote}</span>
-          ) : probeResult && (
-            <>
-              <span className="probe-item">银行：<strong>{probeResult.bank_name ?? '未识别'}</strong>
-                {probeResult.bank_code ? '（' + probeResult.bank_code + '）' : ''}</span>
-              <span className="probe-item">旋转：{probeResult.rotation}° · 表头 <strong>{probeResult.headers.length}</strong> 列</span>
-              <span className="probe-item muted small">
-                {probeResult.headers.slice(0, 8).map(h => h.text).join(' / ')}
-              </span>
-              {probeResult.meta && Object.keys(probeResult.meta).length > 0 && (
-                <span className="probe-item small">
-                  识别到 {Object.entries(probeResult.meta).map(([k, v]) => k + '=' + v.value).join(' · ')}
-                </span>
-              )}
-            </>
-          )}
-          {probeResult && probeResult.suggestions.length > 0 && (
-            <button className="pill-btn pill-btn-primary" type="button" onClick={adoptProbe}>
-              采用建议标注（{probeResult.suggestions.length} 列）
-            </button>
-          )}
-        </div>
-      )}
-
-
-      <div className="toolbar2">
-        <button className="pill-btn" type="button" onClick={() => setToolsOpen(v => !v)}>
-          {toolsOpen ? '收起解析工具' : '展开解析工具'}
-        </button>
-        <button className="btn" style={{ display: toolsOpen ? undefined : 'none' }} onClick={() => { void runInfer(); }} disabled={inferring}>
-          {inferring ? '正在试解析…' : '用当前标注试解析'}
-        </button>
-        <button className="btn" style={{ display: toolsOpen ? undefined : 'none' }} onClick={() => { void saveAsTemplate(false); }} disabled={inferring}>
-          保存为模板草稿
-        </button>
-        {inference && inference.valid === false && (
-          <button className="btn" style={{ display: toolsOpen ? undefined : 'none' }} onClick={() => { void saveAsTemplate(true); }} disabled={inferring}>
-            反验未通过，仍保存为草稿
-          </button>
-        )}
-        <span className="muted">
-          {source ? '调用本机后端 /templates/infer，只做列外推；不保存模板、不生成报告。' : '先载入 PDF 样例（内置示例页不能试解析）'}
-        </span>
-      </div>
-
-
-      {map.tables.length > 0 && (
-        <section className="column-list">
-          <div className="column-list-head">
-            已标注字段（{map.tables.reduce((n, tb) => n + tb.columns.length, 0)} 列）
-            <span className="muted small"> · 可改字段、一列加多个属性、删除或定位；字段支持自定义</span>
-          </div>
-          {map.tables.map((tb, ti) => (
-            <div key={tb.id} className="column-table">
-              <div className="muted small">表格 {ti + 1}（第 {tb.page} 页）· {tb.columns.length} 列</div>
-              {tb.columns.length === 0 && <div className="muted small">还没有列：用「列」工具在画布上点选一列数据。</div>}
-              {tb.columns.map((c, i) => {
-                const codes = c.fields && c.fields.length ? c.fields : (c.field ? [c.field] : []);
-                return (
-                  <div className="column-row" key={i}>
-                    <button className="link-btn" type="button"
-                      onClick={() => { setSel({ kind: 'column', tableId: tb.id, index: i }); }}>
-                      #{i + 1}
-                    </button>
-                    <span className="muted small">x {c.x.toFixed(3)} · w {c.w.toFixed(3)}</span>
-                    <select value={c.field}
-                      onChange={e => {
-                        const v = e.target.value;
-                        if (v === '__custom__') {
-                          const code = window.prompt('自定义字段 code（英文/下划线）', '');
-                          if (!code) return;
-                          customField(code.trim());
-                          updateColumn(tb.id, i, { field: code.trim(), fields: [code.trim()] });
-                          return;
-                        }
-                        updateColumn(tb.id, i, { field: v, fields: [v] });
-                      }}>
-                      <option value="">（未指定）</option>
-                      {FIELD_DICT.filter(f => f.scope !== 'meta').map(f => (
-                        <option key={f.code} value={f.code}>{f.label}（{f.code}）</option>
-                      ))}
-                      {map.custom_fields.map(f => (
-                        <option key={f.code} value={f.code}>{f.label}（自定义）</option>
-                      ))}
-                      <option value="__custom__">+ 自定义字段…</option>
-                    </select>
-                    {codes.slice(1).map(code => (
-                      <span className="field-chip" key={code}>
-                        {code}
-                        <button className="link-btn" type="button"
-                          onClick={() => removeColumnField(tb.id, i, codes, code)}>×</button>
-                      </span>
-                    ))}
-                    <button className="link-btn" type="button"
-                      onClick={() => addColumnField(tb.id, i, codes)}>＋属性</button>
-                    <button className="link-btn danger-text" type="button"
-                      onClick={() => removeColumn(tb.id, i)}>删除</button>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </section>
-      )}
-
-      <section className="tpl-panel">
-        <div className="page-head-row">
-          <h3>高级：导入已有模板</h3>
-          <button className="pill-btn" type="button" onClick={() => setImportOpen(v => !v)}>
-            {importOpen ? '收起' : '展开'}
-          </button>
-        </div>
-        <p className="muted small">从别处导出的模板 JSON（含 field_map）可直接导入为草稿，再回「模板库」启用。</p>
-        {importOpen && (
-          <>
-            <textarea className="tpl-json" rows={6} value={importText} onChange={e => setImportText(e.target.value)}
-              placeholder={'{\n  "bank_code": "CMB",\n  "field_map": { "txn_date": "交易日期", "amount": 4 }\n}'} />
-            <button className="btn" type="button" disabled={importBusy} onClick={() => void importTemplateJson()}>
-              {importBusy ? '导入中…' : '导入为草稿'}
-            </button>
-          </>
-        )}
-      </section>
-
-      {inference && (
-        <section className="infer-panel">
-          <div className="infer-head">
-            <strong>试解析结果</strong>
-            <span className="muted">识别 {inference.columns.length} 列 · 映射 {Object.keys(inference.field_map).length} 个字段</span>
-            <button className="btn" onClick={() => setInference(null)}>关闭</button>
-          </div>
-          <div className="infer-grid">
-            {/* 后端用 `p.column or 99` 排序，第 0 列会被排到最后，这里按列号重排 */}
-            {[...inference.provenance].sort((a, b) => (a.column ?? 99) - (b.column ?? 99)).map(row => (
-              <div className={`infer-row${row.confidence < 0.8 ? ' low' : ''}`} key={row.field}>
-                <b>{row.field}</b>
-                <span>{row.column === null ? '未匹配列' : `第 ${row.column + 1} 列`}</span>
-                <span>{SOURCE_LABEL[row.source] ?? row.source}</span>
-                <span>置信 {Math.round(row.confidence * 100)}%</span>
-                <span className="muted">{row.why}</span>
-              </div>
-            ))}
-          </div>
-          {inference.warnings.length > 0 && <p className="infer-warn">告警：{inference.warnings.join('；')}</p>}
-          {inference.columns.length > 0 && (
-            <p className="muted">列样本：{inference.columns.map(c => `#${c.index + 1} ${c.samples.slice(0, 3).join(' / ') || '（空）'}`).join('；')}</p>
-          )}
-          <p className="muted">field_map：<span className="mono">{JSON.stringify(inference.field_map)}</span></p>
-        </section>
-      )}
-
-      <div className="workspace">
-        {sample ? (
-          <Stage
-            sample={sample}
-            page={page}
-            zoom={zoom}
-            tool={tool}
-            map={map}
-            sel={sel}
-            onDraw={draw}
-            onSelect={setSel}
-            onMove={moveRect}
-            onHint={hint}
-          />
-        ) : (
-          <div className="stage-wrap">
-            <div className="empty">
-              先载入一份样例流水（PDF / JPG / PNG），或点「示例页」用内置假数据练习。<br />
-              样例在本机读取；点「试解析」时才会发往本机后端。
-            </div>
-          </div>
-        )}
-
-        <div className="side">
-          <div className="side-scroll">
-            <Inspector
-              map={map}
-              sel={sel}
-              onBankCode={v => setMap(prev => ({ ...prev, bank_code: v }))}
-              onKeywords={v => setMap(prev => ({ ...prev, match_rule: { ...prev.match_rule, bank_name_keywords: v } }))}
-              onFingerprint={v => setMap(prev => ({ ...prev, match_rule: { ...prev.match_rule, header_fingerprint: v } }))}
-              onAssign={assign}
-              onHeaderY={y => setMap(prev => ({
-                ...prev,
-                tables: prev.tables.map(t => (sel?.kind === 'table' && t.id === sel.id ? { ...t, headerY: y } : t)),
-              }))}
-              onDelete={removeSelected}
-              onAddCustom={f => setMap(prev => ({ ...prev, custom_fields: [...prev.custom_fields, f] }))}
-              onRemoveCustom={code => setMap(prev => ({
-                ...prev,
-                custom_fields: prev.custom_fields.filter(c => c.code !== code),
-                meta_boxes: prev.meta_boxes.map(b => (b.field === code ? { ...b, field: '' } : b)),
-                tables: prev.tables.map(t => ({
-                  ...t,
-                  columns: t.columns.map(c => (c.field === code ? { ...c, field: '' } : c)),
-                })),
-              }))}
-              onHint={hint}
-            />
-            <p className="muted" style={{ marginTop: 16 }}>
-              试解析只做列外推：返回字段→列、来源和置信度，不会逐格回贴；逐笔抽取仍走报告链路。
+      {/* ---------- 步骤 1：载入样例 + 预读 ---------- */}
+      {step === 1 && (
+        <div className="wizard-step">
+          <section className="upload-card">
+            <h3>载入一份样例流水</h3>
+            <p className="muted small">
+              支持 PDF（含加密件，会提示输入口令）、JPG/PNG，以及打包的 ZIP。样例在本机读取；
+              点「试解析」时才发往后端。
             </p>
-          </div>
-          <section className="events">
-            <div className="events-head">特殊情况检测</div>
-            {events.length === 0 && <p className="muted small">还没有特殊情况。载入一份带口令的材料就会出现记录。</p>}
-            <ul>
-              {events.map((e, i) => (
-                <li key={i} className={e.level}>
-                  <span className="mono">{e.time}</span>
-                  <b>{e.stage}</b>
-                  <span className="muted">{e.result}</span>
-                  <span className="ev-name">{e.name}</span>
-                </li>
-              ))}
-            </ul>
+            <input
+              ref={uploadRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.zip"
+              style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) void loadFile(f); e.target.value = ''; }}
+            />
+            <div className="upload-actions">
+              <button className="btn" type="button" onClick={() => uploadRef.current?.click()}>选择文件</button>
+              <button className="btn secondary" type="button" onClick={loadDemo}>用内置示例页练习</button>
+            </div>
+            <p className="muted small">已载入：<b>{sampleName || '未载入'}</b></p>
           </section>
 
-          <ValidationPanel
-            issues={issues}
-            onLocate={issue => {
-              if (!issue.targetId) return;
-              const asMeta = map.meta_boxes.find(b => b.id === issue.targetId);
-              if (asMeta) { setSel({ kind: 'meta', id: asMeta.id }); setPage(asMeta.page); }
-              const asTable = map.tables.find(t => t.id === issue.targetId);
-              if (asTable) { setSel({ kind: 'table', id: asTable.id }); setPage(asTable.page); }
-            }}
-          />
+          {(probing || probeResult || probeNote) && (
+            <div className="probe-card">
+              {probing ? (
+                <span className="muted">正在识别银行与表头…</span>
+              ) : probeNote ? (
+                <span className="muted">{probeNote}</span>
+              ) : probeResult && (
+                <>
+                  <span className="probe-item">银行：<strong>{probeResult.bank_name ?? '未识别'}</strong>
+                    {probeResult.bank_code ? '（' + probeResult.bank_code + '）' : ''}</span>
+                  <span className="probe-item">旋转：{probeResult.rotation}° · 表头 <strong>{probeResult.headers.length}</strong> 列</span>
+                  <span className="probe-item muted small">
+                    {probeResult.headers.slice(0, 8).map(h => h.text).join(' / ')}
+                  </span>
+                  {probeResult.meta && Object.keys(probeResult.meta).length > 0 && (
+                    <span className="probe-item small">
+                      识别到 {Object.entries(probeResult.meta).map(([k, v]) => k + '=' + v.value).join(' · ')}
+                    </span>
+                  )}
+                </>
+              )}
+              {probeResult && probeResult.suggestions.length > 0 && (
+                <button className="pill-btn pill-btn-primary" type="button" onClick={() => { adoptProbe(); navigate('/templates/new/mark'); }}>
+                  采用建议标注（{probeResult.suggestions.length} 列）并进入标注
+                </button>
+              )}
+            </div>
+          )}
+
+          {sample ? (
+            <div className="wizard-preview">
+              <Stage
+                sample={sample}
+                page={page}
+                zoom={zoom}
+                tool="meta"
+                map={map}
+                sel={sel}
+                onDraw={() => hint('这一步只看版式，点「下一步」再标注')}
+                onSelect={() => undefined}
+                onMove={() => undefined}
+                onHint={hint}
+              />
+            </div>
+          ) : (
+            <div className="stage-wrap">
+              <div className="empty">
+                先载入一份样例流水（PDF / JPG / PNG），或点「用内置示例页练习」。<br />
+                样例在本机读取；点「试解析」时才发往后端。
+              </div>
+            </div>
+          )}
+
+          <div className="wizard-actions">
+            <button className="btn" type="button" disabled={!sample} onClick={() => navigate('/templates/new/mark')}>
+              下一步：标注列 →
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ---------- 步骤 2：标注 ---------- */}
+      {step === 2 && (
+        <div className="wizard-step">
+          <div className="workspace">
+            {sample ? (
+              <Stage
+                sample={sample}
+                page={page}
+                zoom={zoom}
+                tool={tool}
+                map={map}
+                sel={sel}
+                onDraw={draw}
+                onSelect={setSel}
+                onMove={moveRect}
+                onHint={hint}
+              />
+            ) : (
+              <div className="stage-wrap"><div className="empty">先载入样例（回到上一步）</div></div>
+            )}
+
+            <div className="side">
+              <div className="side-scroll">
+                <Inspector
+                  map={map}
+                  sel={sel}
+                  onBankCode={v => setMap(prev => ({ ...prev, bank_code: v }))}
+                  onKeywords={v => setMap(prev => ({ ...prev, match_rule: { ...prev.match_rule, bank_name_keywords: v } }))}
+                  onFingerprint={v => setMap(prev => ({ ...prev, match_rule: { ...prev.match_rule, header_fingerprint: v } }))}
+                  onAssign={assign}
+                  onHeaderY={y => setMap(prev => ({
+                    ...prev,
+                    tables: prev.tables.map(t => (sel?.kind === 'table' && t.id === sel.id ? { ...t, headerY: y } : t)),
+                  }))}
+                  onDelete={removeSelected}
+                  onAddCustom={f => setMap(prev => ({ ...prev, custom_fields: [...prev.custom_fields, f] }))}
+                  onRemoveCustom={code => setMap(prev => ({
+                    ...prev,
+                    custom_fields: prev.custom_fields.filter(c => c.code !== code),
+                    meta_boxes: prev.meta_boxes.map(b => (b.field === code ? { ...b, field: '' } : b)),
+                    tables: prev.tables.map(t => ({
+                      ...t,
+                      columns: t.columns.map(c => (c.field === code ? { ...c, field: '' } : c)),
+                    })),
+                  }))}
+                  onHint={hint}
+                />
+                <ValidationPanel
+                  issues={issues}
+                  onLocate={issue => {
+                    if (!issue.targetId) return;
+                    const asMeta = map.meta_boxes.find(b => b.id === issue.targetId);
+                    if (asMeta) { setSel({ kind: 'meta', id: asMeta.id }); setPage(asMeta.page); }
+                    const asTable = map.tables.find(t => t.id === issue.targetId);
+                    if (asTable) { setSel({ kind: 'table', id: asTable.id }); setPage(asTable.page); }
+                  }}
+                />
+                <section className="events">
+                  <div className="events-head">特殊情况检测</div>
+                  {events.length === 0 && <p className="muted small">还没有特殊情况。载入带口令的材料、或换页时会影响记录。</p>}
+                  <ul>
+                    {events.map((e, i) => (
+                      <li key={i} className={e.level}>
+                        <span className="mono">{e.time}</span>
+                        <b>{e.stage}</b>
+                        <span className="muted">{e.result}</span>
+                        <span className="ev-name">{e.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            </div>
+          </div>
+
+          {map.tables.length > 0 && (
+            <section className="column-list">
+              <div className="column-list-head">
+                已标注字段（{map.tables.reduce((n, tb) => n + tb.columns.length, 0)} 列）
+                <span className="muted small"> · 可改字段、一列加多个属性、删除或定位；字段支持自定义</span>
+              </div>
+              {map.tables.map((tb, ti) => (
+                <div key={tb.id} className="column-table">
+                  <div className="muted small">表格 {ti + 1}（第 {tb.page} 页）· {tb.columns.length} 列</div>
+                  {tb.columns.length === 0 && <div className="muted small">还没有列：用「列」工具在画布上点选一列数据。</div>}
+                  {tb.columns.map((c, i) => {
+                    const codes = c.fields && c.fields.length ? c.fields : (c.field ? [c.field] : []);
+                    return (
+                      <div className="column-row" key={i}>
+                        <button className="link-btn" type="button"
+                          onClick={() => { setSel({ kind: 'column', tableId: tb.id, index: i }); }}>
+                          #{i + 1}
+                        </button>
+                        <span className="muted small">x {c.x.toFixed(3)} · w {c.w.toFixed(3)}</span>
+                        <select value={c.field}
+                          onChange={e => {
+                            const v = e.target.value;
+                            if (v === '__custom__') {
+                              const code = window.prompt('自定义字段 code（英文/下划线）', '');
+                              if (!code) return;
+                              customField(code.trim());
+                              updateColumn(tb.id, i, { field: code.trim(), fields: [code.trim()] });
+                              return;
+                            }
+                            updateColumn(tb.id, i, { field: v, fields: [v] });
+                          }}>
+                          <option value="">（未指定）</option>
+                          {FIELD_DICT.filter(f => f.scope !== 'meta').map(f => (
+                            <option key={f.code} value={f.code}>{f.label}（{f.code}）</option>
+                          ))}
+                          {map.custom_fields.map(f => (
+                            <option key={f.code} value={f.code}>{f.label}（自定义）</option>
+                          ))}
+                          <option value="__custom__">+ 自定义字段…</option>
+                        </select>
+                        {codes.slice(1).map(code => (
+                          <span className="field-chip" key={code}>
+                            {code}
+                            <button className="link-btn" type="button"
+                              onClick={() => removeColumnField(tb.id, i, codes, code)}>×</button>
+                          </span>
+                        ))}
+                        <button className="link-btn" type="button"
+                          onClick={() => addColumnField(tb.id, i, codes)}>＋属性</button>
+                        <button className="link-btn danger-text" type="button"
+                          onClick={() => removeColumn(tb.id, i)}>删除</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </section>
+          )}
+
+          <div className="wizard-actions">
+            <button className="btn secondary" type="button" onClick={() => navigate('/templates/new')}>← 上一步</button>
+            <button className="btn" type="button" disabled={map.tables.length === 0} onClick={() => navigate('/templates/new/check')}>
+              下一步：试解析与保存 →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- 步骤 3：试解析与保存 ---------- */}
+      {step === 3 && (
+        <div className="wizard-step">
+          <section className="tpl-panel">
+            <h3>试解析与保存</h3>
+            <p className="muted small">用当前标注做列外推，确认字段→列对得上，再保存为模板草稿。</p>
+            <div className="wizard-actions" style={{ justifyContent: 'flex-start' }}>
+              <button className="btn" type="button" onClick={() => { void runInfer(); }} disabled={inferring}>
+                {inferring ? '正在试解析…' : '用当前标注试解析'}
+              </button>
+              <button className="btn secondary" type="button" onClick={() => { void saveAsTemplate(false); }} disabled={inferring}>
+                保存为模板草稿
+              </button>
+              {inference && inference.valid === false && (
+                <button className="btn secondary" type="button" onClick={() => { void saveAsTemplate(true); }} disabled={inferring}>
+                  反验未通过，仍保存
+                </button>
+              )}
+            </div>
+            <p className="muted small">
+              {source ? '调用后端 /templates/infer，只做列外推；不生成报告。' : '内置示例页没有源文件，不能试解析。'}
+            </p>
+          </section>
+
+          {inference && (
+            <section className="infer-panel">
+              <div className="infer-head">
+                <strong>试解析结果</strong>
+                <span className="muted">识别 {inference.columns.length} 列 · 映射 {Object.keys(inference.field_map).length} 个字段</span>
+                <button className="btn" onClick={() => setInference(null)}>关闭</button>
+              </div>
+              <div className="infer-grid">
+                {[...inference.provenance].sort((a, b) => (a.column ?? 99) - (b.column ?? 99)).map(row => (
+                  <div className={`infer-row${row.confidence < 0.8 ? ' low' : ''}`} key={row.field}>
+                    <b>{row.field}</b>
+                    <span>{row.column === null ? '未匹配列' : `第 ${row.column + 1} 列`}</span>
+                    <span>{SOURCE_LABEL[row.source] ?? row.source}</span>
+                    <span>置信 {Math.round(row.confidence * 100)}%</span>
+                    <span className="muted">{row.why}</span>
+                  </div>
+                ))}
+              </div>
+              {inference.warnings.length > 0 && <p className="infer-warn">告警：{inference.warnings.join('；')}</p>}
+              {inference.columns.length > 0 && (
+                <p className="muted">列样本：{inference.columns.map(c => `#${c.index + 1} ${c.samples.slice(0, 3).join(' / ') || '（空）'}`).join('；')}</p>
+              )}
+              <p className="muted">field_map：<span className="mono">{JSON.stringify(inference.field_map)}</span></p>
+            </section>
+          )}
+
+          <section className="tpl-panel">
+            <div className="page-head-row">
+              <h3>高级：导入已有模板</h3>
+              <button className="pill-btn" type="button" onClick={() => setImportOpen(v => !v)}>
+                {importOpen ? '收起' : '展开'}
+              </button>
+            </div>
+            <p className="muted small">从别处导出的模板 JSON（含 field_map）可直接导入为草稿，再回「模板库」启用。</p>
+            {importOpen && (
+              <>
+                <textarea className="tpl-json" rows={6} value={importText} onChange={e => setImportText(e.target.value)}
+                  placeholder={'{\n  "bank_code": "CMB",\n  "field_map": { "txn_date": "交易日期", "amount": 4 }\n}'} />
+                <button className="btn" type="button" disabled={importBusy} onClick={() => void importTemplateJson()}>
+                  {importBusy ? '导入中…' : '导入为草稿'}
+                </button>
+              </>
+            )}
+          </section>
+
+          <div className="wizard-actions">
+            <button className="btn secondary" type="button" onClick={() => navigate('/templates/new/mark')}>← 上一步</button>
+            <button className="btn secondary" type="button" onClick={() => navigate('/templates')}>完成，回模板库</button>
+          </div>
+        </div>
+      )}
 
       <div className="muted" style={{ padding: '6px 18px', background: '#fff', borderTop: '1px solid #e2e8f0' }}>
-        样例：{sampleName || '未载入'} · 草稿自动保存在本机浏览器 · 试解析时文件与口令会发往本机后端
+        样例：{sampleName || '未载入'} · 草稿自动保存在本机浏览器 · 试解析时文件与口令会发往后端
       </div>
 
       {pending && (
