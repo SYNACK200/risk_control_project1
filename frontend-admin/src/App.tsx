@@ -78,7 +78,8 @@ function Shell({ active, children }: { active: string; children: React.ReactNode
 function Home() {
   const location = useLocation();
   const current = location.pathname.replace(/^\//, '');
-  const tab = KEYS.includes(current) ? current : 'tasks';
+  const root = current.split('/')[0]; // /annotate/mark 这类多段路径，按首段归到 annotate
+  const tab = KEYS.includes(root) ? root : 'tasks';
   return (
     <Shell active={tab}>
       {tab === 'tasks' && <TaskListPage />}
@@ -113,6 +114,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/:tab" element={<Home />} />
+      <Route path="/annotate/*" element={<Home />} />
       <Route path="/templates/:id" element={<TemplateDetailShell />} />
       <Route path="/report/:id" element={<ReportPage />} />
       <Route path="*" element={<Home />} />

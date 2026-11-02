@@ -587,3 +587,19 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
   font-size: 12px; color: #94a3b8; }
 .side-foot .user-bar .link-btn { color: #93c5fd; padding: 0; font-size: 12px; }
 .side-foot .user-bar .link-btn:hover { color: #bfdbfe; text-decoration: underline; }
+/* ---- 新建模板三步向导 ---- */
+.wizard-bar { display: flex; gap: 8px; padding: 12px 18px; background: #fff; border-bottom: 1px solid var(--line); }
+.wizard-step-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px;
+  background: #f1f5f9; color: #475569; font-size: 13.5px; }
+.wizard-step-btn:hover:not(:disabled) { background: #e2e8f0; }
+.wizard-step-btn.active { background: #1d4ed8; color: #fff; }
+.wizard-step-btn.done { background: #dcfce7; color: #166534; }
+.wizard-step-btn:disabled { opacity: .45; cursor: not-allowed; }
+.wizard-num { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,.35);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.wizard-step { display: flex; flex-direction: column; }
+.upload-card { margin: 16px 18px; padding: 18px 20px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.upload-card h3 { margin: 0 0 6px; font-size: 15px; }
+.upload-actions { display: flex; gap: 10px; margin: 12px 0 6px; }
+.wizard-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; }
+.wizard-preview { margin: 0 18px; }
