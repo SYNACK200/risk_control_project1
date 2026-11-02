@@ -478,3 +478,38 @@ export async function decryptPdf(file: File, password: string): Promise<Blob> {
   if (!res.ok) throw new Error('解密失败（口令可能不正确）');
   return await res.blob();
 }
+
+export type AuditLogRow = {
+  id: number;
+  actor_id: number | null;
+  action: string;
+  object_type: string | null;
+  object_id: number | null;
+  detail: string | null;
+  created_at: string | null;
+};
+
+export type AuditLogPage = { total: number; page: number; size: number; items: AuditLogRow[] };
+
+/** 审计日志（只读）：按动作与分页筛选。 */
+export async function listAuditLogs(params: { page?: number; size?: number; action?: string } = {}): Promise<AuditLogPage> {
+  const q = new URLSearchParams();
+  q.set('page', String(params.page ?? 1));
+  q.set('size', String(params.size ?? 30));
+  if (params.action) q.set('action', params.action);
+  return json<AuditLogPage>(await authFetch(BASE + '/audit?' + q.toString()));
+}
+
+export type AppUserRow = {
+  id: number;
+  username: string;
+  role: string;
+  display_name?: string | null;
+  status?: string;
+  created_at?: string | null;
+};
+
+/** 账号列表（银行侧）。 */
+export async function listUsers(): Promise<{ items: AppUserRow[] }> {
+  return json<{ items: AppUserRow[] }>(await authFetch(BASE + '/auth/users'));
+}

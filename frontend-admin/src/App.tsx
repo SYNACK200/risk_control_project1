@@ -5,6 +5,11 @@ import { EntitiesPage } from './pages/EntitiesPage';
 import { ThresholdsPage } from './pages/ThresholdsPage';
 import { TemplateAdmin } from './components/TemplateAdmin';
 import { TemplateDetailPage } from './pages/TemplateDetailPage';
+import { MetricDefsPage } from './pages/MetricDefsPage';
+import { VerificationDefsPage } from './pages/VerificationDefsPage';
+import { AuditPage } from './pages/AuditPage';
+import { UsersPage } from './pages/UsersPage';
+import { ImportTemplatePage } from './pages/ImportTemplatePage';
 import { ReportView } from './components/ReportView';
 import { UserBar } from './components/UserBar';
 
@@ -17,19 +22,36 @@ const NAV: NavGroup[] = [
     group: '工作台',
     items: [
       { key: 'tasks', label: '解析结果', desc: '任务列表与报告' },
-      { key: 'entities', label: '客户与账户', desc: '按客户与账户汇总' },
+      { key: 'entities', label: '客户与账户', desc: '按客户/账户汇总' },
+    ],
+  },
+  {
+    group: '报告与口径',
+    items: [
+      { key: 'metrics', label: '指标口径', desc: '40 项指标定义' },
+      { key: 'verifications', label: '校验项', desc: '识别自检定义' },
     ],
   },
   {
     group: '模板',
     items: [
       { key: 'templates', label: '模板库', desc: '查看、启停、版本' },
-      { key: 'annotate', label: '新建模板', desc: '标注样例并外推' },
+      { key: 'annotate', label: '新建模板 ①', desc: '载入样例与预读' },
+      { key: 'annotate/mark', label: '新建模板 ②', desc: '标注表格列' },
+      { key: 'annotate/check', label: '新建模板 ③', desc: '试解析与保存' },
+      { key: 'import', label: '导入模板', desc: '粘贴 JSON 导入' },
     ],
   },
   {
     group: '配置',
-    items: [{ key: 'thresholds', label: '风控参数', desc: '阈值与版本' }],
+    items: [{ key: 'thresholds', label: '判定阈值', desc: '阈值与版本' }],
+  },
+  {
+    group: '系统',
+    items: [
+      { key: 'audit', label: '审计日志', desc: '谁改了什么' },
+      { key: 'users', label: '账号', desc: '银行侧与借款侧账号' },
+    ],
   },
 ];
 
@@ -80,13 +102,20 @@ function Home() {
   const current = location.pathname.replace(/^\//, '');
   const root = current.split('/')[0]; // /annotate/mark 这类多段路径，按首段归到 annotate
   const tab = KEYS.includes(root) ? root : 'tasks';
+  // 导航高亮：多段 key（annotate/mark）按完整路径匹配，其余按首段
+  const activeKey = KEYS.includes(current) ? current : tab;
   return (
-    <Shell active={tab}>
+    <Shell active={activeKey}>
       {tab === 'tasks' && <TaskListPage />}
       {tab === 'entities' && <EntitiesPage />}
       {tab === 'thresholds' && <ThresholdsPage />}
       {tab === 'annotate' && <AnnotatePage />}
       {tab === 'templates' && <TemplateAdmin />}
+      {tab === 'metrics' && <MetricDefsPage />}
+      {tab === 'verifications' && <VerificationDefsPage />}
+      {tab === 'audit' && <AuditPage />}
+      {tab === 'users' && <UsersPage />}
+      {tab === 'import' && <ImportTemplatePage />}
     </Shell>
   );
 }
