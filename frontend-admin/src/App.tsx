@@ -10,6 +10,7 @@ import { VerificationDefsPage } from './pages/VerificationDefsPage';
 import { AuditPage } from './pages/AuditPage';
 import { UsersPage } from './pages/UsersPage';
 import { ImportTemplatePage } from './pages/ImportTemplatePage';
+import { DashboardPage } from './pages/DashboardPage';
 import { ReportView } from './components/ReportView';
 import { UserBar } from './components/UserBar';
 
@@ -21,6 +22,7 @@ const NAV: NavGroup[] = [
   {
     group: '工作台',
     items: [
+      { key: 'dashboard', label: '业务看板', desc: '库内流水汇总与钻取' },
       { key: 'tasks', label: '解析结果', desc: '任务列表与报告' },
       { key: 'entities', label: '客户与账户', desc: '按客户/账户汇总' },
     ],
@@ -106,6 +108,7 @@ function Home() {
   const activeKey = KEYS.includes(current) ? current : tab;
   return (
     <Shell active={activeKey}>
+      {tab === 'dashboard' && <DashboardPage />}
       {tab === 'tasks' && <TaskListPage />}
       {tab === 'entities' && <EntitiesPage />}
       {tab === 'thresholds' && <ThresholdsPage />}
