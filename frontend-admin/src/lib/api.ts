@@ -513,3 +513,23 @@ export type AppUserRow = {
 export async function listUsers(): Promise<{ items: AppUserRow[] }> {
   return json<{ items: AppUserRow[] }>(await authFetch(BASE + '/auth/users'));
 }
+
+export type DashboardData = {
+  summary: {
+    tasks: number; done: number; failed: number; txn_total: number;
+    avg_txn: number; coverage_warn: number; threshold_version: number | null;
+  };
+  grades: { grade: string; label: string; count: number }[];
+  verdicts: { verdict: string; count: number }[];
+  banks: { bank_code: string; tasks: number; txn: number }[];
+  threshold_hits: { code: string; name: string; count: number }[];
+  recent: {
+    task_id: number; biz_no: string | null; status: string; bank_code: string | null;
+    verdict: string | null; overall: number | null; grade: string | null; txn_count: number;
+  }[];
+};
+
+/** 业务看板：库里已有流水的汇总。 */
+export async function getDashboard(): Promise<DashboardData> {
+  return json<DashboardData>(await authFetch(BASE + '/dashboard'));
+}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { listTasks, purgeTasks, recycleTasks, restoreTasks, type TaskFacets, type TaskFilters, type TaskSummary, type TaskSummaryList } from '../lib/api';
 
@@ -21,7 +22,12 @@ function money(value: string | null | undefined) {
 export function TaskListPage() {
   const navigate = useNavigate();
   const [data, setData] = useState<TaskSummaryList | null>(null);
-  const [filters, setFilters] = useState<TaskFilters>({});
+  // 支持从看板钻取：/tasks?bank=ICBC 或 /tasks?q=来源可疑
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState<TaskFilters>(() => ({
+    bank: searchParams.get('bank') || undefined,
+    q: searchParams.get('q') || searchParams.get('verdict') || undefined,
+  }));
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
