@@ -519,7 +519,7 @@ export async function listUsers(): Promise<{ items: AppUserRow[] }> {
 export type DashboardData = {
   summary: {
     tasks: number; done: number; failed: number; txn_total: number;
-    avg_txn: number; coverage_warn: number; threshold_version: number | null;
+    avg_txn: number; coverage_warn: number; threshold_version: number | null; custom_metrics?: number;
   };
   grades: { grade: string; label: string; count: number }[];
   verdicts: { verdict: string; count: number }[];
@@ -534,4 +534,27 @@ export type DashboardData = {
 /** 业务看板：库里已有流水的汇总。 */
 export async function getDashboard(): Promise<DashboardData> {
   return json<DashboardData>(await authFetch(BASE + '/dashboard'));
+}
+
+export type CustomMetric = {
+  id: number; code: string; name: string; unit?: string | null;
+  group_name?: string | null; formula?: string | null; inputs?: string | null;
+  note?: string | null; enabled: boolean; created_at?: string | null;
+};
+
+export async function listCustomMetrics(): Promise<{ items: CustomMetric[]; note: string }> {
+  return json<{ items: CustomMetric[]; note: string }>(await authFetch(BASE + '/custom-metrics'));
+}
+
+export async function createCustomMetric(payload: {
+  code: string; name: string; unit?: string; group_name?: string;
+  formula?: string; inputs?: string; note?: string;
+}): Promise<CustomMetric> {
+  return json<CustomMetric>(await authFetch(BASE + '/custom-metrics', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }));
+}
+
+export async function deleteCustomMetric(id: number): Promise<{ ok: boolean }> {
+  return json<{ ok: boolean }>(await authFetch(BASE + '/custom-metrics/' + id, { method: 'DELETE' }));
 }
