@@ -149,3 +149,11 @@ def require_banker(user: User = Depends(current_user)) -> User:
     if user.role != "banker":
         raise HTTPException(status_code=403, detail={"code": "E_FORBIDDEN", "message": "需要银行侧账号"})
     return user
+
+
+def require_admin(user: User = Depends(require_banker)) -> User:
+    """改阈值、启停/删模板、删任务、看审计、管账号：只给银行侧管理员。"""
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(status_code=403,
+                            detail={"code": "E_FORBIDDEN", "message": "需要银行侧管理员权限"})
+    return user

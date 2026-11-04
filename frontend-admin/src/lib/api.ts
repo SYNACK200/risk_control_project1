@@ -82,9 +82,10 @@ export interface TaskFacets {
   total: number;
 }
 
-export interface TaskSummaryList { items: TaskSummary[]; total: number; facets: TaskFacets }
+export interface TaskSummaryList { items: TaskSummary[]; total: number; offset?: number; limit?: number; facets: TaskFacets }
 
 export interface TaskFilters {
+  offset?: number;
   trash?: number;
   authenticity?: string;
   source?: string;
@@ -102,7 +103,8 @@ export interface TaskFilters {
 
 export async function listTasks(filters: TaskFilters = {}): Promise<TaskSummaryList> {
   const params = new URLSearchParams();
-  params.set('limit', String(filters.limit ?? 500));
+  params.set('limit', String(filters.limit ?? 20));
+  if (filters.offset) params.set('offset', String(filters.offset));
   for (const key of ['authenticity', 'source', 'risk', 'risk_code', 'parse', 'bank', 'date_from', 'date_to', 'q'] as const) {
     const value = filters[key];
     if (value) params.set(key, value);

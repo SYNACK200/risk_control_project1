@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from db.models import AuditLog
 from db.session import get_session
-from helpers.security import require_banker
+from helpers.security import require_admin, require_banker
 from services import thresholds as svc
 
 router = APIRouter(prefix="/thresholds", tags=["thresholds"], dependencies=[Depends(require_banker)])
@@ -36,7 +36,7 @@ def get_thresholds(db: Session = Depends(get_session)):
     }
 
 
-@router.put("")
+@router.put("", dependencies=[Depends(require_admin)])
 def put_thresholds(payload: ThresholdPayload, db: Session = Depends(get_session)):
     try:
         row = svc.save_version(db, payload.values, payload.note)
@@ -49,7 +49,7 @@ def put_thresholds(payload: ThresholdPayload, db: Session = Depends(get_session)
     return {"version": version, "values": values, "saved_version": row.version}
 
 
-@router.post("/reset")
+@router.post("/reset", dependencies=[Depends(require_admin)])
 def reset_thresholds(db: Session = Depends(get_session)):
     row = svc.save_version(db, svc.default_values(), "恢复算法默认值")
     db.add(AuditLog(action="reset_thresholds", object_type="threshold", object_id=row.version,

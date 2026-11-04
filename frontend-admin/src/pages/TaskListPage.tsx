@@ -36,16 +36,18 @@ export function TaskListPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState<'recycle' | 'restore' | 'purge' | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    listTasks({ ...filters, trash: view === 'trash' ? 1 : 0, q: q || undefined })
+    listTasks({ ...filters, trash: view === 'trash' ? 1 : 0, q: q || undefined, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE })
       .then(d => { if (alive) { setData(d); setError(''); } })
       .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [filters, q, view]);
+  }, [filters, q, view, page]);
 
   const items: TaskSummary[] = data?.items ?? [];
   const facets: TaskFacets = data?.facets ?? { authenticity: {}, source: {}, risk: {}, parse: {}, bank: {}, total: 0 };
@@ -231,8 +233,17 @@ export function TaskListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+</table>
         )}
+
+        {data && data.total > PAGE_SIZE && (
+          <div className="pager">
+            <span className="muted small">共 {data.total} 条 · 第 {page} / {Math.max(1, Math.ceil(data.total / PAGE_SIZE))} 页</span>
+            <button className="pill-btn" type="button" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>上一页</button>
+            <button className="pill-btn" type="button" disabled={page >= Math.ceil(data.total / PAGE_SIZE)} onClick={() => setPage(p => p + 1)}>下一页</button>
+          </div>
+        )}
+
       </div>
     </div>
   );

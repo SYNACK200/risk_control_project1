@@ -23,6 +23,15 @@ def ensure_columns() -> list[str]:
             conn.execute(text("CREATE INDEX ix_task_user_id ON task (user_id)"))
             done.append("task.user_id")
     try:
+        ucols = {c["name"] for c in insp.get_columns("app_user")}
+    except Exception:  # noqa: BLE001
+        ucols = set()
+    if ucols and "is_admin" not in ucols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE app_user ADD COLUMN is_admin TINYINT(1) NOT NULL DEFAULT 0"))
+            conn.execute(text("UPDATE app_user SET is_admin = 1 WHERE username = 'admin'"))
+        done.append("app_user.is_admin")
+    try:
         tcols = {c["name"] for c in insp.get_columns("template")}
     except Exception:  # noqa: BLE001 - 老库可能还没有 template 表
         tcols = set()

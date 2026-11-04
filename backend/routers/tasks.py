@@ -24,7 +24,7 @@ from algorithm.algo.preread import run_preread
 from algorithm.algo.merge import AccountInput, merge_accounts, mode_catalog
 from algorithm.ocr.models import Transaction
 from datetime import date as _date
-from helpers.security import current_user, require_banker
+from helpers.security import require_admin, current_user, require_banker
 from services import thresholds as threshold_service
 from services import worker
 from services.analysis import EncryptedFile, is_password_protected, run_analysis
@@ -362,7 +362,8 @@ def _facets(items: list[dict]) -> dict:
 @router.get("")
 def list_tasks(
     status: str | None = None,
-    limit: int = 500,
+    limit: int = 20,
+    offset: int = 0,
     authenticity: str | None = None,
     source: str | None = None,
     risk: str | None = None,
@@ -379,7 +380,8 @@ def list_tasks(
     user: User = Depends(current_user),
 ):
     """解析结果列表：按银行关心的维度汇总，并支持合格性/风险/解析质量/银行/时间/关键字筛选。"""
-    stmt = select(Task).order_by(Task.id.desc()).limit(min(limit, 1000))
+    # 分页：SQL 侧取全量（上限 2000 防爆），过滤后再算 total 并切出当前页
+    stmt = select(Task).order_by(Task.id.desc()).limit(2000)
     stmt = stmt.where(Task.deleted_at.is_not(None)) if trash else stmt.where(Task.deleted_at.is_(None))
     if user.role != "banker":
         stmt = stmt.where(Task.user_id == user.id)
@@ -417,7 +419,9 @@ def list_tasks(
     if q:
         needle = q.strip().lower()
         items = [i for i in items if needle in (i.get("biz_no") or "").lower()]
-    return {"items": items, "total": len(items), "facets": facets}
+    total = len(items)
+    page_items = items[offset: offset + limit]
+    return {"items": page_items, "total": total, "offset": offset, "limit": limit, "facets": facets}
 
 
 class TaskIdsPayload(BaseModel):
@@ -499,7 +503,7 @@ def report_export(task_id: int, db: Session = Depends(get_session),
     )
 
 
-@router.post("/recycle")
+@router.post("/recycle", dependencies=[Depends(require_admin)])
 def recycle_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
                   user: User = Depends(current_user)):
     if user.role != "banker":
@@ -518,7 +522,7 @@ def recycle_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
     return {"moved": moved, "ids": sorted(r.id for r in rows)}
 
 
-@router.post("/restore")
+@router.post("/restore", dependencies=[Depends(require_admin)])
 def restore_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
                   user: User = Depends(current_user)):
     if user.role != "banker":
@@ -536,7 +540,7 @@ def restore_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
     return {"restored": restored, "ids": sorted(r.id for r in rows)}
 
 
-@router.post("/purge")
+@router.post("/purge", dependencies=[Depends(require_admin)])
 def purge_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
                 user: User = Depends(current_user)):
     if user.role != "banker":
