@@ -14,7 +14,7 @@ from datetime import datetime
 
 from db.models import AuditLog, User
 from db.session import get_session
-from helpers.security import current_user, hash_password, issue_token, require_banker, verify_password
+from helpers.security import require_admin,  current_user, hash_password, issue_token, require_banker, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +45,7 @@ class CreateUserIn(BaseModel):
 def _public(user: User) -> dict:
     return {
         "id": user.id, "username": user.username, "role": user.role,
+        "is_admin": bool(getattr(user, "is_admin", False)),
         "display_name": user.display_name, "status": user.status,
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
     }
@@ -102,7 +103,7 @@ def list_users(user: User = Depends(require_banker), db: Session = Depends(get_s
 
 
 @router.post("/users")
-def create_user(payload: CreateUserIn, user: User = Depends(require_banker),
+def create_user(payload: CreateUserIn, user: User = Depends(require_admin),
                 db: Session = Depends(get_session)):
     if payload.role not in ("banker", "borrower"):
         raise HTTPException(400, detail={"code": "E_PARAM", "message": "role 只能是 banker 或 borrower"})

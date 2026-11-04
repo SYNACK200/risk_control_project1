@@ -25,6 +25,10 @@ export function MetricDefsPage() {
         <h2>指标口径</h2>
         <span className="muted">{items.length} 项指标 · 口径版本 v{version ?? '—'} · 只读</span>
       </div>
+<div className="notice info" style={{ lineHeight: 1.8 }}>
+        <b>这页解决什么问题：</b>报告里的数字被客户/评审质疑「这个 0.42 是怎么算的」时，在这里查到它的口径、公式和输入，
+        不用去翻代码。<b>怎么用：</b>用下面的搜索框按指标名或编码定位；报告页点指标名也会跳到这里。
+      </div>
       {error && <div className="notice error">{error}</div>}
       <section className="card">
         <div className="card-body">

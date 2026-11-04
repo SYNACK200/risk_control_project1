@@ -13,8 +13,9 @@ import { ImportTemplatePage } from './pages/ImportTemplatePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ReportView } from './components/ReportView';
 import { UserBar } from './components/UserBar';
+import { useIsAdmin } from './lib/auth';
 
-type NavItem = { key: string; label: string; desc: string };
+type NavItem = { key: string; label: string; desc: string; adminOnly?: boolean };
 type NavGroup = { group: string; items: NavItem[] };
 
 /** 左侧栏按业务分组：工作台（看结果）/ 模板（管版式）/ 配置（调参数） */
@@ -51,8 +52,8 @@ const NAV: NavGroup[] = [
   {
     group: '系统',
     items: [
-      { key: 'audit', label: '审计日志', desc: '谁改了什么' },
-      { key: 'users', label: '账号', desc: '银行侧与借款侧账号' },
+      { key: 'audit', label: '审计日志', desc: '谁改了什么', adminOnly: true },
+      { key: 'users', label: '账号', desc: '银行侧与借款侧账号', adminOnly: true },
     ],
   },
 ];
@@ -61,6 +62,9 @@ const KEYS = NAV.flatMap(g => g.items.map(i => i.key));
 
 function Shell({ active, children }: { active: string; children: React.ReactNode }) {
   const navigate = useNavigate();
+  const isAdmin = useIsAdmin();
+  const groups = NAV.map(g => ({ ...g, items: g.items.filter(i => !i.adminOnly || isAdmin) }))
+    .filter(g => g.items.length > 0);
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -69,7 +73,7 @@ function Shell({ active, children }: { active: string; children: React.ReactNode
           <div className="side-sub">银行侧</div>
         </div>
         <nav className="side-nav">
-          {NAV.map(group => (
+          {groups.map(group => (
             <div className="nav-group" key={group.group}>
               <div className="nav-title">{group.group}</div>
               {group.items.map(item => (

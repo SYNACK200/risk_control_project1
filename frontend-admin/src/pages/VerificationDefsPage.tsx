@@ -23,6 +23,10 @@ export function VerificationDefsPage() {
         <h2>校验项</h2>
         <span className="muted">{items.length} 项 · 报告「识别自检」用的定义 · 只读</span>
       </div>
+<div className="notice info" style={{ lineHeight: 1.8 }}>
+        <b>这页解决什么问题：</b>报告里「识别自检 C3 笔数：无页脚笔数」这类提示，业务看不懂「C3 是什么」时，
+        在这里查每个检查点到底查什么、严重度如何。<b>怎么用：</b>按编码或名称找到对应项，再回到报告看该项状态。
+      </div>
       {error && <div className="notice error">{error}</div>}
       <section className="card">
         <div className="card-body">

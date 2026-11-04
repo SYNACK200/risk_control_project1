@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from db.models import Task, Template, Txn, now
 from db.session import get_session
-from helpers.security import require_banker
+from helpers.security import require_admin, require_banker
 from services.analysis import infer_from_marks
 from services import template_layout as tlayout
 
@@ -52,7 +52,7 @@ def create_template(payload: TemplateIn, db: Session = Depends(get_session)):
     return {"id": row.id, "status": row.status}
 
 
-@router.post("/{template_id}/publish")
+@router.post("/{template_id}/publish", dependencies=[Depends(require_admin)])
 def publish_template(template_id: int, db: Session = Depends(get_session)):
     row = db.get(Template, template_id)
     if row is None:
@@ -285,7 +285,7 @@ class TemplatePatch(BaseModel):
     header_columns: list | None = None
 
 
-@router.put("/{template_id}")
+@router.put("/{template_id}", dependencies=[Depends(require_admin)])
 def update_template(template_id: int, payload: TemplatePatch, db: Session = Depends(get_session)):
     # 改模板 = 出新版本：旧版本保留为 disabled，历史可追溯
     row = db.get(Template, template_id)
@@ -310,7 +310,7 @@ def update_template(template_id: int, payload: TemplatePatch, db: Session = Depe
             "previous_status": old_status}
 
 
-@router.post("/{template_id}/duplicate")
+@router.post("/{template_id}/duplicate", dependencies=[Depends(require_admin)])
 def duplicate_template(template_id: int, db: Session = Depends(get_session)):
     row = db.get(Template, template_id)
     if row is None:
@@ -325,7 +325,7 @@ def duplicate_template(template_id: int, db: Session = Depends(get_session)):
     return {"id": copy.id, "version": copy.version}
 
 
-@router.post("/{template_id}/disable")
+@router.post("/{template_id}/disable", dependencies=[Depends(require_admin)])
 def disable_template(template_id: int, db: Session = Depends(get_session)):
     row = db.get(Template, template_id)
     if row is None:
@@ -335,7 +335,7 @@ def disable_template(template_id: int, db: Session = Depends(get_session)):
     return {"id": row.id, "status": row.status}
 
 
-@router.delete("/{template_id}")
+@router.delete("/{template_id}", dependencies=[Depends(require_admin)])
 def delete_template(template_id: int, db: Session = Depends(get_session)):
     row = db.get(Template, template_id)
     if row is None:
@@ -437,7 +437,7 @@ def export_template(template_id: int, db: Session = Depends(get_session)):
     )
 
 
-@router.post("/import")
+@router.post("/import", dependencies=[Depends(require_admin)])
 def import_template(payload: dict, db: Session = Depends(get_session)):
     bank = str(payload.get("bank_code") or "").upper()
     if not bank:
