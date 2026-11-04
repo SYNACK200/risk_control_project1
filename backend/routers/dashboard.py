@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import Report, Task, Template, Txn
+from db.models import CustomMetric, Report, Task, Template, Txn
 from db.session import get_session
 from helpers.security import require_banker
 
@@ -126,6 +126,8 @@ def get_dashboard(db: Session = Depends(get_session)):
                 continue
             hit_counter[(code, str(item.get("name") or item.get("text") or code)[:40])] += 1
 
+    custom_metric_count = db.scalar(select(func.count(CustomMetric.id))) or 0
+
     done = sum(1 for t in tasks if t.status == "DONE")
     failed = sum(1 for t in tasks if t.status == "FAILED")
 
@@ -154,6 +156,7 @@ def get_dashboard(db: Session = Depends(get_session)):
             "avg_txn": round(txn_total / len(tasks), 1) if tasks else 0,
             "coverage_warn": coverage_warn,
             "threshold_version": threshold_version,
+            "custom_metrics": int(custom_metric_count),
         },
         "grades": [
             {"grade": g, "label": GRADE_LABEL.get(g, g), "count": n}

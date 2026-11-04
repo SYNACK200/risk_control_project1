@@ -80,6 +80,11 @@ export function DashboardPage() {
           <span className="dash-kpi-label">判定阈值版本</span>
           <span className="dash-kpi-sub">点击查看/调整参数</span>
         </button>
+        <button className="dash-kpi" type="button" onClick={() => navigate('/metrics')}>
+          <span className="dash-kpi-value">{s.custom_metrics ?? 0}</span>
+          <span className="dash-kpi-label">自定义指标</span>
+          <span className="dash-kpi-sub">实验性口径登记 · 暂不参与计算</span>
+        </button>
       </div>
 
       <section className="dash-block">

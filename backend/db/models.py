@@ -194,3 +194,22 @@ class User(Base):
     status: Mapped[str] = mapped_column(String(16), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+class CustomMetric(Base):
+    """管理员登记的自定义指标口径（实验性：只登记口径，暂不参与自动计算）。
+
+    存在的意义：业务提出新的观察维度时，先把口径写下来并在看板/口径页可见，
+    等口径确认后再进算法实现，避免口头约定流失。
+    """
+    __tablename__ = "custom_metric"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    unit: Mapped[str | None] = mapped_column(String(16))
+    group_name: Mapped[str | None] = mapped_column(String(32))
+    formula: Mapped[str | None] = mapped_column(String(255))
+    inputs: Mapped[str | None] = mapped_column(String(255))
+    note: Mapped[str | None] = mapped_column(String(255))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
+    created_by: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
