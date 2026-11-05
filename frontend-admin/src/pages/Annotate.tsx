@@ -12,7 +12,7 @@ import { PdfPasswordError, openSampleFile } from '../lib/pdf';
 import { ArchiveError, extractStatement, isArchive } from '../lib/archive';
 import { PasswordDialog, type PasswordRequest } from '../components/PasswordDialog';
 import { createDemoPage } from '../lib/sample';
-import { decryptPdf, importTemplate, inferTemplate, probeTemplate, type InferResult, type ProbeResult } from '../lib/api';
+import { decryptPdf, inferTemplate, probeTemplate, type InferResult, type ProbeResult } from '../lib/api';
 import type { FieldMapV1, Issue, Rect, SamplePage, Selection, Tool } from '../lib/types';
 import { FIELD_DICT } from '../lib/fields';
 
@@ -80,9 +80,6 @@ export function AnnotatePage() {
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [probeNote, setProbeNote] = useState('');
-  const [importOpen, setImportOpen] = useState(false);
-  const [importText, setImportText] = useState('');
-  const [importBusy, setImportBusy] = useState(false);
   const [inferring, setInferring] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [events, setEvents] = useState<SpecialEvent[]>([]);
@@ -213,38 +210,6 @@ export function AnnotatePage() {
     });
     setNotice({ level: 'info', text: '已采用预读建议：' + cols.length + ' 列' +
       (metaFilled.length ? '，并自动填入 ' + metaFilled.join('、') : '') + '；请在画布上核对' });
-  }
-
-  /** 导入已有模板 JSON（高级：手工维护字段映射时用） */
-  async function importTemplateJson() {
-    const text = importText.trim();
-    if (!text) { setNotice({ level: 'warning', text: '请先粘贴模板 JSON' }); return; }
-    let payload: { bank_code?: string; field_map?: Record<string, unknown>; header_columns?: unknown[] };
-    try {
-      payload = JSON.parse(text);
-    } catch (err) {
-      setNotice({ level: 'error', text: 'JSON 不合法：' + (err instanceof Error ? err.message : String(err)) });
-      return;
-    }
-    if (!payload.field_map || typeof payload.field_map !== 'object') {
-      setNotice({ level: 'error', text: 'JSON 里缺少 field_map' });
-      return;
-    }
-    setImportBusy(true);
-    try {
-      const created = await importTemplate({
-        bank_code: (payload.bank_code || map.bank_code || 'UNKNOWN').toUpperCase(),
-        field_map: payload.field_map,
-        header_columns: payload.header_columns,
-      });
-      setNotice({ level: 'info', text: '已导入为草稿模板 #' + created.id + '，可在「模板库」里启用' });
-      setImportText('');
-      setImportOpen(false);
-    } catch (err) {
-      setNotice({ level: 'error', text: '导入失败：' + (err instanceof Error ? err.message : String(err)) });
-    } finally {
-      setImportBusy(false);
-    }
   }
 
   /** 收件：压缩包先解开（可能要口令），再按 PDF/图片打开。 */
@@ -568,20 +533,22 @@ export function AnnotatePage() {
   }
   return (
     <div className="app">
-      <Toolbar
-        tool={tool}
-        onTool={setTool}
-        page={page}
-        pageCount={pageCount}
-        onPage={p => { setPage(p); setSel(null); }}
-        zoom={zoom}
-        onZoom={setZoom}
-        onFile={f => { void loadFile(f); }}
-        onDemo={loadDemo}
-        onSave={save}
-        onReset={reset}
-        blocking={blocking}
-      />
+      {step === 2 && (
+        <Toolbar
+          tool={tool}
+          onTool={setTool}
+          page={page}
+          pageCount={pageCount}
+          onPage={p => { setPage(p); setSel(null); }}
+          zoom={zoom}
+          onZoom={setZoom}
+          onFile={f => { void loadFile(f); }}
+          onDemo={loadDemo}
+          onSave={save}
+          onReset={reset}
+          blocking={blocking}
+        />
+      )}
 
       <nav className="wizard-bar" aria-label="新建模板步骤">
         {([1, 2, 3] as const).map(n => (
@@ -624,7 +591,6 @@ export function AnnotatePage() {
               <button className="btn" type="button" onClick={() => uploadRef.current?.click()}>选择文件</button>
               <button className="btn secondary" type="button" onClick={loadDemo}>用内置示例页练习</button>
             </div>
-            <p className="muted small">已载入：<b>{sampleName || '未载入'}</b></p>
           </section>
 
           {(probing || probeResult || probeNote) && (
@@ -656,27 +622,9 @@ export function AnnotatePage() {
             </div>
           )}
 
-          {sample ? (
-            <div className="wizard-preview">
-              <Stage
-                sample={sample}
-                page={page}
-                zoom={zoom}
-                tool="meta"
-                map={map}
-                sel={sel}
-                onDraw={() => hint('这一步只看版式，点「下一步」再标注')}
-                onSelect={() => undefined}
-                onMove={() => undefined}
-                onHint={hint}
-              />
-            </div>
-          ) : (
+          {!sample && (
             <div className="stage-wrap">
-              <div className="empty">
-                先载入一份样例流水（PDF / JPG / PNG），或点「用内置示例页练习」。<br />
-                样例在本机读取；点「试解析」时才发往后端。
-              </div>
+              <div className="empty">还没有载入样例。选一个 PDF / JPG / PNG 文件，或先用内置示例页练习。</div>
             </div>
           )}
 
@@ -905,25 +853,6 @@ export function AnnotatePage() {
                 }}>对调金额/余额并重试</button>
             </div>
           )}
-
-          <section className="tpl-panel">
-            <div className="page-head-row">
-              <h3>高级：导入已有模板</h3>
-              <button className="pill-btn" type="button" onClick={() => setImportOpen(v => !v)}>
-                {importOpen ? '收起' : '展开'}
-              </button>
-            </div>
-            <p className="muted small">从别处导出的模板 JSON（含 field_map）可直接导入为草稿，再回「模板库」启用。</p>
-            {importOpen && (
-              <>
-                <textarea className="tpl-json" rows={6} value={importText} onChange={e => setImportText(e.target.value)}
-                  placeholder={'{\n  "bank_code": "CMB",\n  "field_map": { "txn_date": "交易日期", "amount": 4 }\n}'} />
-                <button className="btn" type="button" disabled={importBusy} onClick={() => void importTemplateJson()}>
-                  {importBusy ? '导入中…' : '导入为草稿'}
-                </button>
-              </>
-            )}
-          </section>
 
           <div className="wizard-actions">
             <button className="btn secondary" type="button" onClick={() => navigate('/templates/new/mark')}>← 上一步</button>
