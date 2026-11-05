@@ -600,6 +600,7 @@ table.mini th { background: #f8fafc; color: #475569; font-weight: 600; }
 .upload-actions { display: flex; gap: 10px; margin: 12px 0 6px; }
 .wizard-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; }
 .wizard-preview { margin: 0 18px; }
+.wizard-preview-head { display: flex; align-items: baseline; gap: 10px; padding: 6px 2px 8px; }
 /* ---- 业务看板 ---- */
 .dash-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
 .dash-kpi { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; background: #fff;
