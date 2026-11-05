@@ -597,7 +597,7 @@ export function AnnotatePage() {
             disabled={n > 1 && !sample}
           >
             <span className="wizard-num">{n}</span>
-            {n === 1 ? '载入样例' : n === 2 ? '标注列' : '试解析与保存'}
+            {n === 1 ? '预览样例' : n === 2 ? '标注列' : '标注结果'}
           </button>
         ))}
       </nav>

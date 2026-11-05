@@ -13,6 +13,7 @@ export function TemplateAdmin() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<Record<number, TemplateStats>>({});
+  const [openStat, setOpenStat] = useState<number | null>(null);
 
   async function refresh() {
     try {
@@ -39,11 +40,16 @@ export function TemplateAdmin() {
     }
   }
 
-  async function loadStats(id: number) {
-    try {
-      const s = await templateStats(id);
-      setStats(prev => ({ ...prev, [id]: s }));
-    } catch { /* ignore */ }
+  /** 点一次展开使用情况，再点一次收起。 */
+  async function toggleStats(id: number) {
+    if (openStat === id) { setOpenStat(null); return; }
+    setOpenStat(id);
+    if (!stats[id]) {
+      try {
+        const s = await templateStats(id);
+        setStats(prev => ({ ...prev, [id]: s }));
+      } catch { /* ignore */ }
+    }
   }
 
   return (
@@ -71,8 +77,10 @@ export function TemplateAdmin() {
                     <td>v{t.version}</td>
                     <td><span className={'tag ' + (t.status === 'enabled' ? 'pass' : t.status === 'draft' ? 'limited' : '')}>{t.status}</span></td>
                     <td>
-                      <button className="link-btn" type="button" onClick={() => { void loadStats(t.id); }}>{s ? s.tasks_total + ' 条' : '查看'}</button>
-                      {s && <span className="muted small"> 成功 {s.tasks_done} · 失败 {s.tasks_failed} · 平均 {s.avg_txn_count ?? '—'} 笔</span>}
+                      <button className="link-btn" type="button" onClick={() => { void toggleStats(t.id); }}>
+                        {s ? s.tasks_total + ' 条' : '使用情况'}{openStat === t.id ? ' ▴' : ' ▾'}
+                      </button>
+                      {openStat === t.id && s && <span className="muted small"> 成功 {s.tasks_done} · 失败 {s.tasks_failed} · 平均 {s.avg_txn_count ?? '—'} 笔</span>}
                     </td>
                     <td className="num">{s?.success_rate === null || s?.success_rate === undefined ? '—' : Math.round(s.success_rate * 100) + '%'}</td>
                     <td className="muted small">{Object.keys(t.field_map ?? {}).length} 项</td>
