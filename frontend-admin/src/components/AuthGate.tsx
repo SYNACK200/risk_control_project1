@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AUTH_REQUIRED_EVENT, clearToken, getToken } from '../lib/auth';
 import { LoginPage } from '../pages/LoginPage';
-import { UserBar } from './UserBar';
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'checking' | 'login' | 'ok' | 'forbidden'>('checking');
@@ -38,5 +37,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  return <><UserBar />{children}</>;
+  return <>{children}</>;
 }
