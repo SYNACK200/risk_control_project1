@@ -167,7 +167,7 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(32))
     object_type: Mapped[str | None] = mapped_column(String(32))
     object_id: Mapped[int | None] = mapped_column(Integer)
-    detail: Mapped[str | None] = mapped_column(String(255))
+    detail: Mapped[str | None] = mapped_column(String(1024))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
