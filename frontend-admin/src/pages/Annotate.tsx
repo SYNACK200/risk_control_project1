@@ -564,9 +564,9 @@ export function AnnotatePage() {
             type="button"
             className={'wizard-step-btn' + (step === n ? ' active' : '') + (step > n ? ' done' : '')}
             onClick={() => {
-              if (n === 1) navigate('/templates/new');
-              if (n === 2 && sample) navigate('/templates/new/mark');
-              if (n === 3 && sample) navigate('/templates/new/check');
+              if (n === 1) navigate('/annotate');
+              if (n === 2 && sample) navigate('/annotate/mark');
+              if (n === 3 && sample) navigate('/annotate/check');
             }}
             disabled={n > 1 && !sample}
           >
@@ -622,21 +622,40 @@ export function AnnotatePage() {
                 </>
               )}
               {probeResult && probeResult.suggestions.length > 0 && (
-                <button className="pill-btn pill-btn-primary" type="button" onClick={() => { adoptProbe(); navigate('/templates/new/mark'); }}>
+                <button className="pill-btn pill-btn-primary" type="button" onClick={() => { adoptProbe(); navigate('/annotate/mark'); }}>
                   采用建议标注（{probeResult.suggestions.length} 列）并进入标注
                 </button>
               )}
             </div>
           )}
 
-          {!sample && (
+          {sample ? (
+            <div className="wizard-preview">
+              <div className="wizard-preview-head">
+                <b>版式预览</b>
+                <span className="muted small">第 {page} / {pageCount} 页 · 这一步只看，不可编辑；点「下一步」开始标注</span>
+              </div>
+              <Stage
+                sample={sample}
+                page={page}
+                zoom={zoom}
+                tool="meta"
+                map={map}
+                sel={sel}
+                onDraw={() => hint('这一步只看版式，点「下一步：标注列」再画框')}
+                onSelect={() => undefined}
+                onMove={() => undefined}
+                onHint={hint}
+              />
+            </div>
+          ) : (
             <div className="stage-wrap">
               <div className="empty">还没有载入样例。选一个 PDF / JPG / PNG 文件，或先用内置示例页练习。</div>
             </div>
           )}
 
           <div className="wizard-actions">
-            <button className="btn" type="button" disabled={!sample} onClick={() => navigate('/templates/new/mark')}>
+            <button className="btn" type="button" disabled={!sample} onClick={() => navigate('/annotate/mark')}>
               下一步：标注列 →
             </button>
           </div>
@@ -813,8 +832,8 @@ export function AnnotatePage() {
           )}
 
           <div className="wizard-actions">
-            <button className="btn secondary" type="button" onClick={() => navigate('/templates/new')}>← 上一步</button>
-            <button className="btn" type="button" disabled={map.tables.length === 0} onClick={() => navigate('/templates/new/check')}>
+            <button className="btn secondary" type="button" onClick={() => navigate('/annotate')}>← 上一步</button>
+            <button className="btn" type="button" disabled={map.tables.length === 0} onClick={() => navigate('/annotate/check')}>
               下一步：试解析与保存 →
             </button>
           </div>
@@ -889,7 +908,7 @@ export function AnnotatePage() {
           )}
 
           <div className="wizard-actions">
-            <button className="btn secondary" type="button" onClick={() => navigate('/templates/new/mark')}>← 上一步</button>
+            <button className="btn secondary" type="button" onClick={() => navigate('/annotate/mark')}>← 上一步</button>
             <button className="btn secondary" type="button" onClick={() => navigate('/templates')}>完成，回模板库</button>
           </div>
         </div>
