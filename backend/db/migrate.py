@@ -12,6 +12,18 @@ def ensure_columns() -> list[str]:
     if engine is None:
         return []
     done: list[str] = []
+    # 审计 detail 里会拼任务 id 列表，255 不够用（批量 61 条会超）
+    try:
+        acols = {c["name"]: c for c in insp.get_columns("audit_log")}
+        detail_col = acols.get("detail")
+        if detail_col is not None:
+            max_len = getattr(detail_col.get("type"), "length", None)
+            if max_len is not None and max_len < 1024:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE audit_log MODIFY COLUMN detail VARCHAR(1024) NULL"))
+                done.append("audit_log.detail")
+    except Exception:  # noqa: BLE001 - 老库可能还没有 audit_log
+        pass
     insp = inspect(engine)
     columns = {c["name"] for c in insp.get_columns("task")}
     with engine.begin() as conn:

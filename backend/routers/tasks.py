@@ -429,6 +429,14 @@ class TaskIdsPayload(BaseModel):
     confirm: bool = False
 
 
+def _ids_brief(ids, limit: int = 20) -> str:
+    """审计用：id 列表可能很长，只保留前若干个 + 总数，避免超出 detail 列长度。"""
+    ordered = sorted(ids)
+    head = ",".join(str(i) for i in ordered[:limit])
+    more = f"...(+{len(ordered) - limit})" if len(ordered) > limit else ""
+    return f"[{head}]{more}"
+
+
 def _load_tasks(db: Session, ids: list[int]) -> list[Task]:
     if not ids:
         raise HTTPException(400, detail={"code": "E_PARAM", "message": "未选择任何流水"})
@@ -517,7 +525,7 @@ def recycle_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
             row.deleted_at = now
             moved += 1
     db.add(AuditLog(action="recycle_tasks", object_type="task", object_id=rows[0].id,
-                    detail=f"ids={sorted(r.id for r in rows)}; moved={moved}"))
+                    detail=f"ids={_ids_brief([r.id for r in rows])}; moved={moved}"))
     db.commit()
     return {"moved": moved, "ids": sorted(r.id for r in rows)}
 
@@ -535,7 +543,7 @@ def restore_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
             row.deleted_at = None
             restored += 1
     db.add(AuditLog(action="restore_tasks", object_type="task", object_id=rows[0].id,
-                    detail=f"ids={sorted(r.id for r in rows)}; restored={restored}"))
+                    detail=f"ids={_ids_brief([r.id for r in rows])}; restored={restored}"))
     db.commit()
     return {"restored": restored, "ids": sorted(r.id for r in rows)}
 
@@ -564,7 +572,7 @@ def purge_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
         db.delete(task)
         purged += 1
     db.add(AuditLog(action="purge_tasks", object_type="task", object_id=ids[0],
-                    detail=f"ids={sorted(ids)}; purged={purged}"))
+                    detail=f"ids={_ids_brief(ids)}; purged={purged}"))
     db.commit()
     return {"purged": purged, "ids": sorted(ids)}
 
