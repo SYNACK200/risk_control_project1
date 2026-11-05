@@ -159,6 +159,7 @@ export function TemplateDetailPage() {
         </div>
       </section>
 
+      {!editOpen && (
       <section className="card">
         <div className="card-head-static">
           <strong>字段映射</strong>
@@ -183,6 +184,7 @@ export function TemplateDetailPage() {
           {mapped.length === 0 && <p className="muted">这个模板还没有字段映射。</p>}
         </div>
       </section>
+      )}
 
       {editOpen && (
         <section className="tpl-panel">

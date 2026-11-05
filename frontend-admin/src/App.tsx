@@ -90,9 +90,6 @@ function Shell({ active, children }: { active: string; children: React.ReactNode
           ))}
         </nav>
         <div className="side-foot">
-          <button type="button" className="nav-item" onClick={() => navigate('/tasks')}>
-            <span className="nav-label">返回解析结果</span>
-          </button>
           <UserBar />
         </div>
       </aside>

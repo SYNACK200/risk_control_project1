@@ -83,7 +83,7 @@ export function Inspector(p: Props) {
 
       <h2>当前选中</h2>
       <div className="row"><label>对象</label><span className="muted">{currentLabel}</span></div>
-      {(target?.kind === 'meta' || target?.kind === 'column') && (
+      {target?.kind === 'meta' && (
         <>
           <div className="row">
             <label>字段</label>
@@ -92,7 +92,6 @@ export function Inspector(p: Props) {
               {options.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
             </select>
           </div>
-          {target.kind === 'column' && <p className="muted">给列指定字段后，同一列的行会自动归到这个字段。</p>}
         </>
       )}
       {target?.kind === 'table' && (
