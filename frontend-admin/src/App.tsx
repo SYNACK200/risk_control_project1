@@ -39,9 +39,7 @@ const NAV: NavGroup[] = [
     group: '模板',
     items: [
       { key: 'templates', label: '模板库', desc: '查看、启停、版本' },
-      { key: 'annotate', label: '新建模板 ①', desc: '载入样例与预读' },
-      { key: 'annotate/mark', label: '新建模板 ②', desc: '标注表格列' },
-      { key: 'annotate/check', label: '新建模板 ③', desc: '试解析与保存' },
+      { key: 'annotate', label: '新建模板', desc: '预览 → 标注 → 结果（同一步流程）' },
       { key: 'import', label: '导入模板', desc: '粘贴 JSON 导入' },
     ],
   },
@@ -108,8 +106,7 @@ function Home() {
   const current = location.pathname.replace(/^\//, '');
   const root = current.split('/')[0]; // /annotate/mark 这类多段路径，按首段归到 annotate
   const tab = KEYS.includes(root) ? root : 'tasks';
-  // 导航高亮：多段 key（annotate/mark）按完整路径匹配，其余按首段
-  const activeKey = KEYS.includes(current) ? current : tab;
+  const activeKey = tab;
   return (
     <Shell active={activeKey}>
       {tab === 'dashboard' && <DashboardPage />}
