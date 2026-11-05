@@ -66,6 +66,7 @@ export function AnnotatePage() {
   const navigate = useNavigate();
   const step: 1 | 2 | 3 = location.pathname.endsWith('/mark') ? 2 : location.pathname.endsWith('/check') ? 3 : 1;
   const uploadRef = useRef<HTMLInputElement | null>(null);
+  const probeAutoRef = useRef(false);
   const [map, setMap] = useState<FieldMapV1>(() => loadDraft() ?? createEmpty());
   const [sample, setSample] = useState<SamplePage | null>(null);
   const [sampleName, setSampleName] = useState('');
@@ -161,6 +162,10 @@ export function AnnotatePage() {
       if (password) form.append('password', password);
       const res = await probeTemplate(form);
       setProbeResult(res);
+      // 傻瓜路径：新起一张模板且当前没有任何标注时，直接套用系统建议，省掉「点一下采用」
+      if (res.suggestions.length > 0 && map.tables.length === 0) {
+        probeAutoRef.current = true;
+      }
     } catch (err) {
       setProbeResult(null);
       const msg = err instanceof Error ? err.message : String(err);
@@ -243,6 +248,14 @@ export function AnnotatePage() {
   }
 
   /** 收件：压缩包先解开（可能要口令），再按 PDF/图片打开。 */
+  // probe 完成且命中了自动套用标记 → 直接 adopt（用户只需确认，不用再点）
+  useEffect(() => {
+    if (probeAutoRef.current && probeResult && probeResult.suggestions.length > 0 && map.tables.length === 0) {
+      probeAutoRef.current = false;
+      adoptProbe();
+    }
+  }, [probeResult]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function loadFile(file: File) {
     logEvent(file.name, '收到材料', `${(file.size / 1024).toFixed(1)} KB`, 'info');
     if (isArchive(file)) {
@@ -424,13 +437,6 @@ export function AnnotatePage() {
     }));
   }
 
-  function addColumnField(tableId: string, index: number, current: string[]) {
-    const code = window.prompt('再给这一列加一个属性（字段 code，可自定义，例如 counterparty_name）', '');
-    if (!code) return;
-    const next = Array.from(new Set([...current, code.trim()]));
-    updateColumn(tableId, index, { fields: next });
-  }
-
   function removeColumnField(tableId: string, index: number, current: string[], code: string) {
     const next = current.filter(c => c !== code);
     updateColumn(tableId, index, { fields: next.length ? next : undefined, ...(next.includes(code) ? {} : {}) });
@@ -494,14 +500,14 @@ export function AnnotatePage() {
     setNotice({ level: 'info', text: '已清空标注。' });
   }
 
-  async function runInfer() {
+  async function runInfer(overrideMarks?: { field: string; page: number; x: number; y: number }[]) {
     if (!source) { hint('先载入一份 PDF 样例；内置示例页没有源文件，不能试解析。'); return; }
     if (!/\.pdf$/i.test(source.file.name) && source.file.type !== 'application/pdf') {
       hint('试解析目前只支持 PDF 电子件；图片件请先导出为 PDF。');
       return;
     }
     if (!map.page_size.w || !map.page_size.h) { hint('还没有记录样例页面尺寸，请重新载入样例。'); return; }
-    const marks = marksFromMap(map);
+    const marks = overrideMarks ?? marksFromMap(map);
     if (marks.length === 0) { hint('先给表格列指定字段，或画几个字段框，再试解析。'); return; }
     setInferring(true);
     setInference(null);
@@ -780,7 +786,7 @@ export function AnnotatePage() {
                           onChange={e => {
                             const v = e.target.value;
                             if (v === '__custom__') {
-                              const code = window.prompt('自定义字段 code（英文/下划线）', '');
+                              const code = window.prompt('给这个字段起个英文代号（字母/下划线，如 night_ratio）', 'night_ratio');
                               if (!code) return;
                               customField(code.trim());
                               updateColumn(tb.id, i, { field: code.trim(), fields: [code.trim()] });
@@ -805,7 +811,15 @@ export function AnnotatePage() {
                           </span>
                         ))}
                         <button className="link-btn" type="button"
-                          onClick={() => addColumnField(tb.id, i, codes)}>＋属性</button>
+                          onClick={() => {
+                          const options = FIELD_DICT.filter(f => f.scope !== 'meta' && !codes.includes(f.code));
+                          const picked = window.prompt('再给这列加一个属性，直接输编号：\n' + options.map((f, k) => (k + 1) + '. ' + f.label + '（' + f.code + '）').join('\n'), '1');
+                          if (!picked) return;
+                          const idx = Number(picked) - 1;
+                          const target = options[idx];
+                          if (!target) return;
+                          updateColumn(tb.id, i, { fields: [...codes, target.code] });
+                        }}>＋属性</button>
                         <button className="link-btn danger-text" type="button"
                           onClick={() => removeColumn(tb.id, i)}>删除</button>
                       </div>
@@ -873,6 +887,23 @@ export function AnnotatePage() {
               )}
               <p className="muted">field_map：<span className="mono">{JSON.stringify(inference.field_map)}</span></p>
             </section>
+          )}
+
+
+          {inference && inference.valid === false && (inference.warnings || []).some(w => w.includes('余额链')) && (
+            <div className="notice warning" style={{ marginTop: 10 }}>
+              看起来金额列和余额列被对调了。点一下自动交换并重试，不用自己找原因。
+              <button className="btn" type="button" style={{ marginLeft: 10 }} disabled={inferring}
+                onClick={() => {
+                  const m = marksFromMap(map);
+                  const a = m.find(x => x.field === 'amount');
+                  const b = m.find(x => x.field === 'balance');
+                  if (!a || !b) { setNotice({ level: 'error', text: '没找到金额/余额两项标注，先回上一步确认列' }); return; }
+                  const ax = a.x, bx = b.x;
+                  a.x = bx; b.x = ax;
+                  void runInfer(m);
+                }}>对调金额/余额并重试</button>
+            </div>
           )}
 
           <section className="tpl-panel">
