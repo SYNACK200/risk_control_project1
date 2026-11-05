@@ -67,6 +67,7 @@ export function AnnotatePage() {
   const step: 1 | 2 | 3 = location.pathname.endsWith('/mark') ? 2 : location.pathname.endsWith('/check') ? 3 : 1;
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const probeAutoRef = useRef(false);
+  const [guideOpen, setGuideOpen] = useState(true);
   const [map, setMap] = useState<FieldMapV1>(() => loadDraft() ?? createEmpty());
   const [sample, setSample] = useState<SamplePage | null>(null);
   const [sampleName, setSampleName] = useState('');
@@ -87,6 +88,12 @@ export function AnnotatePage() {
   const pageCount = sample?.pageCount ?? 1;
   const issues: Issue[] = useMemo(() => validate(map, pageCount), [map, pageCount]);
   const blocking = issues.filter(i => i.level === 'error').length;
+
+  // 必填缺失提示（与校验清单同源，避免两套规则）
+  const missingRequired = (() => {
+    const issue = issues.find(i => i.code === 'T003');
+    return issue ? issue.message : '';
+  })();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -639,6 +646,33 @@ export function AnnotatePage() {
       {/* ---------- 步骤 2：标注 ---------- */}
       {step === 2 && (
         <div className="wizard-step">
+          <section className="mark-guide">
+            <div className="mark-guide-head">
+              <h3>标注怎么做（照着 4 步画）</h3>
+              <button className="pill-btn" type="button" onClick={() => setGuideOpen(v => !v)}>
+                {guideOpen ? '收起' : '展开'}
+              </button>
+            </div>
+            {guideOpen && (
+              <>
+                <ol className="mark-guide-steps">
+                  <li><b>画表格区</b>：点顶部「画表格区」，框住明细表整体（不含页眉页脚）。</li>
+                  <li><b>画列边界</b>：点「画列边界」，在表格区里每一列拖一条（从表头上沿到表头下沿即可）。</li>
+                  <li><b>指定字段</b>：在下方「已标注字段」里，给每列选它是什么字段。</li>
+                  <li><b>补字段框</b>：页眉里的账号、交易期间等，用「画字段框」单独圈出来。</li>
+                </ol>
+                <p className="mark-guide-required">
+                  <b>必填 6 项</b>：账号、交易期间（页眉）· 交易日期、摘要、发生额、余额（明细列）
+                  {missingRequired ? <span className="dash-warn"> · {missingRequired}</span> : <span className="mark-guide-ok"> · 已满足</span>}
+                </p>
+                <p className="muted small">
+                  画错了就点该对象后按「删除选中」，或直接重画；右上角「清空」可全部重来。
+                  预读已自动套用时，你只需核对列是否对齐，不必从零画。
+                </p>
+              </>
+            )}
+          </section>
+
           <div className="workspace">
             {sample ? (
               <Stage

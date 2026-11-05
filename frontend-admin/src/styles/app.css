@@ -685,3 +685,11 @@ tr.clickable:hover { background: #f6f8fb; }
 
 /* ---- 分页 ---- */
 .pager { display: flex; align-items: center; gap: 10px; padding: 12px 2px 4px; justify-content: flex-end; }
+/* ---- 标注指引 ---- */
+.mark-guide { margin: 0 18px 12px; padding: 14px 18px; background: #f4f8ff; border: 1px solid #d6e4fb; border-radius: 12px; }
+.mark-guide-head { display: flex; justify-content: space-between; align-items: center; }
+.mark-guide-head h3 { margin: 0; font-size: 14.5px; }
+.mark-guide-steps { margin: 10px 0 8px; padding-left: 20px; line-height: 1.9; font-size: 13.5px; }
+.mark-guide-steps b { color: var(--ink); }
+.mark-guide-required { margin: 6px 0; font-size: 13px; color: var(--ink); }
+.mark-guide-ok { color: #16a34a; }
