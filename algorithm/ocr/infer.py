@@ -197,18 +197,37 @@ def _cluster_columns(anchors: list[dict], pages: dict[int, list[dict]], tol: flo
 
 
 def detect_header_row(pages: dict[int, list[dict]]) -> list[dict]:
-    """找表头行：词数最多、且多为短中文的一行。返回该行的词（按 x 升序）。"""
+    """找表格表头行：按「命中已知字段名的个数」优先，其次看词数与行位置。
+
+    历史教训：早期判据是「词数最多且多为短中文」，结果选中的是页眉信息行
+    （账号 6222… / 户名 何仁杰 / 起止日期 …）——那行词数往往比真正的表头还多，
+    于是列边界全部基于页眉词算出来，画出来的列框与数据列系统性错位。
+    表头行的可靠特征是「一行里出现多个已知字段名」（日期/摘要/金额/余额/币种…）。
+    """
     best_row: list[dict] = []
+    best_score = float("-inf")
     for ws in pages.values():
         rows: dict[int, list[dict]] = {}
         for w in ws:
             rows.setdefault(int(round(w["top"] / 3)), []).append(w)
+        # 页面高度百分比：页眉通常在最上面 15% 内，给一点负权重而不是直接排除（有些文件表头也很靠上）
+        heights = [w["bottom"] for w in ws] or [1.0]
+        page_bottom = max(heights) or 1.0
         for row in rows.values():
-            if len(row) < 3 or len(row) <= len(best_row):
+            if len(row) < 3:
                 continue
-            short_cn = sum(1 for w in row
-                           if 1 <= len(w["text"]) <= 10 and re.search(r"[\u4e00-\u9fff]", w["text"]))
-            if short_cn >= len(row) * 0.6:
+            texts = [str(w["text"]).strip() for w in row]
+            hits = sum(1 for t in texts if t in FIELD_BY_HEADER)
+            cn = sum(1 for t in texts if 1 <= len(t) <= 10 and re.search(r"[\u4e00-\u9fff]", t))
+            if cn < len(row) * 0.5:
+                continue
+            top_ratio = min(w["top"] for w in row) / page_bottom
+            # 字段名命中占绝对权重；词数只做小幅加分；太靠页顶（<8%）略降权
+            score = hits * 10.0 + min(len(row), 12) * 0.8
+            if top_ratio < 0.08:
+                score -= 3.0
+            if score > best_score:
+                best_score = score
                 best_row = row
     return sorted(best_row, key=lambda w: (w["x0"] + w["x1"]) / 2)
 
