@@ -215,3 +215,64 @@ def deskew(file_bytes: bytes, max_deg: float = 5.0) -> tuple[bytes, float]:
     if not ok:
         return file_bytes, 0.0
     return buf.tobytes(), angle
+
+def correct_perspective(file_bytes: bytes) -> tuple[bytes, float]:
+    """斜拍件透视校正：找页面最大的四边形外框，把它拉成正矩形。
+
+    返回 (新图片字节, 校正后的透视度)。找不到可信四边形时原样返回。
+
+    为什么值得做：手机斜拍时左右竖线不平行，列边界在页面上「上宽下窄」，
+    按同一套 x 坐标切列，越往下越对不上。先把它拉正，列切分才有一致基准。
+    """
+    import cv2
+
+    img = _page_image(file_bytes)
+    if img is None:
+        return file_bytes, 0.0
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return file_bytes, 0.0
+    # 面积至少占画面的 20%，否则多半是纸张里的小表格
+    min_area = 0.12 * w * h
+    best = None
+    best_area = 0.0
+    # 多候选、多容差：纸张边缘常常缺口，单次 approxPolyDP 容易凑不出正好 4 点
+    for c in sorted(contours, key=cv2.contourArea, reverse=True)[:12]:
+        area = cv2.contourArea(c)
+        if area < min_area or area <= best_area:
+            continue
+        peri = cv2.arcLength(c, True)
+        for eps in (0.02, 0.03, 0.05):
+            approx = cv2.approxPolyDP(c, eps * peri, True)
+            if len(approx) == 4 and cv2.isContourConvex(approx):
+                best, best_area = approx, area
+                break
+        if best is not None:
+            break
+    if best is None:
+        return file_bytes, 0.0
+
+    pts = best.reshape(4, 2).astype("float32")
+    # 排序：左上、右上、右下、左下（按 y 分组再按 x 分）
+    s = pts.sum(axis=1)
+    d = np.diff(pts, axis=1).reshape(-1)
+    tl = pts[int(np.argmin(s))]
+    br = pts[int(np.argmax(s))]
+    tr = pts[int(np.argmin(d))]
+    bl = pts[int(np.argmax(d))]
+    src = np.array([tl, tr, br, bl], dtype="float32")
+    width = max(float(np.linalg.norm(br - bl)), float(np.linalg.norm(tr - tl)))
+    height = max(float(np.linalg.norm(tr - br)), float(np.linalg.norm(tl - bl)))
+    if width < 50 or height < 50:
+        return file_bytes, 0.0
+    dst = np.array([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]], dtype="float32")
+    matrix = cv2.getPerspectiveTransform(src, dst)
+    warped = cv2.warpPerspective(img, matrix, (int(width), int(height)), flags=cv2.INTER_CUBIC)
+    ok, buf = cv2.imencode(".png", warped)
+    if not ok:
+        return file_bytes, 0.0
+    after = assess(buf.tobytes())
+    return buf.tobytes(), after.perspective

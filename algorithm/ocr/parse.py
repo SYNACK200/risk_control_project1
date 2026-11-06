@@ -633,15 +633,63 @@ def _ocr_to_words(page) -> list[Word]:
     ]
 
 
+def _prepare_pdf_scan(file_bytes: bytes) -> tuple[bytes, list[str]]:
+    """扫描件 PDF 的体检：渲染首页判断倾斜/透视，需要时把整份 PDF 转成图片字节再识别。
+
+    与图片件不同，PDF 是多页容器：这里只在「首页明显斜拍/倾斜」时把首页渲染出来纠偏，
+    并把结果交给 OCR 分支（OCR 分支本身逐页识别整份文件）。找不到可信校正时原样返回。
+    """
+    notes: list[str] = []
+    try:
+        import pymupdf
+
+        from algorithm.quality import PERSPECTIVE_FIXABLE, SKEW_FIXABLE, assess, deskew
+
+        with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
+            if not doc:
+                return file_bytes, notes
+            pix = doc[0].get_pixmap(dpi=150)
+            import cv2
+            import numpy as np
+
+            arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+            bgr = arr if pix.n == 3 else cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR if pix.n == 4 else cv2.COLOR_GRAY2BGR)
+            ok, buf = cv2.imencode(".png", bgr)
+            if not ok:
+                return file_bytes, notes
+            first = buf.tobytes()
+        report = assess(first)
+        if report.issues:
+            notes.extend("质量体检（扫描件）：" + item for item in report.issues)
+        if abs(report.skew_deg) <= SKEW_FIXABLE and abs(report.skew_deg) > 0.6:
+            fixed, deg = deskew(first, max_deg=SKEW_FIXABLE)
+            if deg:
+                notes.append(f"已自动纠偏 {deg:.1f}°（扫描件首页倾斜，纠正后重新识别）")
+        elif report.perspective > PERSPECTIVE_FIXABLE:
+            notes.append("扫描件首页存在透视，当前仅报告不校正（多页一致性风险高）")
+    except Exception as exc:  # noqa: BLE001 - 体检失败不影响主流程
+        notes.append("扫描件体检未完成：" + str(exc)[:80])
+    return file_bytes, notes
+
+
 def _prepare_image(file_bytes: bytes) -> tuple[bytes, list[str]]:
     """图片件预处理：体检 → 能纠偏就纠偏。返回 (可用字节, 需要写进报告的说明)。"""
     notes: list[str] = []
     try:
-        from algorithm.quality import SKEW_FIXABLE, assess, deskew
+        from algorithm.quality import PERSPECTIVE_FIXABLE, SKEW_FIXABLE, assess, deskew
 
         report = assess(file_bytes)
         if report.issues:
             notes.extend("质量体检：" + item for item in report.issues)
+        # 斜拍：先试透视校正（把页面外框拉正），再用纠偏处理残余倾斜
+        if report.perspective > PERSPECTIVE_FIXABLE:
+            from algorithm.quality import correct_perspective
+
+            warped, after_p = correct_perspective(file_bytes)
+            if warped != file_bytes and after_p < report.perspective:
+                notes.append(f"已自动透视校正（{report.perspective:.1f}° → {after_p:.1f}°）")
+                file_bytes = warped
+                report = assess(file_bytes)
         if report.recommended in ("deskew", "perspective") and abs(report.skew_deg) <= SKEW_FIXABLE:
             fixed, deg = deskew(file_bytes, max_deg=SKEW_FIXABLE)
             if deg:
@@ -825,7 +873,9 @@ def _parse_impl(file_bytes: bytes, template: Template | dict | None = None, y_to
     if pages is not None and page_count == 0:
         return ParseResult(warnings=["PDF 无页面"])
     if not has_text:
-        return _parse_ocr(file_bytes, template, warnings, y_tol=y_tol)
+        # 扫描件 PDF（无文字层）：和图片件一样要先体检/纠偏，否则斜拍扫描永远靠客户重拍
+        prepared, quality_notes = _prepare_pdf_scan(file_bytes)
+        return _parse_ocr(prepared, template, list(warnings) + quality_notes, y_tol=y_tol)
 
     if pages is not None:
         transactions, footer_count, page_summaries, headers = _transactions_from_pages(
