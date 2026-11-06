@@ -25,13 +25,15 @@ class CustomMetricIn(BaseModel):
     formula: str | None = Field(default=None, max_length=255)
     inputs: str | None = Field(default=None, max_length=255)
     note: str | None = Field(default=None, max_length=255)
+    # 计算步骤：形如 [{"atom":"filter_direction","args":{"value":"out"}},{"atom":"sum"}]
+    steps: list | None = None
 
 
 def _row(m: CustomMetric) -> dict:
     return {
         "id": m.id, "code": m.code, "name": m.name, "unit": m.unit,
         "group_name": m.group_name, "formula": m.formula, "inputs": m.inputs,
-        "note": m.note, "enabled": bool(m.enabled),
+        "note": m.note, "enabled": bool(m.enabled), "steps": m.steps,
         "created_at": m.created_at.isoformat() if m.created_at else None,
     }
 
@@ -60,9 +62,16 @@ def create_custom_metric(payload: CustomMetricIn, db: Session = Depends(get_sess
     exists = db.execute(select(CustomMetric).where(CustomMetric.code == code)).scalars().first()
     if exists is not None:
         raise HTTPException(409, detail={"code": "E_EXISTS", "message": f"指标编码 {code} 已存在"})
+    if payload.steps:
+        from algorithm.algo.atoms import ATOM_BY_KEY
+
+        unknown = [str(st.get("atom")) for st in payload.steps if str(st.get("atom")) not in ATOM_BY_KEY]
+        if unknown:
+            raise HTTPException(400, detail={"code": "E_PARAM",
+                                            "message": f"未知计算元：{'、'.join(unknown)}"})
     row = CustomMetric(code=code, name=payload.name.strip(), unit=payload.unit,
                        group_name=payload.group_name, formula=payload.formula,
-                       inputs=payload.inputs, note=payload.note)
+                       inputs=payload.inputs, note=payload.note, steps=payload.steps)
     db.add(row)
     db.add(AuditLog(action="add_metric", object_type="custom_metric", object_id=0,
                     detail=f"{code} {payload.name.strip()}"[:180]))

@@ -212,6 +212,9 @@ class CustomMetric(Base):
     formula: Mapped[str | None] = mapped_column(String(255))
     inputs: Mapped[str | None] = mapped_column(String(255))
     note: Mapped[str | None] = mapped_column(String(255))
+    # 计算步骤：用计算元（atoms）描述如何从流水算出这个指标，
+    # 形如 [{"atom":"filter_direction","args":{"value":"out"}},{"atom":"sum"}]
+    steps: Mapped[list | None] = mapped_column(JSON)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
     created_by: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
