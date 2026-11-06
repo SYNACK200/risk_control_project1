@@ -115,7 +115,9 @@ def run_task(task_id: int, password: str | None = None) -> dict:
             if template_row is not None and template_row.deleted_at is None:
                 template = {"bank_code": template_row.bank_code,
                             "version": template_row.version,
-                            "field_map": template_row.field_map}
+                            "field_map": template_row.field_map,
+                            # 有框画范围就带上：解析优先用它切列，比按表头词中心推算稳
+                            "layout": template_row.layout}
 
         transition(task, "CHECKING")
         transition(task, "PARSING")

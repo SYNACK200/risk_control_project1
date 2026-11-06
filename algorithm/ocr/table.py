@@ -184,7 +184,48 @@ def apply_template(tokens: list[Word], mapping: dict[int, str], field_map: dict[
     return merged
 
 
-def build_columns(tokens: list[Word], mapping: dict[int, str]) -> list[Column]:
+def build_columns(tokens: list[Word], mapping: dict[int, str],
+                  layout: dict | None = None) -> list[Column]:
+    """按列边界切分。优先用模板保存的框画范围（layout），否则按表头词中心推算。
+
+    为什么优先 layout：表头词中心是「文字位置」，字宽、空格、对齐都会让它偏离真实列边界；
+    layout 是人工在样本上画出来的「列范围」，版式一致时它更准，也让「改框画范围」真正生效。
+    字段在 layout 里找不到时逐个回退到中心推算，不会因为一个字段缺失就整体失效。
+    """
+    # ---- 优先：用 layout 的列几何 ----
+    if layout:
+        tables = layout.get("tables") or []
+        cols = []
+        for tb in tables:
+            cols.extend(tb.get("columns") or [])
+        page_size = layout.get("page_size") or {}
+        width = float(page_size.get("w") or 0)
+        if cols and width > 0:
+            by_field: dict[str, dict] = {}
+            for c in cols:
+                f = c.get("field")
+                if f and f not in by_field:
+                    by_field[str(f)] = c
+            centers = [t.cx for t in tokens]
+            fallback = [-1e9]
+            for left, right in zip(centers, centers[1:]):
+                fallback.append((left + right) / 2)
+            fallback.append(1e9)
+            built: list[Column] = []
+            for idx, canonical in mapping.items():
+                c = by_field.get(str(canonical))
+                if c and c.get("x") is not None and c.get("w"):
+                    left = float(c["x"]) * width
+                    right = left + float(c["w"]) * width
+                else:
+                    # 回退到表头词中心（索引越界时给一个宽区间，避免丢列）
+                    lo = fallback[idx] if idx < len(fallback) else -1e9
+                    hi = fallback[idx + 1] if idx + 1 < len(fallback) else 1e9
+                    left, right = lo, hi
+                built.append(Column(field=canonical, left=left, right=right))
+            if built:
+                return built
+
     centers = [t.cx for t in tokens]
     bounds = [-1e9]
     for left, right in zip(centers, centers[1:]):
