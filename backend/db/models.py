@@ -215,3 +215,18 @@ class CustomMetric(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
     created_by: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class SubjectDecision(Base):
+    """人工对「一账户多户名」的判定留痕：确认这个账户实际归属哪个户名。
+
+    存在的意义：冲突只靠系统告警没用，必须有人签字确认；判定要能追溯到人和时间。
+    """
+    __tablename__ = "subject_decision"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    subject: Mapped[str] = mapped_column(String(128))
+    action: Mapped[str] = mapped_column(String(16), default="confirm")
+    note: Mapped[str | None] = mapped_column(String(255))
+    created_by: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

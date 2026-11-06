@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { getEntities, getMergeMethods, getMetricDefinitions, getThresholdDefinitions, mergeSubject,
+import { getEntities, getMergeMethods, getMetricDefinitions, getThresholdDefinitions, mergeSubject, resolveConflict, undoConflict,
   type EntitiesPayload, type MetricDef, type SubjectMergeMethod, type SubjectMergeResult, type ThresholdDef } from '../lib/api';
 
 const GROUP_NAME: Record<string, string> = {
@@ -13,6 +13,7 @@ export function EntitiesPage() {
   const [methods, setMethods] = useState<SubjectMergeMethod[]>([]);
   const [overlaps, setOverlaps] = useState<{ id: string; label: string; detail: string }[]>([]);
   const [subject, setSubject] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState<string | null>(null);
   const [method, setMethod] = useState('net_internal');
   const [overlap, setOverlap] = useState('max');
   const [results, setResults] = useState<{ subject: string; data: SubjectMergeResult }[]>([]);
@@ -42,6 +43,34 @@ export function EntitiesPage() {
       .then(d => { setMethods(d.methods); setOverlaps(d.overlap_modes); })
       .catch(() => undefined);
   }, [reloadKey]);
+
+  /** 人工确认账号归属：写 subject_decision 并留审计，然后刷新。 */
+  async function decide(accountKey: string, holder: string) {
+    const note = window.prompt('确认归属「' + holder + '」的理由（可留空，会记入审计）', '人工核对为本人');
+    if (note === null) return;
+    setDeciding(accountKey);
+    try {
+      await resolveConflict(accountKey, holder, note || undefined);
+      refreshAll();
+    } catch (e) {
+      window.alert('确认失败：' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setDeciding(null);
+    }
+  }
+
+  async function undoDecision(accountKey: string) {
+    if (!window.confirm('撤销这条判定？该账户会重新标为待核查。')) return;
+    setDeciding(accountKey);
+    try {
+      await undoConflict(accountKey);
+      refreshAll();
+    } catch (e) {
+      window.alert('撤销失败：' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setDeciding(null);
+    }
+  }
 
   function refreshAll() {
     // 重新拉取实体，并清空上一次的合并结果与勾选（数据可能已被删除）
@@ -133,10 +162,26 @@ export function EntitiesPage() {
             <div className="conflict-head">发现 {conflictCount} 个账户对应多个户名，需要核查</div>
             {(data?.conflicts ?? []).map(c => (
               <div key={c.account_key} className="conflict-row">
-                <span className="tag fail">高风险</span>
+                <span className={c.resolved ? 'tag pass' : 'tag fail'}>{c.resolved ? '已确认' : '待核查'}</span>
                 <strong>{c.bank_name ?? '银行未识别'} {c.account_masked ?? '账号未识别'}</strong>
                 <span className="muted">户名：{c.holders.join(' / ')} · 涉及任务 {c.tasks.join('、')}</span>
-                <span className="conflict-msg">{c.message}</span>
+                {c.resolved && c.resolution ? (
+                  <span className="conflict-msg">
+                    已确认归属「{c.resolution.subject}」{c.resolution.note ? '（' + c.resolution.note + '）' : ''}
+                    <button className="link-btn" type="button" style={{ marginLeft: 10 }}
+                      disabled={deciding === c.account_key}
+                      onClick={() => { void undoDecision(c.account_key); }}>撤销</button>
+                  </span>
+                ) : (
+                  <span className="conflict-msg">
+                    {c.message}
+                    {c.holders.map(h => (
+                      <button key={h} className="pill-btn" type="button" style={{ marginLeft: 8 }}
+                        disabled={deciding === c.account_key}
+                        onClick={() => { void decide(c.account_key, h); }}>确认为「{h}」</button>
+                    ))}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -425,4 +470,3 @@ export function EntitiesPage() {
     </div>
   );
 }
-

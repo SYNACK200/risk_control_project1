@@ -220,6 +220,8 @@ export interface EntitySubject {
 export interface EntityConflict {
   kind: string; severity: string; account_key: string; account_masked: string | null;
   bank_name: string | null; holders: string[]; tasks: number[]; message: string;
+  resolved?: boolean;
+  resolution?: { subject: string; action: string; note: string | null; at: string | null } | null;
 }
 
 export interface MergeMethod {
@@ -243,7 +245,7 @@ export interface MergeResult {
 
 export interface EntitiesPayload {
   accounts: EntityAccount[]; subjects: EntitySubject[]; conflicts: EntityConflict[];
-  summary: { accounts: number; subjects: number; multi_account_subjects: number; conflicts: number };
+  summary: { accounts: number; subjects: number; multi_account_subjects: number; conflicts: number; pending_conflicts?: number };
 }
 
 export interface SubjectMergeMethod {
@@ -556,4 +558,19 @@ export async function createTaskWithTempTemplate(
   return json<{ task_id: number; status: string; biz_no?: string }>(
     await authFetch(BASE + '/tasks', { method: 'POST', body: form }),
   );
+}
+
+/** 人工确认「这个账号实际属于哪个户名」，会写审计。 */
+export async function resolveConflict(accountKey: string, subject: string, note?: string): Promise<{ ok: boolean }> {
+  return json<{ ok: boolean }>(await authFetch(BASE + '/entities/conflicts/resolve', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account_key: accountKey, subject, note }),
+  }));
+}
+
+export async function undoConflict(accountKey: string): Promise<{ ok: boolean }> {
+  return json<{ ok: boolean }>(await authFetch(
+    BASE + '/entities/conflicts/resolve?account_key=' + encodeURIComponent(accountKey),
+    { method: 'DELETE' },
+  ));
 }
