@@ -157,9 +157,15 @@ def collect_entities(db: Session) -> dict:
         sub["accounts"][acc_key] = sub["accounts"].get(acc_key, 0) + 1
         sub["tasks"].append(task.id)
 
+    # 已有人工判定的账户：不再算「待核查」，改为展示判定结果
+    from db.models import SubjectDecision  # noqa: PLC0415 - 避免模块级循环引用
+
+    decisions = {d.account_key: d for d in db.query(SubjectDecision).all()} if db is not None else {}
+
     conflicts = []
     for acc in accounts.values():
         if len(acc["holders"]) > 1:
+            decided = decisions.get(acc["key"])
             conflicts.append({
                 "kind": "account_multi_holder",
                 "severity": "high",
@@ -169,6 +175,13 @@ def collect_entities(db: Session) -> dict:
                 "holders": sorted(acc["holders"].keys()),
                 "tasks": acc["tasks"],
                 "message": "同一账户出现多个户名，疑似借用账户或冒用他人流水",
+                "resolved": bool(decided),
+                "resolution": ({
+                    "subject": decided.subject,
+                    "action": decided.action,
+                    "note": decided.note,
+                    "at": decided.created_at.isoformat() if decided.created_at else None,
+                } if decided else None),
             })
     multi = [s for s in subjects.values() if len(s["accounts"]) > 1]
     return {
@@ -180,6 +193,7 @@ def collect_entities(db: Session) -> dict:
             "subjects": len(subjects),
             "multi_account_subjects": len(multi),
             "conflicts": len(conflicts),
+            "pending_conflicts": len([c for c in conflicts if not c.get("resolved")]),
         },
     }
 

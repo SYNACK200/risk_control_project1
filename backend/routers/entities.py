@@ -2,11 +2,20 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from db.models import AuditLog, SubjectDecision
 from db.session import get_session
-from helpers.security import require_banker
+from helpers.security import current_user, require_banker
 from services.entities import METHODS, OVERLAP_MODES, collect_entities, merge_subject
+
+
+class ResolveConflictIn(BaseModel):
+    account_key: str = Field(min_length=1, max_length=128)
+    subject: str = Field(min_length=1, max_length=128)
+    note: str | None = Field(default=None, max_length=255)
 
 router = APIRouter(prefix="/entities", tags=["entities"], dependencies=[Depends(require_banker)])
 
@@ -15,6 +24,45 @@ router = APIRouter(prefix="/entities", tags=["entities"], dependencies=[Depends(
 def get_entities(db: Session = Depends(get_session)):
     """账户、户名、以及「一个账户多个户名」的冲突告警。"""
     return collect_entities(db)
+
+
+@router.post("/conflicts/resolve")
+def resolve_conflict(payload: ResolveConflictIn, db: Session = Depends(get_session),
+                     user=Depends(current_user)):
+    """人工确认「这个账号实际属于哪个户名」。
+
+    冲突只展示没用，必须有人签字；判定要能追溯到人和时间，所以写 subject_decision 并留审计。
+    """
+    row = db.execute(
+        select(SubjectDecision).where(SubjectDecision.account_key == payload.account_key)
+    ).scalars().first()
+    if row is None:
+        row = SubjectDecision(account_key=payload.account_key, subject=payload.subject,
+                              action="confirm", note=payload.note, created_by=user.id)
+        db.add(row)
+    else:
+        row.subject = payload.subject
+        row.action = "confirm"
+        row.note = payload.note
+        row.created_by = user.id
+    db.add(AuditLog(action="resolve_conflict", object_type="account", object_id=0,
+                    detail=f"account_key={payload.account_key[:60]}; subject={payload.subject}"[:1000]))
+    db.commit()
+    return {"ok": True, "account_key": payload.account_key, "subject": payload.subject}
+
+
+@router.delete("/conflicts/resolve")
+def undo_conflict(account_key: str, db: Session = Depends(get_session), user=Depends(current_user)):
+    """撤销判定：把账户重新标回「待核查」。"""
+    row = db.execute(
+        select(SubjectDecision).where(SubjectDecision.account_key == account_key)
+    ).scalars().first()
+    if row is not None:
+        db.delete(row)
+        db.add(AuditLog(action="undo_conflict", object_type="account", object_id=0,
+                        detail=f"account_key={account_key[:60]}"[:1000]))
+        db.commit()
+    return {"ok": True}
 
 
 @router.get("/methods")
