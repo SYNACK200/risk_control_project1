@@ -454,7 +454,9 @@ export interface ProbeResult {
   rotation: number;
   page_size: { width: number; height: number };
   header_found: boolean;
-  headers: { text: string; x: number; y: number }[];
+  headers: { text: string; x: number; y: number; x0?: number; x1?: number; top?: number; bottom?: number }[];
+  boundaries?: { after: string; before: string; gap: number; x: number }[];
+  table_area?: { x: number; y: number; w: number; h: number; header_y?: number } | null;
   suggestions: ProbeSuggestion[];
   meta: Record<string, { value: string; rect: { x: number; y: number; w: number; h: number } | null }>;
 }
