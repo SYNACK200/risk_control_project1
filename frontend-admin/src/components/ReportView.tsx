@@ -95,6 +95,8 @@ function buildNarrative(report: ReportPayload, authLabel: string, limited: numbe
 }
 
 function SummaryPanel({ report, txnCount }: { report: ReportPayload; txnCount: number }) {
+  // txnCount 保留在签名里：结论版用「交易笔数」做交叉核对时还要用
+  void txnCount;
   const a = authenticity(report.layers, report.carrier, report.limitations);
   const m: Record<string, string | null> = {};
   for (const x of report.metrics) m[x.code] = x.value;
@@ -106,13 +108,18 @@ function SummaryPanel({ report, txnCount }: { report: ReportPayload; txnCount: n
   };
   const money = (v: number | null) => (v === null ? '—' : v.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + ' 元');
   const dti = num('B02');
+  const income = num('A02');
+  const repay = num('B01');
+  // 结论版只回答三个业务问题：能剩多少、欠多少、账上钱能撑多久。
+  // 「期间净流入」「统计月份」这类是技术口径，放到明细版。
+  const disposable = income !== null && repay !== null ? income - repay : null;
+  const coverMonths = (num('C03') !== null && repay !== null && repay > 0)
+    ? (num('C03') as number) / repay
+    : null;
   const kpi = [
-    { k: '交易笔数', v: (txnCount || '—') + ' 笔' },
-    { k: '统计月份', v: (report.trend?.length ?? 0) + ' 个月' },
-    { k: '月均收入', v: money(num('A02')) },
-    { k: '月均支出', v: money(num('B01')) },
-    { k: '期间净流入', v: money(num('C01')) },
-    { k: '月供/收入', v: dti === null ? '—' : (dti * 100).toFixed(1) + '%' },
+    { k: '每月可剩', v: money(disposable), hint: '月均收入 − 月均还款' },
+    { k: '还款占收入', v: dti === null ? '—' : (dti * 100).toFixed(1) + '%', hint: '低于 50% 一般可接受' },
+    { k: '账上余额能撑', v: coverMonths === null ? '—' : coverMonths.toFixed(1) + ' 个月', hint: '平均余额 ÷ 月均还款' },
   ];
   const hits = (report.conclusions ?? []).slice(0, 3);
   const extra = Math.max(0, (report.conclusions?.length ?? 0) - hits.length);
@@ -164,17 +171,16 @@ function SummaryPanel({ report, txnCount }: { report: ReportPayload; txnCount: n
         <div className="summary-block-title">主要风险提示</div>
         {hits.length === 0
           ? <p className="muted">负债、异常行为、集中度方面未见提示。</p>
-          : <ul className="summary-risks">{hits.map(c => <li key={c.code}>{c.code}（阈值 {c.threshold}，本次 {c.value}）</li>)}</ul>}
+          : <ul className="summary-risks">{hits.map(c => <li key={c.code}>{CONCLUSION_TEXT[c.code] ?? c.code}</li>)}</ul>}
         {extra > 0 && <div className="muted small">另有 {extra} 条，切「明细版」查看</div>}
       </div>
       <div className="summary-block">
         <div className="summary-block-title">建议</div>
         <ul className="summary-risks">
           <li>{a.level === 'grant' ? '材料与账务核验通过，可进入授信流程。'
-            : a.level === 'supplement' ? '需补充材料（见受限项）后重评。'
+            : a.level === 'supplement' ? '需补充材料后重评（缺什么在明细版的「核验受限」里）。'
             : a.level === 'fail' ? '不建议据此授信，需人工核查。'
             : '证据不足，需人工复核后使用。'}</li>
-          {report.limitations.slice(0, 3).map((x, i) => <li key={i} className="muted small">{x}</li>)}
         </ul>
       </div>
       <div className="muted small">需要看四层核验、40 项指标与证据，切「明细版」。</div>
