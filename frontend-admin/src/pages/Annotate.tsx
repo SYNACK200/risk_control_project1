@@ -721,6 +721,12 @@ export function AnnotatePage() {
               <div className="wizard-preview-head">
                 <b>版式预览</b>
                 <span className="muted small">第 {page} / {pageCount} 页 · 这一步只看，不可编辑；点「下一步」开始标注</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                  <button className="pill-btn" type="button" onClick={() => setZoom(z => Math.max(0.5, Math.round((z - 0.2) * 10) / 10))}>−</button>
+                  <span className="muted small" style={{ minWidth: 42, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+                  <button className="pill-btn" type="button" onClick={() => setZoom(z => Math.min(3, Math.round((z + 0.2) * 10) / 10))}>＋</button>
+                  <button className="pill-btn" type="button" onClick={() => setZoom(1)}>100%</button>
+                </span>
               </div>
               <Stage
                 sample={sample}
