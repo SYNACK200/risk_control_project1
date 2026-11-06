@@ -140,7 +140,11 @@ export function Stage(p: Props) {
     <div className="stage-wrap">
       <div>
         {renderError && <div className="notice error">{renderError}</div>}
-        <div className="page-holder" ref={holderRef}>
+        <div
+          className="page-holder"
+          ref={holderRef}
+          style={{ width: Math.round(780 * p.zoom) + 'px' }}
+        >
           <canvas ref={canvasRef} />
           <div
             className="overlay"
