@@ -2,6 +2,7 @@ import { Route, Routes, useLocation, useNavigate, useParams } from 'react-router
 import { AnnotatePage } from './pages/Annotate';
 import { TaskListPage } from './pages/TaskListPage';
 import { EntitiesPage } from './pages/EntitiesPage';
+import { TemplateLayoutPage } from './pages/TemplateLayoutPage';
 import { ThresholdsPage } from './pages/ThresholdsPage';
 import { TemplateAdmin } from './components/TemplateAdmin';
 import { TemplateDetailPage } from './pages/TemplateDetailPage';
@@ -146,6 +147,7 @@ export default function App() {
       <Route path="/:tab" element={<Home />} />
       <Route path="/annotate/*" element={<Home />} />
       <Route path="/templates/:id" element={<TemplateDetailShell />} />
+      <Route path="/templates/:id/layout" element={<TemplateLayoutPage />} />
       <Route path="/report/:id" element={<ReportPage />} />
       <Route path="*" element={<Home />} />
     </Routes>
