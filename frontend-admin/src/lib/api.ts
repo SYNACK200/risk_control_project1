@@ -510,6 +510,7 @@ export type AppUserRow = {
   id: number;
   username: string;
   role: string;
+  is_admin?: boolean;
   display_name?: string | null;
   status?: string;
   created_at?: string | null;
@@ -644,4 +645,14 @@ export interface MetricAtom {
 /** 计算元目录：自定义指标可组合的基础计算。 */
 export async function getMetricAtoms(): Promise<{ items: MetricAtom[] }> {
   return json(await authFetch(BASE + '/custom-metrics/atoms'));
+}
+
+/** 管理员新建银行侧账号。只允许 banker：借款侧必须走自助注册，避免管理员替人开借款账号。 */
+export async function createBankUser(payload: {
+  username: string; password: string; display_name?: string;
+}): Promise<{ user: AppUserRow }> {
+  return json(await authFetch(BASE + '/auth/users', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, role: 'banker' }),
+  }));
 }

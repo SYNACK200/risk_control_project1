@@ -105,8 +105,11 @@ def list_users(user: User = Depends(require_banker), db: Session = Depends(get_s
 @router.post("/users")
 def create_user(payload: CreateUserIn, user: User = Depends(require_admin),
                 db: Session = Depends(get_session)):
-    if payload.role not in ("banker", "borrower"):
-        raise HTTPException(400, detail={"code": "E_PARAM", "message": "role 只能是 banker 或 borrower"})
+    # 权限分离：管理员这里只能建银行侧账号。借款侧账号一律走 /auth/register 自助注册，
+    # 让「谁注册、什么时候注册、同意了什么」有据可查；管理员代开借款账号会让这条链断掉。
+    if payload.role != "banker":
+        raise HTTPException(400, detail={"code": "E_PARAM",
+                                        "message": "这里只能创建银行侧账号；借款侧账号请让借款人自行注册 /register"})
     exists = db.execute(select(User).where(User.username == payload.username)).scalars().first()
     if exists is not None:
         raise HTTPException(409, detail={"code": "E_EXISTS", "message": "用户名已被占用"})
