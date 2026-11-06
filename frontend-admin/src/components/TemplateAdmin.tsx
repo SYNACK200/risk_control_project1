@@ -78,7 +78,7 @@ export function TemplateAdmin() {
                     <td><span className={'tag ' + (t.status === 'enabled' ? 'pass' : t.status === 'draft' ? 'limited' : '')}>{t.status}</span></td>
                     <td>
                       <button className="link-btn" type="button" onClick={() => { void toggleStats(t.id); }}>
-                        {s ? s.tasks_total + ' 条' : '使用情况'}{openStat === t.id ? ' ▴' : ' ▾'}
+                        {openStat === t.id ? '收起 ▴' : '使用情况 ▾'}
                       </button>
                       {openStat === t.id && s && <span className="muted small"> 成功 {s.tasks_done} · 失败 {s.tasks_failed} · 平均 {s.avg_txn_count ?? '—'} 笔</span>}
                     </td>
@@ -87,7 +87,10 @@ export function TemplateAdmin() {
                     <td className="row-actions">
                       <button className="link-btn" type="button" onClick={() => navigate('/templates/' + t.id)}>详情</button>
                       {t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}
-                      {t.status === 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已停用 #' + t.id, () => disableTemplate(t.id)); }}>停用</button>}
+                      {t.status === 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => {
+                        if (!window.confirm('停用后新上传的流水不会再自动套用这个模板。继续？')) return;
+                        void act('已停用 #' + t.id, () => disableTemplate(t.id));
+                      }}>停用</button>}
                       <button className="link-btn danger-text" type="button" disabled={busy} onClick={() => {
                         if (!window.confirm('删除模板 #' + t.id + '？被任务引用时只会软删除。')) return;
                         void act('已删除 #' + t.id, () => deleteTemplate(t.id));

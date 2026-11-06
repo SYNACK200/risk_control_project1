@@ -151,7 +151,10 @@ export function TemplateDetailPage() {
           )}
           <div className="tpl-row">
             {row.status !== 'enabled' && <button className="btn" type="button" disabled={busy} onClick={() => { void act('已启用', () => publishTemplate(row.id)); }}>启用此版本</button>}
-            {row.status === 'enabled' && <button className="btn secondary" type="button" disabled={busy} onClick={() => { void act('已停用', () => disableTemplate(row.id)); }}>停用</button>}
+            {row.status === 'enabled' && <button className="btn secondary" type="button" disabled={busy} onClick={() => {
+              if (!window.confirm('停用后新上传的流水不会再自动套用这个模板（已出报告不受影响）。继续？')) return;
+              void act('已停用', () => disableTemplate(row.id));
+            }}>停用</button>}
             <button className="btn secondary" type="button" disabled={busy} onClick={() => { void act('已复制为新草稿', () => duplicateTemplate(row.id)); }}>复制为新草稿</button>
             <button className="btn secondary" type="button" onClick={openEdit}>改字段映射</button>
             <button className="btn secondary" type="button" onClick={() => setPreviewOpen(v => !v)}>{previewOpen ? '收起试跑' : '试跑这个模板'}</button>
