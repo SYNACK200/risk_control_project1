@@ -694,3 +694,11 @@ tr.clickable:hover { background: #f6f8fb; }
 .mark-guide-steps b { color: var(--ink); }
 .mark-guide-required { margin: 6px 0; font-size: 13px; color: var(--ink); }
 .mark-guide-ok { color: #16a34a; }
+/* ---- 列边界拖动把手 ---- */
+.col-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; background: transparent; z-index: 3; }
+.col-handle::after { content: ''; position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(37, 99, 235, .55); border-radius: 1px; }
+.col-handle.left { left: -4px; }
+.col-handle.left::after { left: 3px; }
+.col-handle.right { right: -4px; }
+.col-handle.right::after { right: 3px; }
+.col-handle:hover::after { background: #2563eb; width: 3px; }

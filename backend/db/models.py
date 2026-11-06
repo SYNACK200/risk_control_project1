@@ -51,6 +51,8 @@ class Task(Base):
     carrier: Mapped[str | None] = mapped_column(String(16))
     template_id: Mapped[int | None] = mapped_column(Integer)
     template_version: Mapped[int | None] = mapped_column(Integer)
+    # 临时模板：本次任务专用的字段映射（JSON），优先于 template_id 指向的模板，不写回模板库
+    field_map_override: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(24), default="PENDING")
     check_result: Mapped[dict | None] = mapped_column(JSON)
     period_start: Mapped[str | None] = mapped_column(String(16))

@@ -78,7 +78,39 @@ def run_task(task_id: int, password: str | None = None) -> dict:
 
         template = None
         template_row = None
-        if task.template_id:
+        temp_template = False
+
+        # 临时模板优先：本次任务专用的标注，用 infer 现场生成映射，不写回模板库
+        if getattr(task, "field_map_override", None):
+            try:
+                import json as _json
+
+                marks = _json.loads(task.field_map_override)
+                from services.analysis import infer_from_marks
+
+                # Task 上没有 bank_code 字段：从预读结果里取，取不到就 UNKNOWN
+                bank_hint = "UNKNOWN"
+                try:
+                    bank_hint = (((task.check_result or {}).get("preread") or {}).get("bank_code") or "UNKNOWN")
+                except Exception:  # noqa: BLE001
+                    bank_hint = "UNKNOWN"
+                inferred = infer_from_marks(data, marks, bank_code=bank_hint)
+                if inferred.get("valid") and inferred.get("field_map"):
+                    template = {"bank_code": bank_hint,
+                                "version": 0, "field_map": inferred["field_map"]}
+                    temp_template = True
+                else:
+                    # 临时标注不成立时不要硬用：退回模板库/通用解析，并把原因带进报告
+                    task.check_result = dict(task.check_result or {})
+                    task.check_result["temp_template_error"] = {
+                        "warnings": (inferred.get("warnings") or [])[:5],
+                        "used": False,
+                    }
+            except Exception as exc:  # noqa: BLE001 - 临时模板失败不阻断主流程
+                task.check_result = dict(task.check_result or {})
+                task.check_result["temp_template_error"] = {"error": str(exc), "used": False}
+
+        if template is None and task.template_id:
             template_row = session.get(Template, task.template_id)
             if template_row is not None and template_row.deleted_at is None:
                 template = {"bank_code": template_row.bank_code,

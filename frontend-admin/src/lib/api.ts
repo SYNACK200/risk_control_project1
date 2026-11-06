@@ -560,3 +560,17 @@ export async function createCustomMetric(payload: {
 export async function deleteCustomMetric(id: number): Promise<{ ok: boolean }> {
   return json<{ ok: boolean }>(await authFetch(BASE + '/custom-metrics/' + id, { method: 'DELETE' }));
 }
+
+/** 用一份临时标注直接解析一份流水：标注只随本次任务生效，不写回模板库。 */
+export async function createTaskWithTempTemplate(
+  file: File, marks: unknown[], bankCode?: string, password?: string,
+): Promise<{ task_id: number; status: string; biz_no?: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('marks', JSON.stringify(marks));
+  if (bankCode) form.append('bank_code', bankCode);
+  if (password) form.append('password', password);
+  return json<{ task_id: number; status: string; biz_no?: string }>(
+    await authFetch(BASE + '/tasks', { method: 'POST', body: form }),
+  );
+}
