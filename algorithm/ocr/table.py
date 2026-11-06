@@ -6,9 +6,10 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "txn_date": ("交易时间", "交易日期", "记账日期", "交易发生日期", "交易发生时间", "交易日", "日期"),
     "reference_no": ("参考号", "流水号", "交易流水号", "凭证号", "业务编号", "交易单号", "交易编号"),
     "summary": ("摘要", "交易摘要", "交易类型", "商品", "用途", "交易说明", "附言", "备注"),
-    "counterparty": ("交易对方", "对方户名", "对方名称", "对方账户名", "对手方", "对手信息", "商户名称", "收款方"),
+    "counterparty": ("交易对方", "对方户名", "对方名称", "对方账户名", "对手方", "对手信息", "商户名称", "收款方", "对方账号与户名", "对方姓名"),
+    "account_name": ("户名", "账户名称", "本方户名", "账户名", "开户人"),
     "direction": ("收/支", "收支", "借贷标志", "借贷方向", "收付标志", "借/贷", "方向"),
-    "amount": ("收入/支出金额", "金额(元)", "交易金额", "发生额", "交易额", "金额"),
+    "amount": ("收入/支出金额", "金额(元)", "金额（元）", "交易金额", "发生额", "交易额", "金额", "发生金额"),
     "amount_in": ("收入金额", "贷方发生额", "贷方金额"),
     "amount_out": ("支出金额", "借方发生额", "借方金额"),
     "balance": ("账户余额", "交易后余额", "当前余额", "余额"),
@@ -74,12 +75,35 @@ def _norm(text: str) -> str:
     return "".join(text.translate(table).split())
 
 
+def _one_edit_apart(a: str, b: str) -> bool:
+    """两串是否只差一个字（插入/删除/替换）。用于 OCR 形近字容错（曰/日、巳/已）。"""
+    if a == b:
+        return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la > lb:
+        a, b, la, lb = b, a, lb, la
+    i = 0
+    while i < la and a[i] == b[i]:
+        i += 1
+    if la == lb:
+        return a[i + 1:] == b[i + 1:]
+    return a[i:] == b[i + 1:]
+
+
 def match_field(text: str) -> tuple[str, int] | None:
-    """返回 (规范字段, 匹配长度)；精确匹配优先，其次取最长的包含匹配。"""
+    """返回 (规范字段, 匹配长度)。
+
+    匹配顺序：精确 → 包含（最长优先）→ 单字容错。
+    容错只对长度 >= 3 的别名生效：OCR 常把「交易日期」认成「交易曰期」，
+    但两字别名（摘要/金额）做容错会误判，故不走模糊。
+    """
     value = _norm(text)
     if not value:
         return None
     best: tuple[str, int] | None = None
+    fuzzy: tuple[str, int] | None = None
     for canonical, aliases in FIELD_ALIASES.items():
         for alias in aliases:
             key = _norm(alias)
@@ -88,7 +112,11 @@ def match_field(text: str) -> tuple[str, int] | None:
             if key in value and len(key) >= 2:
                 if best is None or len(key) > best[1]:
                     best = (canonical, len(key))
-    return best
+                continue
+            if len(key) >= 3 and len(value) <= len(key) + 2 and _one_edit_apart(value, key):
+                if fuzzy is None or len(key) > fuzzy[1]:
+                    fuzzy = (canonical, len(key))
+    return best or fuzzy
 
 
 def merge_tokens(line: Line, gap: float = 2.0) -> list[Word]:

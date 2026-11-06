@@ -696,21 +696,53 @@ def _build_result(
 
 
 def parse(file_bytes: bytes, template: Template | dict | None = None) -> ParseResult:
-    """解析入口：先按自适应行容差解析；若明显漏行（笔数远少于页脚声明），
-    再放大行容差重解析一次，取笔数更多的那份。"""
+    """解析入口：外推 + 三级保底。
+
+    L1 模板解析（按表头别名匹配列，与坐标无关，因此能跨版式/跨拍摄角度复用）
+    L1' 行容差自适应重试（漏行时放大行容差再解析）
+    L2 通用解析兜底（表头驱动的 parse_generic，不依赖模板）
+    每一级都要求「笔数更多」才替换上一级，避免兜底把结果弄差。
+    """
     is_image = len(file_bytes) >= 3 and file_bytes[0] == 0xFF and file_bytes[1] == 0xD8 and file_bytes[2] == 0xFF
-    first = _parse_impl(file_bytes, template, y_tol=None)
-    footer = first.footer_count
-    got = len(first.transactions)
-    if not is_image and footer and footer > 0 and got < footer * 0.6:
+    best = _parse_impl(file_bytes, template, y_tol=None)
+    footer = best.footer_count
+
+    # 不支持/空文件不做兜底：兜底只对 PDF 与影像件有意义
+    if not (file_bytes.startswith(b"%PDF") or file_bytes.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n"))):
+        return best
+
+    def short(result: "ParseResult") -> bool:
+        """是否明显漏行：完全解析不出，或有页脚声明但笔数不足六成。"""
+        if not result.transactions:
+            return True
+        return bool(footer and footer > 0 and len(result.transactions) < footer * 0.6)
+
+    # L1'：电子件放大行容差重试（影像件重跑 OCR 代价过高，交由下面的通用解析兜底）
+    if not is_image and short(best):
         for tol in (10.0, 14.0):
             alt = _parse_impl(file_bytes, template, y_tol=tol)
-            if len(alt.transactions) > got:
+            if len(alt.transactions) > len(best.transactions):
                 alt.warnings = list(alt.warnings) + [
-                    "行容差自适应（%gpt）重解析：%d 笔 → %d 笔" % (tol, got, len(alt.transactions))
+                    "行容差自适应（%gpt）重解析：%d 笔 → %d 笔" % (tol, len(best.transactions), len(alt.transactions))
                 ]
-                return alt
-    return first
+                best = alt
+
+    # L2：模板/行容差都不够时，用通用解析兜底，取笔数更多的那份
+    if short(best):
+        warnings = list(best.warnings)
+        generic_txns, generic_footer, generic_pages, generic_count = _generic_rescue(
+            file_bytes, best.page_count, best.page_summaries, warnings
+        )
+        if len(generic_txns) > len(best.transactions):
+            warnings.append(
+                "模板解析不足（%d 笔%s），已回退通用解析（%d 笔），字段映射可能与模板不同"
+                % (len(best.transactions), "，页脚声明 %d 笔" % footer if footer else "", len(generic_txns))
+            )
+            return _build_result(generic_txns, generic_footer, generic_count, warnings, generic_pages, [])
+        if generic_txns:
+            warnings.append("通用解析结果未优于当前解析（%d 笔），保留原结果" % len(best.transactions))
+        best.warnings = warnings
+    return best
 
 
 def _parse_impl(file_bytes: bytes, template: Template | dict | None = None, y_tol: float | None = None) -> ParseResult:
