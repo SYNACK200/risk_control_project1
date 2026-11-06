@@ -617,6 +617,27 @@ def _ocr_to_words(page) -> list[Word]:
     ]
 
 
+def _prepare_image(file_bytes: bytes) -> tuple[bytes, list[str]]:
+    """图片件预处理：体检 → 能纠偏就纠偏。返回 (可用字节, 需要写进报告的说明)。"""
+    notes: list[str] = []
+    try:
+        from algorithm.quality import SKEW_FIXABLE, assess, deskew
+
+        report = assess(file_bytes)
+        if report.issues:
+            notes.extend("质量体检：" + item for item in report.issues)
+        if report.recommended in ("deskew", "perspective") and abs(report.skew_deg) <= SKEW_FIXABLE:
+            fixed, deg = deskew(file_bytes, max_deg=SKEW_FIXABLE)
+            if deg:
+                notes.append(f"已自动纠偏 {deg:.1f}°（原图倾斜，纠正后重新识别）")
+                return fixed, notes
+        if report.level == "poor":
+            notes.append("质量体检结论：poor，识别结果需人工重点复核")
+    except Exception as exc:  # noqa: BLE001 - 体检失败不影响主流程
+        notes.append("质量体检未完成：" + str(exc)[:80])
+    return file_bytes, notes
+
+
 def _parse_ocr(file_bytes: bytes, template: Template | None, warnings: list[str] | None = None, y_tol: float | None = None) -> ParseResult:
     from .engine import get_default_engine
 
