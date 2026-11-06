@@ -603,3 +603,29 @@ export async function getTaskFile(taskId: number): Promise<File> {
   const name = 'task-' + taskId + (blob.type.includes('pdf') ? '.pdf' : '.jpg');
   return new File([blob], name, { type: blob.type || 'application/pdf' });
 }
+
+/** 取模板样本文件（改框画范围时回看用同一份样本）。 */
+export async function getTemplateSample(templateId: number): Promise<File> {
+  const res = await authFetch(BASE + '/templates/' + templateId + '/sample');
+  if (!res.ok) throw new Error('这个模板没有保存样本文件');
+  const blob = await res.blob();
+  return new File([blob], 'template-' + templateId + (blob.type.includes('pdf') ? '.pdf' : '.jpg'),
+    { type: blob.type || 'application/pdf' });
+}
+
+/** 保存模板的框画范围（会生成新版本草稿）。 */
+export async function saveTemplateLayout(templateId: number, layout: unknown, fieldMap: unknown): Promise<{
+  id: number; version: number; status: string; previous_id: number;
+}> {
+  return json(await authFetch(BASE + '/templates/' + templateId, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ layout, field_map: fieldMap }),
+  }));
+}
+
+export async function getTemplateById(templateId: number): Promise<{
+  id: number; bank_code: string; version: number; status: string;
+  field_map: Record<string, unknown>; layout: unknown | null;
+}> {
+  return json(await authFetch(BASE + '/templates/' + templateId));
+}

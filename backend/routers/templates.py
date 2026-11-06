@@ -299,6 +299,10 @@ class TemplatePatch(BaseModel):
     bank_code: str | None = None
     field_map: dict | None = None
     header_columns: list | None = None
+    # 框画范围（表格区 / 表头高度 / 每列 x·w / 页面尺寸）。
+    # 模板只有 field_map 时，列边界要靠「按表头词重新推算」，版式一变就错位；
+    # 存下 layout 后，解析可以直接用这份几何，也让「改框画范围」成为可能。
+    layout: dict | None = None
 
 
 @router.put("/{template_id}", dependencies=[Depends(require_admin)])
@@ -316,6 +320,8 @@ def update_template(template_id: int, payload: TemplatePatch, db: Session = Depe
         status="draft",
         field_map=payload.field_map if payload.field_map is not None else row.field_map,
         header_columns=payload.header_columns if payload.header_columns is not None else row.header_columns,
+        sample_file_id=row.sample_file_id,
+        layout=payload.layout if payload.layout is not None else row.layout,
     )
     old_status = row.status
     row.status = "disabled"
@@ -324,6 +330,43 @@ def update_template(template_id: int, payload: TemplatePatch, db: Session = Depe
     db.refresh(new_row)
     return {"id": new_row.id, "version": new_row.version, "status": new_row.status, "previous_id": row.id,
             "previous_status": old_status}
+
+
+@router.get("/{template_id}", dependencies=[Depends(require_banker)])
+def get_template(template_id: int, db: Session = Depends(get_session)):
+    """取单个模板（含 layout 与 field_map）：模板详情页与「改框画范围」都要用。"""
+    row = db.get(Template, template_id)
+    if row is None:
+        raise HTTPException(404, "模板不存在")
+    return {
+        "id": row.id, "bank_code": row.bank_code, "version": row.version,
+        "status": row.status, "field_map": row.field_map or {},
+        "header_columns": row.header_columns, "layout": row.layout,
+        "sample_file_id": row.sample_file_id,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/{template_id}/sample", dependencies=[Depends(require_banker)])
+def template_sample(template_id: int, db: Session = Depends(get_session)):
+    """取建模板时用的样本文件：模板详情页「改框画范围」要用同一份样本回看。"""
+    from fastapi.responses import FileResponse
+
+    from db.models import FileObj
+
+    row = db.get(Template, template_id)
+    if row is None:
+        raise HTTPException(404, "模板不存在")
+    if not row.sample_file_id:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND",
+                                         "message": "这个模板没有保存样本文件，无法回看框选范围"})
+    f = db.get(FileObj, row.sample_file_id)
+    if f is None or not f.storage_path:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "样本文件已被清理"})
+    path = _Path(f.storage_path)
+    if not path.exists():
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "样本文件已被清理"})
+    return FileResponse(path, filename=f"template-{template_id}-sample{path.suffix}")
 
 
 @router.post("/{template_id}/duplicate", dependencies=[Depends(require_admin)])
