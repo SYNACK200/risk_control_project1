@@ -64,16 +64,37 @@ function marksFromMap(map: FieldMapV1): { field: string; page: number; x: number
 export function AnnotatePage() {
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('task');
+    const id = t && /^\d+$/.test(t) ? Number(t) : null;
+    setReparseTarget(id);
+  }, [location.search]);
+
+  // 带任务号进来的：自动拉取该任务的原始文件，用户不必再选一次
   const step: 1 | 2 | 3 = location.pathname.endsWith('/mark') ? 2 : location.pathname.endsWith('/check') ? 3 : 1;
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const probeAutoRef = useRef(false);
   const [guideOpen, setGuideOpen] = useState(true);
   // 自动定列后显示来源说明，避免「这些框哪来的」
   const [autoLayoutInfo, setAutoLayoutInfo] = useState<string>('');
-  // 临时模板：用当前标注直接解析一份流水，不写回模板库
-  const [tempTaskFile, setTempTaskFile] = useState<File | null>(null);
-  const [tempTaskBusy, setTempTaskBusy] = useState(false);
-  const [tempTaskMsg, setTempTaskMsg] = useState('');
+  // 从「解析结果」页带过来的任务号：本次标注用于重解析该任务（临时变量语义）
+  const [reparseTarget, setReparseTarget] = useState<number | null>(null);
+  const [reparseMsg, setReparseMsg] = useState('');
+
+  const autoLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!reparseTarget || autoLoadedRef.current || sample) return;
+    autoLoadedRef.current = true;
+    (async () => {
+      try {
+        const { getTaskFile } = await import('../lib/api');
+        const file = await getTaskFile(reparseTarget);
+        await openPage(file);
+      } catch (e) {
+        setNotice({ level: 'error', text: '自动加载任务文件失败：' + (e instanceof Error ? e.message : String(e)) + '，请手动选择文件' });
+      }
+    })();
+  }, [reparseTarget]); // eslint-disable-line react-hooks/exhaustive-deps
   const [map, setMap] = useState<FieldMapV1>(() => loadDraft() ?? createEmpty());
   const [sample, setSample] = useState<SamplePage | null>(null);
   const [sampleName, setSampleName] = useState('');
@@ -382,19 +403,17 @@ export function AnnotatePage() {
     return true;
   }
 
-  /** 临时模板：把当前标注作为本次任务的专用映射提交，模板库不受影响。 */
-  async function runTempTask() {
-    if (!tempTaskFile) { hint('先选一份要解析的流水文件'); return; }
-    if (map.tables.length === 0 && map.meta_boxes.length === 0) { hint('还没有任何标注'); return; }
-    setTempTaskBusy(true); setTempTaskMsg('');
+  /** 用当前标注重解析目标任务（一次性，不建模板）。 */
+  async function submitReparse() {
+    if (!reparseTarget) return;
+    if (map.tables.length === 0) { hint('还没有表格区，无法重解析'); return; }
+    setReparseMsg('提交中…');
     try {
-      const { createTaskWithTempTemplate } = await import('../lib/api');
-      const res = await createTaskWithTempTemplate(tempTaskFile, marksFromMap(map), map.bank_code || undefined);
-      setTempTaskMsg('已提交，任务号 #' + res.task_id + '（本次使用临时标注，模板库未变更）');
+      const { reparseTask } = await import('../lib/api');
+      const res = await reparseTask(reparseTarget, marksFromMap(map));
+      setReparseMsg('已提交重解析（任务 #' + res.task_id + '，状态 ' + res.status + '）。这份标注只用这一次，不会存进模板库。');
     } catch (e) {
-      setTempTaskMsg('提交失败：' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setTempTaskBusy(false);
+      setReparseMsg('提交失败：' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -722,22 +741,22 @@ export function AnnotatePage() {
             </div>
           )}
 
-          <section className="tpl-panel">
-            <h3>临时模板：用这份标注直接解析一份流水</h3>
-            <p className="muted small">
-              有些上传件的版式和库里的模板对不上。这里可以拿当前标注<strong>只解析这一份</strong>，
-              不新建、不修改模板库；解析结果照常进报告与看板。
-            </p>
-            <div className="tpl-row">
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png"
-                onChange={e => setTempTaskFile(e.target.files?.[0] ?? null)} />
-              <button className="btn" type="button" disabled={tempTaskBusy || !tempTaskFile}
-                onClick={() => { void runTempTask(); }}>
-                {tempTaskBusy ? '提交中…' : '用当前标注解析这份流水'}
-              </button>
-            </div>
-            {tempTaskMsg && <div className="notice info">{tempTaskMsg}</div>}
-          </section>
+          {reparseTarget && (
+            <section className="tpl-panel">
+              <h3>用这份标注重解析任务 #{reparseTarget}</h3>
+              <p className="muted small">
+                适用于「解析失败」或「解析结果不对」的流水。这份标注<strong>只对这一次重解析生效</strong>，
+                不进模板库、不产生新模板；重解析后旧结果会被覆盖。
+              </p>
+              <div className="tpl-row">
+                <button className="btn" type="button" onClick={() => { void submitReparse(); }}
+                  disabled={map.tables.length === 0}>提交重解析</button>
+                <button className="link-btn" type="button" onClick={() => navigate('/tasks')}>回解析结果</button>
+              </div>
+              {reparseMsg && <div className="notice info">{reparseMsg}</div>}
+            </section>
+          )}
+
 
           <div className="wizard-actions">
             <button className="btn" type="button" disabled={!sample} onClick={() => navigate('/annotate/mark')}>
@@ -819,6 +838,72 @@ export function AnnotatePage() {
 
             <div className="side">
               <div className="side-scroll">
+            {map.tables.length > 0 && (
+              <section className="column-list">
+                <div className="column-list-head">
+                  已标注字段（{map.tables.reduce((n, tb) => n + tb.columns.length, 0)} 列）
+                  <span className="muted small"> · 可改字段、一列加多个属性、删除或定位；字段支持自定义</span>
+                </div>
+                {map.tables.map((tb, ti) => (
+                  <div key={tb.id} className="column-table">
+                    <div className="muted small">表格 {ti + 1}（第 {tb.page} 页）· {tb.columns.length} 列</div>
+                    {tb.columns.length === 0 && <div className="muted small">还没有列：用「列」工具在画布上点选一列数据。</div>}
+                    {tb.columns.map((c, i) => {
+                      const codes = c.fields && c.fields.length ? c.fields : (c.field ? [c.field] : []);
+                      return (
+                        <div className="column-row" key={i}>
+                          <button className="link-btn" type="button"
+                            onClick={() => { setSel({ kind: 'column', tableId: tb.id, index: i }); }}>
+                            #{i + 1}
+                          </button>
+                          <span className="muted small">x {c.x.toFixed(3)} · w {c.w.toFixed(3)}</span>
+                          <select value={c.field}
+                            onChange={e => {
+                              const v = e.target.value;
+                              if (v === '__custom__') {
+                                const code = window.prompt('给这个字段起个英文代号（字母/下划线，如 night_ratio）', 'night_ratio');
+                                if (!code) return;
+                                customField(code.trim());
+                                updateColumn(tb.id, i, { field: code.trim(), fields: [code.trim()] });
+                                return;
+                              }
+                              updateColumn(tb.id, i, { field: v, fields: [v] });
+                            }}>
+                            <option value="">（未指定）</option>
+                            {FIELD_DICT.filter(f => f.scope !== 'meta').map(f => (
+                              <option key={f.code} value={f.code}>{f.label}（{f.code}）</option>
+                            ))}
+                            {map.custom_fields.map(f => (
+                              <option key={f.code} value={f.code}>{f.label}（自定义）</option>
+                            ))}
+                            <option value="__custom__">+ 自定义字段…</option>
+                          </select>
+                          {codes.slice(1).map(code => (
+                            <span className="field-chip" key={code}>
+                              {code}
+                              <button className="link-btn" type="button"
+                                onClick={() => removeColumnField(tb.id, i, codes, code)}>×</button>
+                            </span>
+                          ))}
+                          <button className="link-btn" type="button"
+                            onClick={() => {
+                            const options = FIELD_DICT.filter(f => f.scope !== 'meta' && !codes.includes(f.code));
+                            const picked = window.prompt('再给这列加一个属性，直接输编号：\n' + options.map((f, k) => (k + 1) + '. ' + f.label + '（' + f.code + '）').join('\n'), '1');
+                            if (!picked) return;
+                            const idx = Number(picked) - 1;
+                            const target = options[idx];
+                            if (!target) return;
+                            updateColumn(tb.id, i, { fields: [...codes, target.code] });
+                          }}>＋属性</button>
+                          <button className="link-btn danger-text" type="button"
+                            onClick={() => removeColumn(tb.id, i)}>删除</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </section>
+            )}
                 <Inspector
                   map={map}
                   sel={sel}
@@ -871,72 +956,6 @@ export function AnnotatePage() {
             </div>
           </div>
 
-          {map.tables.length > 0 && (
-            <section className="column-list">
-              <div className="column-list-head">
-                已标注字段（{map.tables.reduce((n, tb) => n + tb.columns.length, 0)} 列）
-                <span className="muted small"> · 可改字段、一列加多个属性、删除或定位；字段支持自定义</span>
-              </div>
-              {map.tables.map((tb, ti) => (
-                <div key={tb.id} className="column-table">
-                  <div className="muted small">表格 {ti + 1}（第 {tb.page} 页）· {tb.columns.length} 列</div>
-                  {tb.columns.length === 0 && <div className="muted small">还没有列：用「列」工具在画布上点选一列数据。</div>}
-                  {tb.columns.map((c, i) => {
-                    const codes = c.fields && c.fields.length ? c.fields : (c.field ? [c.field] : []);
-                    return (
-                      <div className="column-row" key={i}>
-                        <button className="link-btn" type="button"
-                          onClick={() => { setSel({ kind: 'column', tableId: tb.id, index: i }); }}>
-                          #{i + 1}
-                        </button>
-                        <span className="muted small">x {c.x.toFixed(3)} · w {c.w.toFixed(3)}</span>
-                        <select value={c.field}
-                          onChange={e => {
-                            const v = e.target.value;
-                            if (v === '__custom__') {
-                              const code = window.prompt('给这个字段起个英文代号（字母/下划线，如 night_ratio）', 'night_ratio');
-                              if (!code) return;
-                              customField(code.trim());
-                              updateColumn(tb.id, i, { field: code.trim(), fields: [code.trim()] });
-                              return;
-                            }
-                            updateColumn(tb.id, i, { field: v, fields: [v] });
-                          }}>
-                          <option value="">（未指定）</option>
-                          {FIELD_DICT.filter(f => f.scope !== 'meta').map(f => (
-                            <option key={f.code} value={f.code}>{f.label}（{f.code}）</option>
-                          ))}
-                          {map.custom_fields.map(f => (
-                            <option key={f.code} value={f.code}>{f.label}（自定义）</option>
-                          ))}
-                          <option value="__custom__">+ 自定义字段…</option>
-                        </select>
-                        {codes.slice(1).map(code => (
-                          <span className="field-chip" key={code}>
-                            {code}
-                            <button className="link-btn" type="button"
-                              onClick={() => removeColumnField(tb.id, i, codes, code)}>×</button>
-                          </span>
-                        ))}
-                        <button className="link-btn" type="button"
-                          onClick={() => {
-                          const options = FIELD_DICT.filter(f => f.scope !== 'meta' && !codes.includes(f.code));
-                          const picked = window.prompt('再给这列加一个属性，直接输编号：\n' + options.map((f, k) => (k + 1) + '. ' + f.label + '（' + f.code + '）').join('\n'), '1');
-                          if (!picked) return;
-                          const idx = Number(picked) - 1;
-                          const target = options[idx];
-                          if (!target) return;
-                          updateColumn(tb.id, i, { fields: [...codes, target.code] });
-                        }}>＋属性</button>
-                        <button className="link-btn danger-text" type="button"
-                          onClick={() => removeColumn(tb.id, i)}>删除</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </section>
-          )}
 
           <div className="wizard-actions">
             <button className="btn secondary" type="button" onClick={() => navigate('/annotate')}>← 上一步</button>
