@@ -80,10 +80,8 @@ export function MetricDefsPage() {
         <span className="muted">内置 {items.length} 项 · 自定义 {custom.length} 项 · 口径版本 v{version ?? '—'}</span>
       </div>
 
-      <div className="notice info" style={{ lineHeight: 1.8 }}>
-        <b>这页解决什么问题：</b>报告里的数字被质疑「怎么算的」时，在这里查到口径、公式与输入。
-        <b>自定义指标（实验性）：</b>业务想加新观察维度时，管理员先在这里登记口径，全队可见、可讨论；
-        <span className="dash-warn">登记项目前只做口径记录，不参与自动计算</span>，口径稳定后再进算法实现。
+      <div className="notice info">
+        报告里的数字被质疑时，在这里查口径、公式与输入。自定义指标仅登记口径，暂不参与计算。
       </div>
 
       {msg && <div className="notice ok">{msg}</div>}

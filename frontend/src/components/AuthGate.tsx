@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AUTH_REQUIRED_EVENT, clearToken, getToken } from '../lib/auth';
-import { LoginPage } from '../pages/LoginPage';
 import { UserBar } from './UserBar';
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -49,6 +48,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!authed) return <LoginPage />;
+  if (!authed) {
+    // 统一入口：借款侧未登录时也走 /login（身份预选借款侧），不再维护第二套登录页
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.replace('/login?role=borrower');
+    }
+    return <div className="auth-gate muted">正在跳转登录…</div>;
+  }
   return <><UserBar />{children}</>;
 }
