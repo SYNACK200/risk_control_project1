@@ -46,7 +46,12 @@ async function openPdf(file: File, password?: string): Promise<SamplePage> {
   const buffer = await file.arrayBuffer();
   let doc: PDFDocumentProxy;
   try {
-    doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), password }).promise;
+    // 必须带 cMapUrl：中文字体要靠 CMap 才能渲染，缺了只会画出表格线、印不出汉字
+    // （线上表现就是「样本一片空白只有几条竖线」）。cmaps 随构建产物放在 public/cmaps。
+    const cMapUrl = (import.meta.env.BASE_URL || '/') + 'cmaps/';
+    doc = await pdfjs.getDocument({
+      data: new Uint8Array(buffer), password, cMapUrl, cMapPacked: true,
+    }).promise;
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     const errName = err instanceof Error ? err.name : '';
