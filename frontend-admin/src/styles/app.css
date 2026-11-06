@@ -680,3 +680,22 @@ tr.clickable:hover { background: #f6f8fb; }
 .col-handle.right { right: -4px; }
 .col-handle.right::after { right: 3px; }
 .col-handle:hover::after { background: #2563eb; width: 3px; }
+
+/* ---- 客户合并结果（EntitiesPage 使用；上一轮误删，此处恢复）---- */
+.merge-result-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 14px 0 6px; }
+/* ---- 合并结果：先讲为什么，再讲账户，指标默认收起 ---- */
+.merge-why { border: 1px solid #dfe8f5; border-radius: 12px; background: linear-gradient(180deg,#f7fbff,#fff);
+  padding: 14px 16px; margin: 4px 0 16px; }
+.merge-why-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.merge-why-head strong { font-size: 15px; }
+.merge-why-text { margin: 0 0 10px; font-size: 13.5px; line-height: 1.7; color: #33455c; }
+.merge-criteria { list-style: none; margin: 0 0 10px; padding: 0; display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 14px; }
+.merge-criteria li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: #5b6b80; }
+.merge-criteria li.ok { color: #1f6f43; }
+.merge-why-rule { font-size: 12.5px; color: #5b6b80; background: #f6f9fd; border-radius: 8px; padding: 8px 10px; line-height: 1.7; }
+.merge-metrics { border: 1px solid #e6edf6; border-radius: 12px; padding: 10px 14px; margin: 6px 0 4px; background: #fcfdff; }
+.merge-metrics > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #1f2d3d; list-style: none; padding: 2px 0; }
+.merge-metrics > summary::-webkit-details-marker { display: none; }
+.merge-metrics > summary::before { content: "▸ "; color: #7a8ba1; }
+.merge-metrics[open] > summary::before { content: "▾ "; }
