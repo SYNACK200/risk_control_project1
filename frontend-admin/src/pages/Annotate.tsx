@@ -68,6 +68,8 @@ export function AnnotatePage() {
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const probeAutoRef = useRef(false);
   const [guideOpen, setGuideOpen] = useState(true);
+  // 自动定列后显示来源说明，避免「这些框哪来的」
+  const [autoLayoutInfo, setAutoLayoutInfo] = useState<string>('');
   // 临时模板：用当前标注直接解析一份流水，不写回模板库
   const [tempTaskFile, setTempTaskFile] = useState<File | null>(null);
   const [tempTaskBusy, setTempTaskBusy] = useState(false);
@@ -375,6 +377,7 @@ export function AnnotatePage() {
     setMap(prev => ({ ...prev, tables: [table], meta_boxes: prev.meta_boxes }));
     setSel({ kind: 'table', id: table.id });
     const mapped = cols.filter(c => c.field).length;
+    setAutoLayoutInfo(`已按识别到的表头自动生成 ${cols.length} 个列框（${mapped} 列自动认出了字段）。`);
     hint(`已按表头自动定列：${cols.length} 列，其中 ${mapped} 列已识别出字段，其余请在下方「已标注字段」里补齐`);
     return true;
   }
@@ -427,7 +430,13 @@ export function AnnotatePage() {
     hint('已加一列，请在右侧给它指定字段。');
   }
 
+  const tableMoveHinted = useRef(false);
   function moveRect(kind: 'meta' | 'table', id: string, rect: Rect) {
+    // 第一次拖动表格区时说明一次：列是表格区的子对象，会随之移动
+    if (kind === 'table' && !tableMoveHinted.current) {
+      tableMoveHinted.current = true;
+      hint('移动表格区会带着它里面的所有列一起动；只想挪某一列，直接拖那一列本身');
+    }
     setMap(prev => {
       if (kind === 'meta') {
         return { ...prev, meta_boxes: prev.meta_boxes.map(b => (b.id === id ? { ...b, rect } : b)) };
@@ -773,6 +782,14 @@ export function AnnotatePage() {
             )}
           </section>
 
+                    {autoLayoutInfo && (
+            <div className="notice info auto-layout-banner">
+              {autoLayoutInfo}
+              拖动某一列可整体平移，拖列的左右边缘可改宽窄；不想要这些框就点顶部「清空」重画。
+              <button className="link-btn" type="button" style={{ marginLeft: 10 }}
+                onClick={() => setAutoLayoutInfo('')}>知道了</button>
+            </div>
+          )}
           <div className="workspace">
             {sample ? (
               <Stage
