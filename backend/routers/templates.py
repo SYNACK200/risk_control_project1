@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import Task, Template, Txn, now
+from db.models import AuditLog, Task, Template, Txn, now
 from db.session import get_session
 from helpers.security import require_admin, require_banker
 from services.analysis import infer_from_marks
@@ -61,6 +61,8 @@ def publish_template(template_id: int, db: Session = Depends(get_session)):
     others = db.execute(select(Template).where(Template.bank_code == row.bank_code)).scalars().all()
     for o in others:
         o.status = "enabled" if o.id == row.id else "disabled"
+    _audit_template(db, "publish_template", row.id, f"启用 {row.bank_code} v{row.version}")
+    _audit_template(db, "disable_template", row.id, f"停用 {row.bank_code} v{row.version}")
     db.commit()
     return {"id": row.id, "status": row.status}
 
@@ -361,9 +363,12 @@ def delete_template(template_id: int, db: Session = Depends(get_session)):
         # 有历史流水引用：不能物理删除，否则报告溯源断链；改为从列表移除（历史保留）
         row.deleted_at = now()
         row.status = "disabled"
+        _audit_template(db, "delete_template", template_id, f"软删除（被 {used} 个任务引用）")
         db.commit()
         return {"deleted": template_id, "soft": True, "used": used,
                 "message": f"该模板被 {used} 条流水引用，已从列表移除（历史解析记录仍保留），未做物理删除"}
+    _audit_template(db, "delete_template", template_id,
+                    f"物理删除 {row.bank_code} v{row.version}（无任务引用）")
     db.delete(row)
     db.commit()
     return {"deleted": template_id, "soft": False, "used": 0, "message": "已删除"}
@@ -524,3 +529,12 @@ def get_template_layout_png(template_id: int, page: int = 0, dpi: int = 140, db:
     data = _Path(file_row.storage_path).read_bytes()
     png = tlayout.render_page_png(data, row.layout, max(0, page), dpi=max(80, min(200, dpi)))
     return Response(content=png, media_type="image/png")
+
+
+def _audit_template(db: Session, action: str, template_id: int | None, detail: str) -> None:
+    """模板的增删改必须有审计：出问题时要能回答「谁在什么时候改了什么」。"""
+    try:
+        db.add(AuditLog(action=action, object_type="template", object_id=template_id or 0,
+                        detail=detail[:1000]))
+    except Exception:  # noqa: BLE001 - 审计失败不能阻断业务
+        pass
