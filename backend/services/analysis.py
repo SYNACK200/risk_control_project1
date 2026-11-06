@@ -1,6 +1,8 @@
 """把算法侧的四层核验、指标与报告串起来，供接口调用。"""
 from __future__ import annotations
 
+from decimal import Decimal
+
 import json
 import sys
 import tempfile
@@ -20,9 +22,43 @@ from algorithm.algo.ledger_layer import analyze_ledger  # noqa: E402
 from algorithm.algo.external_layer import analyze_external, ExternalContext  # noqa: E402
 from algorithm.algo.verdict import conclude  # noqa: E402
 from algorithm.algo.metrics import compute_metrics  # noqa: E402
+from services.custom_metric_eval import evaluate_custom  # noqa: E402
 from algorithm.algo.report import build_report, ReportMaterial, ReportCheck  # noqa: E402
 from algorithm.ocr.infer import Mark as InferMark, infer_template as _infer_template  # noqa: E402
 from algorithm.algo.self_check import run_self_check  # noqa: E402
+
+
+def _append_custom_metrics(metrics, transactions):
+    """把带 steps 的自定义指标算进指标集。失败时写进指标的 note，不给假 0。"""
+    try:
+        from db.session import SessionLocal  # noqa: PLC0415
+        from db.models import CustomMetric  # noqa: PLC0415
+        from sqlalchemy import select  # noqa: PLC0415
+
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(CustomMetric).where(CustomMetric.enabled.is_(True))
+            ).scalars().all()
+            items = [(r.code, r.name, r.unit, r.steps) for r in rows if r.steps]
+        if not items:
+            return metrics
+        from algorithm.algo.metrics import MetricValue  # noqa: PLC0415
+
+        extra = []
+        for code, name, unit, steps in items:
+            res = evaluate_custom(steps, transactions)
+            value = res["value"]
+            note = "自定义指标（计算元执行）" if value is not None else (
+                "自定义指标计算失败：" + (res.get("error") or "未知原因"))
+            extra.append(MetricValue(
+                code=code, name=name,
+                value=round(Decimal(str(value)), 2) if value is not None else None,
+                unit=unit or "", note=note,
+            ))
+        metrics.metrics.extend(extra)
+        return metrics
+    except Exception:  # noqa: BLE001 - 自定义指标失败不影响 40 项主指标
+        return metrics
 
 
 class EncryptedFile(Exception):
@@ -75,6 +111,9 @@ def run_analysis(
             bank_code=str(template.get("bank_code", "UNKNOWN")),
             version=int(template.get("version", 1)),
             field_map=dict(template.get("field_map", {})),
+            # 必须带上框画范围：不带的话解析只能按表头词中心推算列边界，
+            # 「改框画范围」就永远不会影响结果（这一点之前实测时漏掉了）
+            layout=template.get("layout"),
         )
 
     parsed = parse(raw, tpl)
@@ -86,6 +125,8 @@ def run_analysis(
         content_layer, carrier=carrier, file_layer=file_layer, ledger=ledger, external=external
     )
     metrics = compute_metrics(parsed.transactions)
+    # 有计算步骤的自定义指标在这里真正算出来；没有步骤的保持「仅登记口径」
+    metrics = _append_custom_metrics(metrics, parsed.transactions)
     txn_ids = list(range(1, len(parsed.transactions) + 1))
     self_check = run_self_check(raw, parsed.transactions, getattr(parsed, "footer_count", None), preread=preread)
     report = build_report(

@@ -13,6 +13,15 @@ def ensure_columns() -> list[str]:
         return []
     done: list[str] = []
     insp = inspect(engine)
+    # 自定义指标的计算步骤（atoms 描述）；老库没有这一列就补
+    try:
+        ccols = {c["name"] for c in insp.get_columns("custom_metric")}
+        if ccols and "steps" not in ccols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE custom_metric ADD COLUMN steps JSON NULL"))
+            done.append("custom_metric.steps")
+    except Exception:  # noqa: BLE001 - 老库可能还没有 custom_metric
+        pass
     try:
         tcols = {c["name"] for c in insp.get_columns("task")}
         if "field_map_override" not in tcols:
