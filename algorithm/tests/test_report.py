@@ -90,6 +90,7 @@ def test_report_matches_contract_shape():
         "threshold_version",
         "conclusions",
         "scores",
+        "trust",
         "trend",
         "evidence",
         "materials",

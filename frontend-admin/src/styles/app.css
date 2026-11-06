@@ -703,3 +703,16 @@ tr.clickable:hover { background: #f6f8fb; }
 .merge-metrics[open] > summary::before { content: "▾ "; }
 /* ---- 自动定列说明条 ---- */
 .auto-layout-banner { margin: 0 18px 10px; }
+
+/* ---- 真实性得分（报告结论版）---- */
+.trust-box { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid #e6edf7;
+  border-radius: 12px; background: #fbfdff; }
+.trust-head { display: flex; align-items: baseline; gap: 12px; }
+.trust-score { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+.trust-score.trust-high { color: #177245; }
+.trust-score.trust-medium { color: #a16207; }
+.trust-score.trust-low { color: #b42318; }
+.trust-layers { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.trust-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  background: #eef4ff; color: #24508f; }
+.trust-chip.off { background: #f1f5f9; color: #94a3b8; }

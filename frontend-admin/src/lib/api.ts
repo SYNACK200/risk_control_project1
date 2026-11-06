@@ -1,7 +1,8 @@
 import { getToken, notifyAuthRequired } from './auth';
 
 export interface PrereadInfo {
-  verdict: string; is_statement: boolean; confidence: number;
+  verdict: string;
+  is_statement: boolean; confidence: number;
   bank_name: string | null; bank_code: string | null;
   account_masked: string | null; holder_masked: string | null;
   period_start: string | null; period_end: string | null;
@@ -15,8 +16,18 @@ export interface TaskRow {
   id: number; biz_no: string; status: string; carrier: string | null; created_at: string | null;
   check_result?: { preread?: PrereadInfo | null; warnings?: string[]; self_check?: unknown } | null;
 }
+export interface TrustLayer {
+  layer: string; label: string; status: string; score: number; weight: number; note: string;
+}
+
+export interface TrustScore {
+  score: number; level: string; label: string; carrier: string; note: string;
+  layers: TrustLayer[];
+}
+
 export interface ReportPayload {
   carrier: string; verdict: string; verdict_reason: string;
+  trust?: TrustScore | null;
   limitations: string[];
   layers: { layer: string; status: string; detail: string; checks: ReportCheck[] }[];
   self_check: ReportCheck[];
