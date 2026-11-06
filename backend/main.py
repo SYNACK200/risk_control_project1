@@ -141,6 +141,17 @@ def _portal_redirect():
     return RedirectResponse(url="/", status_code=307)
 
 
+@app.get("/login", include_in_schema=False)
+def _login_page():
+    """统一登录页：选身份后进入银行侧或借款侧。"""
+    from fastapi.responses import FileResponse
+
+    page = _PORTAL_DIR / "login.html"
+    if not page.exists():
+        raise HTTPException(404, detail="登录页缺失")
+    return FileResponse(page)
+
+
 if _PORTAL_DIR.exists():
 
 

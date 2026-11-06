@@ -9,6 +9,23 @@
 .material-help { padding-left: 22px; line-height: 1.9; }
 .consent-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 20px; }
 .btn:disabled { opacity: .6; cursor: not-allowed; box-shadow: none; }
+/* 拖拽区基础样式：虚线框、居中、悬停高亮（此前丢失，导致借款侧看不到拖拽框） */
+.drop {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 44px 24px;
+  border: 2px dashed #c7d5ea;
+  border-radius: 16px;
+  background: #fbfdff;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.drop:hover, .drop:focus-within { border-color: #2563eb; background: #f2f7ff; }
+.drop.dragging { border-color: #2563eb; background: #eaf1ff; }
+.drop h3 { margin: 0; font-size: 18px; }
+.drop p { margin: 0; max-width: 560px; }
 .drop.has-file { padding: 26px 20px; }
 .file-chosen { display: grid; justify-items: center; gap: 2px; }
 .drop .file-ok { margin: 0; color: #18a67b; font-weight: 700; }
