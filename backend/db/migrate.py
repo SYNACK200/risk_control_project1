@@ -12,6 +12,15 @@ def ensure_columns() -> list[str]:
     if engine is None:
         return []
     done: list[str] = []
+    insp = inspect(engine)
+    try:
+        tcols = {c["name"] for c in insp.get_columns("task")}
+        if "field_map_override" not in tcols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE task ADD COLUMN field_map_override TEXT NULL"))
+            done.append("task.field_map_override")
+    except Exception:  # noqa: BLE001 - 老库可能还没有 task 表
+        pass
     # 审计 detail 里会拼任务 id 列表，255 不够用（批量 61 条会超）
     try:
         acols = {c["name"]: c for c in insp.get_columns("audit_log")}
@@ -24,7 +33,6 @@ def ensure_columns() -> list[str]:
                 done.append("audit_log.detail")
     except Exception:  # noqa: BLE001 - 老库可能还没有 audit_log
         pass
-    insp = inspect(engine)
     columns = {c["name"] for c in insp.get_columns("task")}
     with engine.begin() as conn:
         if "deleted_at" not in columns:

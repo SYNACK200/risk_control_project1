@@ -181,6 +181,7 @@ def create_task(
     period_end: str | None = Form(None),
     source_ref: str | None = Form(None),
     bank_code: str | None = Form(None),
+    marks: str | None = Form(None, description="临时模板：本次专用的标注 JSON，不写回模板库"),
     db: Session = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -272,6 +273,18 @@ def create_task(
     if not file_obj.storage_path:
         file_obj.storage_path = str(path)
 
+    override_json: str | None = None
+    if marks:
+        import json as _json
+
+        try:
+            parsed_marks = _json.loads(marks)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, detail={"code": "E_PARAM", "message": f"临时标注不是合法 JSON：{exc}"}) from exc
+        if not isinstance(parsed_marks, list) or not parsed_marks:
+            raise HTTPException(400, detail={"code": "E_PARAM", "message": "临时标注必须是非空数组"})
+        override_json = _json.dumps(parsed_marks, ensure_ascii=False)
+
     task = Task(
         biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
         user_id=user.id,
@@ -279,6 +292,7 @@ def create_task(
         status="PENDING",
         template_id=template_row.id if template_row else None,
         template_version=template_row.version if template_row else None,
+        field_map_override=override_json,
         period_start=period_start or (preread.period_start if preread else None),
         period_end=period_end or (preread.period_end if preread else None),
         check_result={
@@ -299,7 +313,7 @@ def create_task(
     if protected and password:
         _record_password_attempt(db, file_id=file_obj.id, file_name=file_name, outcome="success")
     db.add(AuditLog(action="create_task", object_type="task", object_id=task.id,
-                   detail=f"source_ref={source_ref or '-'} queued"))
+                   detail=f"source_ref={source_ref or '-'} queued" + ("; temp_template=1" if override_json else "")))
     db.commit(); db.refresh(task)
 
     # 分析交给后台进程池：请求立即返回 QUEUED，前端轮询进度

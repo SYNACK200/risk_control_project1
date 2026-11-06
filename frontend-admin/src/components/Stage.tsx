@@ -13,6 +13,8 @@ interface Props {
   onDraw: (rect: Rect) => void;
   onSelect: (s: Selection) => void;
   onMove: (kind: 'meta' | 'table', id: string, rect: Rect) => void;
+  /** 拖动列边界：newX/newW 为相对页面的 0–1 比例。 */
+  onColumnResize?: (tableId: string, index: number, x: number, w: number) => void;
   onHint: (text: string) => void;
 }
 
@@ -20,6 +22,8 @@ type Drag =
   | { mode: 'create'; start: { x: number; y: number }; rect: Rect }
   | { mode: 'move'; kind: 'meta' | 'table'; id: string; start: { x: number; y: number }; origin: Rect }
   | { mode: 'resize'; kind: 'meta' | 'table'; id: string; origin: Rect }
+  | { mode: 'col-left'; tableId: string; index: number; startX: number; originX: number; originW: number }
+  | { mode: 'col-right'; tableId: string; index: number; startX: number; originX: number; originW: number }
   | null;
 
 export function Stage(p: Props) {
@@ -85,6 +89,20 @@ export function Stage(p: Props) {
       const ny = Math.min(1 - drag.origin.h, Math.max(0, drag.origin.y + dy));
       const rect = { x: round4(nx), y: round4(ny), w: drag.origin.w, h: drag.origin.h };
       p.onMove(drag.kind, drag.id, rect);
+      return;
+    }
+    if (drag.mode === 'col-left' || drag.mode === 'col-right') {
+      if (!p.onColumnResize) return;
+      const dx = now.x - drag.startX;
+      const minW = 0.004;
+      if (drag.mode === 'col-right') {
+        const w = Math.max(minW, drag.originW + dx);
+        p.onColumnResize(drag.tableId, drag.index, drag.originX, Math.min(w, 1 - drag.originX));
+      } else {
+        const nx = Math.min(drag.originX + drag.originW - minW, Math.max(0, drag.originX + dx));
+        const w = drag.originX + drag.originW - nx;
+        p.onColumnResize(drag.tableId, drag.index, nx, w);
+      }
       return;
     }
     if (drag.mode === 'resize') {
@@ -160,6 +178,28 @@ export function Stage(p: Props) {
                         }}
                       >
                         <span className="box-label">{col.field ? labelOf(col.field, p.map.custom_fields) : '未指定'}</span>
+                        {p.onColumnResize && (
+                          <>
+                            <span
+                              className="col-handle left"
+                              title="拖动调整左边界"
+                              onPointerDown={ev => {
+                                ev.stopPropagation();
+                                setDrag({ mode: 'col-left', tableId: t.id, index: idx, startX: toRel(ev).x, originX: col.x, originW: col.w });
+                                ev.currentTarget.setPointerCapture(ev.pointerId);
+                              }}
+                            />
+                            <span
+                              className="col-handle right"
+                              title="拖动调整右边界"
+                              onPointerDown={ev => {
+                                ev.stopPropagation();
+                                setDrag({ mode: 'col-right', tableId: t.id, index: idx, startX: toRel(ev).x, originX: col.x, originW: col.w });
+                                ev.currentTarget.setPointerCapture(ev.pointerId);
+                              }}
+                            />
+                          </>
+                        )}
                       </div>
                     );
                   })}

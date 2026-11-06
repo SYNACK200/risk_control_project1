@@ -68,6 +68,10 @@ export function AnnotatePage() {
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const probeAutoRef = useRef(false);
   const [guideOpen, setGuideOpen] = useState(true);
+  // 临时模板：用当前标注直接解析一份流水，不写回模板库
+  const [tempTaskFile, setTempTaskFile] = useState<File | null>(null);
+  const [tempTaskBusy, setTempTaskBusy] = useState(false);
+  const [tempTaskMsg, setTempTaskMsg] = useState('');
   const [map, setMap] = useState<FieldMapV1>(() => loadDraft() ?? createEmpty());
   const [sample, setSample] = useState<SamplePage | null>(null);
   const [sampleName, setSampleName] = useState('');
@@ -373,6 +377,22 @@ export function AnnotatePage() {
     const mapped = cols.filter(c => c.field).length;
     hint(`已按表头自动定列：${cols.length} 列，其中 ${mapped} 列已识别出字段，其余请在下方「已标注字段」里补齐`);
     return true;
+  }
+
+  /** 临时模板：把当前标注作为本次任务的专用映射提交，模板库不受影响。 */
+  async function runTempTask() {
+    if (!tempTaskFile) { hint('先选一份要解析的流水文件'); return; }
+    if (map.tables.length === 0 && map.meta_boxes.length === 0) { hint('还没有任何标注'); return; }
+    setTempTaskBusy(true); setTempTaskMsg('');
+    try {
+      const { createTaskWithTempTemplate } = await import('../lib/api');
+      const res = await createTaskWithTempTemplate(tempTaskFile, marksFromMap(map), map.bank_code || undefined);
+      setTempTaskMsg('已提交，任务号 #' + res.task_id + '（本次使用临时标注，模板库未变更）');
+    } catch (e) {
+      setTempTaskMsg('提交失败：' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setTempTaskBusy(false);
+    }
   }
 
   function draw(rect: Rect) {
@@ -687,6 +707,23 @@ export function AnnotatePage() {
             </div>
           )}
 
+          <section className="tpl-panel">
+            <h3>临时模板：用这份标注直接解析一份流水</h3>
+            <p className="muted small">
+              有些上传件的版式和库里的模板对不上。这里可以拿当前标注<strong>只解析这一份</strong>，
+              不新建、不修改模板库；解析结果照常进报告与看板。
+            </p>
+            <div className="tpl-row">
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                onChange={e => setTempTaskFile(e.target.files?.[0] ?? null)} />
+              <button className="btn" type="button" disabled={tempTaskBusy || !tempTaskFile}
+                onClick={() => { void runTempTask(); }}>
+                {tempTaskBusy ? '提交中…' : '用当前标注解析这份流水'}
+              </button>
+            </div>
+            {tempTaskMsg && <div className="notice info">{tempTaskMsg}</div>}
+          </section>
+
           <div className="wizard-actions">
             <button className="btn" type="button" disabled={!sample} onClick={() => navigate('/annotate/mark')}>
               下一步：标注列 →
@@ -742,6 +779,15 @@ export function AnnotatePage() {
                 onDraw={draw}
                 onSelect={setSel}
                 onMove={moveRect}
+                onColumnResize={(tableId, index, x, w) => {
+                  setMap(prev => ({
+                    ...prev,
+                    tables: prev.tables.map(tb => (tb.id !== tableId ? tb : {
+                      ...tb,
+                      columns: tb.columns.map((c, i) => (i === index ? { ...c, x, w } : c)),
+                    })),
+                  }));
+                }}
                 onHint={hint}
               />
             ) : (
