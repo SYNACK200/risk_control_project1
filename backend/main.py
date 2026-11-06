@@ -141,6 +141,14 @@ def _portal_redirect():
     return RedirectResponse(url="/", status_code=307)
 
 
+@app.get("/register", include_in_schema=False)
+async def register_page():
+    """借款侧自助注册页（只注册 borrower；银行侧由管理员创建）。"""
+    from fastapi.responses import FileResponse as _FR
+
+    return _FR(str(_PORTAL_DIR / "register.html"))
+
+
 @app.get("/login", include_in_schema=False)
 def _login_page():
     """统一登录页：选身份后进入银行侧或借款侧。"""

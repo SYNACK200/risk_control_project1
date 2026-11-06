@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>注册借款侧账号 · 智能风控</title>
+<style>
+  :root { --ink:#0f1f33; --muted:#5b6b80; --line:#e3eaf4; --brand:#1d4ed8; color-scheme:light; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body { font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; color:var(--ink);
+         background:#f7f9fc; display:grid; place-items:center; padding:24px; line-height:1.7; }
+  .shell { width:min(940px,100%); background:#fff; border:1px solid var(--line); border-radius:22px;
+           display:grid; grid-template-columns:1fr 1fr; overflow:hidden; box-shadow:0 24px 60px rgba(15,31,51,.10); }
+  @media (max-width:820px){ .shell { grid-template-columns:1fr; } .aside { display:none; } }
+  .aside { background:linear-gradient(150deg,#12233d,#1d3a63); color:#fff; padding:44px 38px; display:flex; flex-direction:column; justify-content:space-between; }
+  .aside h2 { margin:0 0 12px; font-size:23px; line-height:1.35; }
+  .aside p { margin:0; color:#c4d3e8; font-size:14px; }
+  .aside ul { list-style:none; padding:0; margin:24px 0 0; display:grid; gap:12px; font-size:13.5px; color:#dbe6f5; }
+  .aside li::before { content:"✓"; color:#5eead4; margin-right:8px; font-weight:700; }
+  .aside .tip { font-size:12px; color:#8fa5c2; margin-top:18px; }
+
+  .form { padding:44px 38px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; margin-bottom:24px; }
+  .brand i { width:26px; height:26px; border-radius:7px; display:grid; place-items:center;
+             background:linear-gradient(135deg,#2563eb,#1e40af); color:#fff; font-style:normal; font-size:14px; }
+  .form h1 { margin:0 0 6px; font-size:22px; }
+  .form .sub { margin:0 0 20px; color:var(--muted); font-size:13.5px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; }
+  input { width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px;
+          font-size:14px; font-family:inherit; color:var(--ink); background:#fbfdff; }
+  input:focus { outline:none; border-color:#93b4f5; box-shadow:0 0 0 3px rgba(37,99,235,.10); }
+  .btn { width:100%; margin-top:20px; padding:12px; border:0; border-radius:11px; cursor:pointer;
+         background:linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff; font-size:15px; font-weight:600; font-family:inherit; }
+  .btn:disabled { opacity:.6; cursor:default; }
+  .msg { margin-top:14px; font-size:13px; padding:10px 12px; border-radius:10px; display:none; }
+  .msg.show { display:block; }
+  .msg.err { background:#fef2f2; color:#b42318; border:1px solid #fecaca; }
+  .msg.ok { background:#f0fdf4; color:#177245; border:1px solid #bbf7d0; }
+  .foot { margin-top:18px; font-size:13px; color:var(--muted); }
+  .foot a { color:var(--brand); text-decoration:none; }
+  .role-note { background:#f8fafc; border:1px solid var(--line); border-radius:10px;
+               padding:10px 12px; font-size:12.5px; color:var(--muted); margin-top:16px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="aside">
+    <div>
+      <h2>上传你的流水<br />拿到一份可核验的结果</h2>
+      <p>注册后即可上传银行流水，系统会核对真实性、算出还款能力，并给出能否受理的初步判断。</p>
+      <ul>
+        <li>只用你自己的真实流水</li>
+        <li>材料仅在本系统内处理</li>
+        <li>可随时查看自己的历史结果</li>
+      </ul>
+    </div>
+    <div class="tip">本页只注册借款侧账号。银行侧账号由银行管理员在后台创建，无法自助注册。</div>
+  </div>
+
+  <div class="form">
+    <div class="brand"><i>风</i>智能风控</div>
+    <h1>注册借款侧账号</h1>
+    <p class="sub">用于借款人上传流水、查看结果。银行侧账号请找对接的银行管理员开通。</p>
+
+    <label for="username">用户名</label>
+    <input id="username" autocomplete="username" placeholder="登录用，至少 3 个字符" />
+
+    <label for="displayName">你的称呼（可选）</label>
+    <input id="displayName" placeholder="如：张三" />
+
+    <label for="password">密码</label>
+    <input id="password" type="password" autocomplete="new-password" placeholder="至少 6 位" />
+
+    <label for="password2">再输一次密码</label>
+    <input id="password2" type="password" autocomplete="new-password" placeholder="确认密码" />
+
+    <button class="btn" id="submitBtn" type="button">注册并登录</button>
+    <div class="msg" id="msg"></div>
+
+    <div class="role-note">
+      身份说明：注册出来的账号<strong>只能</strong>是借款侧。银行侧账号有阈值调整、模板启停、删除任务等权限，
+      必须由银行管理员在「账号」页添加，不能自助申请。
+    </div>
+
+    <p class="foot">已有账号？<a href="/login?role=borrower">去登录</a> · <a href="/">返回介绍页</a></p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var msg = document.getElementById('msg');
+  function show(text, ok) {
+    msg.className = 'msg show ' + (ok ? 'ok' : 'err');
+    msg.textContent = text;
+  }
+  function val(id) { return document.getElementById(id).value.trim(); }
+
+  document.getElementById('submitBtn').addEventListener('click', async function () {
+    var btn = this;
+    var username = val('username');
+    var password = document.getElementById('password').value;
+    var password2 = document.getElementById('password2').value;
+    var displayName = val('displayName');
+
+    if (username.length < 3) { show('用户名至少 3 个字符'); return; }
+    if (password.length < 6) { show('密码至少 6 位'); return; }
+    if (password !== password2) { show('两次输入的密码不一致'); return; }
+
+    btn.disabled = true;
+    btn.textContent = '注册中…';
+    try {
+      var res = await fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // 注意：这里故意不传 role。后端 register 固定创建 borrower，
+        // 前端传了也没用——权限判定只在服务端。
+        body: JSON.stringify({ username: username, password: password, display_name: displayName || null })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        var detail = data && data.detail;
+        show((detail && (detail.message || detail)) || ('注册失败（HTTP ' + res.status + '）'));
+        btn.disabled = false; btn.textContent = '注册并登录';
+        return;
+      }
+      localStorage.setItem('bs_token', data.token);
+      localStorage.setItem('bs_user', JSON.stringify(data.user));
+      show('注册成功，正在进入借款侧…', true);
+      location.replace('/app/');
+    } catch (e) {
+      show('网络错误：' + (e && e.message ? e.message : e));
+      btn.disabled = false; btn.textContent = '注册并登录';
+    }
+  });
+})();
+</script>
+</body>
+</html>
