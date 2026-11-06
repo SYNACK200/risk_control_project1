@@ -207,13 +207,21 @@ export function ThresholdsPage() {
           <p className="muted">还没有自定义版本（当前是算法默认 v{data.version}）。</p>
         ) : (
           <table className="mini">
-            <thead><tr><th>版本</th><th>备注</th><th>时间</th></tr></thead>
+            <thead><tr><th>版本</th><th>备注</th><th>时间</th><th>同期口径变更</th></tr></thead>
             <tbody>
               {data.history.map(h => (
                 <tr key={h.version}>
                   <td>v{h.version}</td>
                   <td>{h.note ?? '—'}</td>
                   <td className="muted">{h.created_at ?? '—'}</td>
+                  <td className="muted small">
+                    {(h.related_metrics ?? []).length === 0 ? '—' : (
+                      <span title={(h.related_metrics ?? []).map(x => x.action + ' ' + x.detail).join('\n')}>
+                        {(h.related_metrics ?? []).length} 项口径变动
+                        （{(h.related_metrics ?? []).slice(0, 2).map(x => x.action).join('、')}）
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -46,10 +46,15 @@ def build_config(db: Session) -> ThresholdConfig:
 
 
 def history(db: Session, limit: int = 10) -> list[dict]:
+    """阈值版本历史，附带「同一时期的口径变更」。
+
+    为什么联动：阈值是绑在指标口径上的——口径新增了字段、删了字段，阈值是否还成立就变了。
+    只看阈值自己的历史，会读成「阈值没动过」，其实是口径动了。
+    """
     rows = db.execute(
         select(ThresholdProfile).order_by(ThresholdProfile.version.desc()).limit(limit)
     ).scalars().all()
-    return [
+    items = [
         {
             "version": row.version,
             "note": row.note,
@@ -58,6 +63,31 @@ def history(db: Session, limit: int = 10) -> list[dict]:
         }
         for row in rows
     ]
+
+    # 口径变更事件（新增/删除自定义指标），按时间到版本映射
+    from db.models import AuditLog  # noqa: PLC0415
+
+    metric_events = db.execute(
+        select(AuditLog)
+        .where(AuditLog.action.in_(("add_metric", "remove_metric")))
+        .order_by(AuditLog.created_at.desc())
+        .limit(50)
+    ).scalars().all()
+    # 每个版本只挂「这个版本之后」发生的口径变更——否则所有版本都会显示同一批事件，读不出先后
+    from datetime import datetime as _dt
+
+    for item, row in zip(items, rows):
+        since = row.created_at
+        item["related_metrics"] = [
+            {
+                "action": "新增口径" if ev.action == "add_metric" else "删除口径",
+                "detail": ev.detail,
+                "at": ev.created_at.isoformat() if ev.created_at else None,
+            }
+            for ev in metric_events
+            if ev.created_at is not None and (since is None or ev.created_at >= since)
+        ]
+    return items
 
 
 def save_version(db: Session, values: dict, note: str | None) -> ThresholdProfile:
