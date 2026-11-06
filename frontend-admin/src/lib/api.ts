@@ -136,17 +136,6 @@ export interface FlowMergeResult {
   notes: string[];
 }
 
-export async function getMergeModes(): Promise<{ items: FlowMergeMode[] }> {
-  return json<{ items: FlowMergeMode[] }>(await authFetch(BASE + '/tasks/merge/modes'));
-}
-
-export async function mergeTasks(taskIds: number[], mode: string): Promise<FlowMergeResult> {
-  return json<FlowMergeResult>(await authFetch(BASE + '/tasks/merge', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ task_ids: taskIds, mode }),
-  }));
-}
-
 export async function getReport(taskId: number): Promise<ReportPayload> {
   return json<ReportPayload>(await authFetch(`${BASE}/reports/${taskId}`));
 }
@@ -193,12 +182,6 @@ export interface TemplateRow { id: number; bank_code: string; version: number; s
 
 export async function listTemplates(): Promise<TemplateRow[]> {
   return json<TemplateRow[]>(await authFetch(`${BASE}/templates`));
-}
-
-export async function createTemplate(body: { bank_code: string; field_map: Record<string, unknown>; header_columns?: string[]; version?: number }): Promise<{ id: number }> {
-  return json<{ id: number }>(await authFetch(`${BASE}/templates`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  }));
 }
 
 export async function publishTemplate(id: number): Promise<{ status: string }> {

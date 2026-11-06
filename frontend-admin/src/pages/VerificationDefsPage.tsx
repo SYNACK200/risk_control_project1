@@ -38,9 +38,8 @@ export function VerificationDefsPage() {
         <span className="muted">{items.length} 项 · 报告「识别自检」的检查点定义 · 只读</span>
       </div>
 
-      <div className="notice info" style={{ lineHeight: 1.8 }}>
-        <b>这页解决什么问题：</b>报告里写「识别自检 C3 笔数：无页脚笔数」这类提示时，业务看不懂编码含义，
-        在这里查每一项到底查什么、属于哪一层。<b>怎么用：</b>按编码（F1/C3/L2…）搜索，回报告看该项状态。
+      <div className="notice info">
+        报告里出现「C3 笔数」这类编码时，在这里查它检查什么、属于哪一层。
       </div>
 
       {error && <div className="notice error">{error}</div>}
