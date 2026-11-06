@@ -36,6 +36,18 @@ def _row(m: CustomMetric) -> dict:
     }
 
 
+@router.get("/atoms", dependencies=[Depends(require_banker)])
+def list_atoms():
+    """计算元目录：把流水抽象成的基础计算（sum / diff1 / 按月聚合 …）。
+
+    银行侧用它们组合自定义指标，不必等算法改代码。每个计算元都是纯函数，
+    组合方式按「过滤/分组 → 聚合」的步骤描述执行，可解释、可审计。
+    """
+    from algorithm.algo.atoms import catalog
+
+    return {"items": catalog()}
+
+
 @router.get("", dependencies=[Depends(require_banker)])
 def list_custom_metrics(db: Session = Depends(get_session)):
     rows = db.execute(select(CustomMetric).order_by(CustomMetric.id.desc())).scalars().all()
