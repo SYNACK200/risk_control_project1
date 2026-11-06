@@ -438,6 +438,12 @@ export function AnnotatePage() {
 
   function removeSelected() {
     if (!sel) return;
+    // 一致性：删除表格区会连带它的所有列，必须先确认；删单个字段框/列则直接删（可重画）
+    if (sel.kind === 'table') {
+      const tb = map.tables.find(t => t.id === sel.id);
+      const n = tb?.columns.length ?? 0;
+      if (n > 0 && !window.confirm('这个表格区里有 ' + n + ' 列，删除会一并清掉。继续？')) return;
+    }
     setMap(prev => {
       if (sel.kind === 'meta') return { ...prev, meta_boxes: prev.meta_boxes.filter(b => b.id !== sel.id) };
       if (sel.kind === 'table') return { ...prev, tables: prev.tables.filter(t => t.id !== sel.id) };
