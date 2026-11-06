@@ -342,6 +342,39 @@ export function AnnotatePage() {
     setNotice({ level: 'info', text: '已载入内置示例页，可直接练习标注；示例页没有源文件，不能试解析。' });
   }
 
+  /** 用后端预读结果直接生成表格区与每一列——列边界由系统按表头词间隙计算，人不画。 */
+  function autoLayoutFromProbe(): boolean {
+    const pr = probeResult;
+    if (!pr || !pr.headers || pr.headers.length === 0 || !pr.table_area) {
+      hint('预读没有识别到表头行，无法自动定列；请换一份清晰些的样例或手动画框');
+      return false;
+    }
+    const W = pr.page_size.width || 1;
+    const hdrs = [...pr.headers].sort((x, y) => (x.x ?? 0) - (y.x ?? 0));
+    const bounds = pr.boundaries ?? [];
+    const ta = pr.table_area;
+    const cols = hdrs.map((h, i) => {
+      const leftPt = i === 0 ? (h.x0 ?? h.x - 30) : (bounds[i - 1]?.x ?? h.x - 20);
+      const rightPt = i === hdrs.length - 1 ? (h.x1 ?? h.x + 30) : (bounds[i]?.x ?? h.x + 20);
+      const x = Math.max(0, Math.min(1, leftPt / W));
+      const right = Math.max(x + 0.004, Math.min(1, rightPt / W));
+      const field = pr.suggestions?.find(sg => sg.column === h.text)?.field ?? '';
+      return { field, fields: field ? [field] : [], x: Math.round(x * 10000) / 10000, w: Math.round((right - x) * 10000) / 10000 };
+    });
+    const table = {
+      id: uid('t'),
+      page,
+      area: { x: ta.x, y: ta.y, w: ta.w, h: ta.h },
+      headerY: ta.header_y ?? (ta.y + 0.02),
+      columns: cols,
+    };
+    setMap(prev => ({ ...prev, tables: [table], meta_boxes: prev.meta_boxes }));
+    setSel({ kind: 'table', id: table.id });
+    const mapped = cols.filter(c => c.field).length;
+    hint(`已按表头自动定列：${cols.length} 列，其中 ${mapped} 列已识别出字段，其余请在下方「已标注字段」里补齐`);
+    return true;
+  }
+
   function draw(rect: Rect) {
     if (!sample) { hint('先载入样例文件或点「示例页」'); return; }
     if (tool === 'meta') {
@@ -668,9 +701,14 @@ export function AnnotatePage() {
           <section className="mark-guide">
             <div className="mark-guide-head">
               <h3>标注怎么做（照着 4 步画）</h3>
-              <button className="pill-btn" type="button" onClick={() => setGuideOpen(v => !v)}>
-                {guideOpen ? '收起' : '展开'}
-              </button>
+              <span style={{ display: 'flex', gap: 8 }}>
+                <button className="pill-btn pill-btn-primary" type="button"
+                  disabled={!probeResult}
+                  onClick={() => { autoLayoutFromProbe(); }}>按表头自动定列</button>
+                <button className="pill-btn" type="button" onClick={() => setGuideOpen(v => !v)}>
+                  {guideOpen ? '收起' : '展开'}
+                </button>
+              </span>
             </div>
             {guideOpen && (
               <>

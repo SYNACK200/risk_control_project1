@@ -175,7 +175,8 @@ def probe_template(file: UploadFile = File(...), password: str | None = Form(Non
     header = detect_header_row({0: words})
     headers = [{"text": w["text"], "x0": round(w["x0"], 1), "x1": round(w["x1"], 1),
                 "x": round((w["x0"] + w["x1"]) / 2, 1),
-                "y": round((w["top"] + w["bottom"]) / 2, 1)} for w in header]
+                "y": round((w["top"] + w["bottom"]) / 2, 1),
+                "top": round(w["top"], 1), "bottom": round(w["bottom"], 1)} for w in header]
 
     # 列边界：相邻表头词之间如果留有空隙（>6pt），取空隙中点作分界；
     # 没有空隙说明表头被拆成多个词（如「收入 支出 金额」），按两词中心均值切。
@@ -198,10 +199,23 @@ def probe_template(file: UploadFile = File(...), password: str | None = Form(Non
                             "y": round((w["top"] + w["bottom"]) / 2, 1)})
 
     meta = _extract_meta(full_text, words, page_size["width"], page_size["height"])
+
+    # 表格区：表头行上沿再往上留 2pt，到页面底部留 2% —— 由系统给出，不让用户画
+    table_area = None
+    if header:
+        top = min(h["top"] for h in headers)
+        table_area = {
+            "x": round(max(0.0, min(h["x0"] for h in headers) / page_size["width"] - 0.01), 4),
+            "y": round(max(0.0, top / page_size["height"] - 0.004), 4),
+            "w": round(min(1.0, (max(h["x1"] for h in headers) / page_size["width"]) - (min(h["x0"] for h in headers) / page_size["width"]) + 0.02), 4),
+            "h": round(max(0.05, 0.98 - max(0.0, top / page_size["height"] - 0.004)), 4),
+            "header_y": round(max(h["bottom"] for h in headers) / page_size["height"], 4),
+        }
+
     return {"bank_name": bank_name, "bank_code": bank_code, "rotation": rotation,
             "page_size": page_size, "header_found": len(header) > 0,
             "headers": headers, "suggestions": suggestions, "meta": meta,
-            "boundaries": boundaries}
+            "boundaries": boundaries, "table_area": table_area}
 
 
 @router.post("/infer")
