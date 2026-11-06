@@ -3,52 +3,230 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>智能风控 · 入口</title>
+<title>智能风控 · 银行流水可信分析平台</title>
+<meta name="description" content="面向信贷业务的银行流水识别与风险评估平台：自动核验真实性、计算 40 项指标、生成可解释报告。" />
 <style>
-  :root { color-scheme: light; }
-  * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-         font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-         background: radial-gradient(1200px 600px at 20% 0%, #eef4ff 0%, #f7f9fc 45%, #f2f4f8 100%); color: #1f2d3d; }
-  .wrap { width: min(880px, 92vw); }
-  .brand { text-align: center; margin-bottom: 28px; }
-  .brand h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: 0.5px; }
-  .brand p { margin: 0; color: #5b6b80; font-size: 14px; }
-  .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  @media (max-width: 640px) { .roles { grid-template-columns: 1fr; } }
-  .role { display: block; text-decoration: none; color: inherit; background: #fff; border: 1px solid #e2e9f3;
-          border-radius: 16px; padding: 26px 24px; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
-  .role:hover { transform: translateY(-2px); border-color: #c7d5ea; box-shadow: 0 10px 26px rgba(31,45,61,.08); }
-  .role .icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; margin-bottom: 14px; }
-  .role.borrower .icon { background: #eaf1ff; }
-  .role.banker .icon { background: #eaf7ef; }
-  .role h2 { margin: 0 0 6px; font-size: 18px; }
-  .role p { margin: 0 0 16px; color: #5b6b80; font-size: 13px; line-height: 1.6; }
-  .role .go { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #2c5cb8; font-weight: 600; }
-  .foot { margin-top: 22px; text-align: center; color: #8a97a8; font-size: 12px; }
+  :root { --ink:#0f1f33; --muted:#5b6b80; --line:#e3eaf4; --bg:#f7f9fc; --brand:#1d4ed8; --brand-2:#2563eb; --ok:#0f9d6e; color-scheme:light; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; }
+  body { font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; color:var(--ink);
+         background:var(--bg); line-height:1.7; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; text-decoration:none; }
+  .wrap { width:min(1140px,92vw); margin:0 auto; }
+  header { position:sticky; top:0; z-index:20; backdrop-filter:blur(8px);
+           background:rgba(247,249,252,.86); border-bottom:1px solid var(--line); }
+  .nav { display:flex; align-items:center; justify-content:space-between; height:62px; }
+  .logo { display:flex; align-items:center; gap:10px; font-weight:700; }
+  .logo i { width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
+            background:linear-gradient(135deg,#2563eb,#1e40af); color:#fff; font-style:normal; font-size:15px; }
+  .nav-links { display:flex; align-items:center; gap:22px; font-size:14px; color:var(--muted); }
+  .nav-links a:hover { color:var(--brand); }
+  .btn { display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 20px; border-radius:10px;
+         font-size:14px; font-weight:600; border:1px solid transparent; cursor:pointer; transition:.15s; }
+  .btn.primary { background:var(--brand); color:#fff; box-shadow:0 6px 16px rgba(29,78,216,.22); }
+  .btn.primary:hover { background:var(--brand-2); transform:translateY(-1px); }
+  .btn.ghost { background:#fff; border-color:var(--line); color:var(--ink); }
+  .btn.ghost:hover { border-color:#c7d5ea; }
+  @media (max-width:820px){ .nav-links a:not(.btn){ display:none; } }
+  .hero { padding:72px 0 56px; background:
+      radial-gradient(900px 420px at 15% -10%, #e8f0ff 0%, transparent 60%),
+      radial-gradient(700px 380px at 90% 0%, #eafaf3 0%, transparent 55%); }
+  .hero-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:48px; align-items:center; }
+  @media (max-width:900px){ .hero-grid { grid-template-columns:1fr; } }
+  .badge { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:#1d4ed8;
+           background:#e8f0ff; border:1px solid #d3e2ff; border-radius:999px; padding:5px 12px; }
+  h1 { font-size:42px; line-height:1.25; margin:18px 0 14px; letter-spacing:-.5px; }
+  h1 em { font-style:normal; color:var(--brand); }
+  .lead { font-size:16.5px; color:var(--muted); margin:0 0 26px; max-width:560px; }
+  .cta { display:flex; gap:12px; flex-wrap:wrap; }
+  .hero-note { margin-top:18px; font-size:12.5px; color:#8a97a8; }
+  .hero-card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:22px;
+               box-shadow:0 18px 44px rgba(15,31,51,.08); }
+  .hero-card h4 { margin:0 0 14px; font-size:13px; color:var(--muted); font-weight:600; }
+  .metric-row { display:flex; align-items:baseline; justify-content:space-between; padding:10px 0; border-bottom:1px dashed var(--line); }
+  .metric-row:last-child { border-bottom:0; }
+  .metric-row b { font-size:19px; }
+  .metric-row span { font-size:13px; color:var(--muted); }
+  .grade { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700;
+           color:var(--ok); background:#e9f8f1; border-radius:999px; padding:3px 10px; }
+  section { padding:64px 0; }
+  .sec-head { text-align:center; max-width:680px; margin:0 auto 40px; }
+  .sec-head h2 { font-size:30px; margin:0 0 10px; letter-spacing:-.3px; }
+  .sec-head p { margin:0; color:var(--muted); font-size:15px; }
+  .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+  @media (max-width:900px){ .grid-3 { grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; transition:.15s; }
+  .card:hover { box-shadow:0 14px 34px rgba(15,31,51,.07); transform:translateY(-2px); }
+  .card i { display:grid; place-items:center; width:40px; height:40px; border-radius:11px;
+            background:#eef4ff; color:var(--brand); font-style:normal; font-size:18px; margin-bottom:14px; }
+  .card h3 { margin:0 0 8px; font-size:17px; }
+  .card p { margin:0; color:var(--muted); font-size:14px; }
+  .flow { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; counter-reset:step; }
+  @media (max-width:900px){ .flow { grid-template-columns:1fr 1fr; } }
+  .step { background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px; position:relative; }
+  .step::before { counter-increment:step; content:counter(step); position:absolute; top:-12px; left:20px;
+                  width:26px; height:26px; border-radius:50%; background:var(--brand); color:#fff;
+                  display:grid; place-items:center; font-size:13px; font-weight:700; }
+  .step h4 { margin:8px 0 6px; font-size:15px; }
+  .step p { margin:0; font-size:13px; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:14px; overflow:hidden;
+          border:1px solid var(--line); font-size:14px; }
+  th,td { padding:14px 18px; text-align:left; border-bottom:1px solid var(--line); }
+  th { background:#f4f7fc; font-weight:600; font-size:13px; color:var(--muted); }
+  tr:last-child td { border-bottom:0; }
+  td.yes { color:var(--ok); font-weight:600; }
+  td.no { color:#b91c1c; }
+  .login-band { background:linear-gradient(135deg,#12233d,#1d3a63); color:#fff; border-radius:22px;
+                padding:46px 40px; display:grid; grid-template-columns:1.2fr .8fr; gap:34px; align-items:center; }
+  @media (max-width:860px){ .login-band { grid-template-columns:1fr; padding:32px 24px; } }
+  .login-band h2 { margin:0 0 10px; font-size:26px; }
+  .login-band p { margin:0; color:#c4d3e8; font-size:14.5px; }
+  .role-cards { display:grid; gap:12px; }
+  .role-card { display:flex; align-items:center; justify-content:space-between; gap:14px;
+               background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16);
+               border-radius:14px; padding:16px 18px; transition:.15s; }
+  .role-card:hover { background:rgba(255,255,255,.14); transform:translateY(-1px); }
+  .role-card b { display:block; font-size:15px; }
+  .role-card small { color:#b9c9e0; font-size:12.5px; }
+  .role-card .arrow { opacity:.75; font-size:18px; }
+  footer { border-top:1px solid var(--line); padding:30px 0; color:#8a97a8; font-size:12.5px; }
+  .foot-row { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="brand">
-      <h1>智能风控 · 银行流水核验</h1>
-      <p>请选择身份进入对应入口</p>
-    </div>
-    <div class="roles">
-      <a class="role borrower" href="/app/">
-        <div class="icon">&#128196;</div>
-        <h2>借款侧</h2>
-        <p>上传个人银行流水，查看解析结果与真实性校验结论。</p>
-        <span class="go">进入借款侧 &rarr;</span>
-      </a>
-      <a class="role banker" href="/bank/">
-        <div class="icon">&#127974;</div>
-        <h2>银行侧</h2>
-        <p>审批工作台：流水列表、报告复核、模板与风控参数。</p>
-        <span class="go">进入银行侧 &rarr;</span>
-      </a>
-    </div>
-    <div class="foot">本地部署 · 数据不出内网</div>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="/"><i>风</i>智能风控</a>
+    <nav class="nav-links">
+      <a href="#capability">核心能力</a>
+      <a href="#flow">业务流程</a>
+      <a href="#compare">能力对比</a>
+      <a class="btn primary" href="/login">登录系统</a>
+    </nav>
   </div>
+</header>
+
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="badge">银行流水 · 真实性核验 · 信贷风控</span>
+      <h1>让每一份流水<br /><em>既有数，也可信</em></h1>
+      <p class="lead">
+        借款人多头申请、流水造假、版式千差万别——传统人工核对既慢又难留痕。
+        本平台把银行流水自动转成结构化数据，先判断真假，再算清能力，最后给出可解释的结论。
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="/login">进入系统</a>
+        <a class="btn ghost" href="#capability">看看能做什么</a>
+      </div>
+      <p class="hero-note">支持电子 PDF、扫描件与手机拍照；加密 PDF 可解；全程本地识别，材料不出内网。</p>
+    </div>
+    <div class="hero-card">
+      <h4>一份流水的分析结果示例</h4>
+      <div class="metric-row"><span>真实性判定</span><b><span class="grade">通过 · 五级核验</span></b></div>
+      <div class="metric-row"><span>流水笔数</span><b>570 笔</b></div>
+      <div class="metric-row"><span>综合评分</span><b>85.8 <small style="font-size:12px;color:#0f9d6e">良好</small></b></div>
+      <div class="metric-row"><span>收入稳定性</span><b>稳定</b></div>
+      <div class="metric-row"><span>风险命中</span><b style="font-size:15px">夜间交易 2 项</b></div>
+      <div class="metric-row"><span>余额链复核</span><b style="font-size:15px;color:#0f9d6e">261 / 262 自洽</b></div>
+    </div>
+  </div>
+</div>
+
+<section id="pain">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>流水进件，卡在三个地方</h2>
+      <p>看不清真假、算不准能力、说不清依据——这是信贷流水分析最常被投诉的三件事。</p>
+    </div>
+    <div class="grid-3">
+      <div class="card"><i>?</i><h3>真假难辨</h3><p>截图拼贴、修改金额、只给部分月份。肉眼核对无法发现文件层面的篡改痕迹。</p></div>
+      <div class="card"><i>∑</i><h3>口径不一</h3><p>同一份流水，不同分析员算出不同收入；换个说法（工资代发 / 代发工资）就漏掉。</p></div>
+      <div class="card"><i>§</i><h3>结论难解释</h3><p>“这个分数怎么来的”无法回答，评审与客户都不服；出问题也追不到依据。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="capability" style="background:#fff">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>核心能力</h2>
+      <p>从文件到结论，六件事一次做完，每一步都留痕。</p>
+    </div>
+    <div class="grid-3">
+      <div class="card"><i>✓</i><h3>真实性五级核验</h3><p>36 个检查点覆盖文件层、内容层、账实层与外部层，输出 通过 / 存疑 / 需补充 / 不通过 / 无法判定。</p></div>
+      <div class="card"><i>账</i><h3>余额链复核</h3><p>逐笔校验「上笔余额 ± 本笔金额 = 本笔余额」。漏行、串列、金额篡改都会在这里暴露。</p></div>
+      <div class="card"><i>40</i><h3>40 项指标</h3><p>收入、稳定性、负债、行为、异常五大维度，指标口径与公式全部可查、可解释。</p></div>
+      <div class="card"><i>模</i><h3>模板自动定列</h3><p>点一下表头，系统自动切列并识别字段——不用手画框，不同人标出的模板完全一致。</p></div>
+      <div class="card"><i>↺</i><h3>三级保底解析</h3><p>模板 → 行容差重试 → 通用解析。模板失效也能把流水读出来，识别不会因模板卡死。</p></div>
+      <div class="card"><i>⌘</i><h3>报告与权限</h3><p>结论可点击追溯口径与校验项；管理员与员工分离，阈值调整、模板启停、审计日志仅管理员可见。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="flow">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>业务流程</h2>
+      <p>借款侧三步提交，银行侧自动完成识别与评估。</p>
+    </div>
+    <div class="flow">
+      <div class="step"><h4>上传材料</h4><p>PDF、扫描件、手机拍照，或多张照片自动合成一份。</p></div>
+      <div class="step"><h4>自动识别</h4><p>预读判断是否流水、匹配版式模板、OCR 与表格抽取。</p></div>
+      <div class="step"><h4>核验与评分</h4><p>真实性核验 + 余额链复核 + 40 项指标计算。</p></div>
+      <div class="step"><h4>出具报告</h4><p>结论、依据、风险项与限制条件，逐条可追溯。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="compare" style="background:#fff">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>与人工/通用 OCR 的差别</h2>
+      <p>不只看“能不能识别”，更看“识别结果敢不敢用”。</p>
+    </div>
+    <table>
+      <thead><tr><th>能力</th><th>人工核对</th><th>通用 OCR</th><th>本平台</th></tr></thead>
+      <tbody>
+        <tr><td>版式适应</td><td>逐家熟悉</td><td class="no">版式变化即失效</td><td class="yes">模板 + 表头兜底</td></tr>
+        <tr><td>余额链复核</td><td>抽样</td><td class="no">不校验</td><td class="yes">逐笔校验</td></tr>
+        <tr><td>真实性判断</td><td>靠经验</td><td class="no">无</td><td class="yes">36 检查点 / 五级</td></tr>
+        <tr><td>口径一致性</td><td class="no">因人而异</td><td class="no">无口径</td><td class="yes">指标口径可查</td></tr>
+        <tr><td>报告可追溯</td><td class="no">难留痕</td><td class="no">无</td><td class="yes">结论可点回依据</td></tr>
+        <tr><td>数据出内网</td><td class="yes">不出</td><td class="no">常见云端 API</td><td class="yes">本地识别</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="login-band">
+      <div>
+        <h2>现在进入系统</h2>
+        <p>同一入口，两种身份：借款人上传材料查看进度，银行侧完成核验与出报告。</p>
+      </div>
+      <div class="role-cards">
+        <a class="role-card" href="/login?role=banker">
+          <span><b>银行侧</b><small>核验、评分、出报告、管模板</small></span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="role-card" href="/login?role=borrower">
+          <span><b>借款侧</b><small>上传流水、查看分析进度</small></span>
+          <span class="arrow">→</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-row">
+    <span>智能风控 · 银行流水可信分析平台</span>
+    <span>识别与评分在本机/内网完成；结果用于辅助判断，最终授信决策由人工负责。</span>
+  </div>
+</footer>
+
 </body>
 </html>
