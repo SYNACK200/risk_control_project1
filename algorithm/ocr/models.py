@@ -30,6 +30,9 @@ class Template(BaseModel):
     field_map: dict[str, str | int] = Field(default_factory=dict)
     meta_boxes: list[MetaBox] = Field(default_factory=list)
     page_size: tuple[float, float] | None = None
+    # 建模板时保存的框画范围（表格区与每列 x/w，0-1 比例）。
+    # 有它时列切分用这份几何，比「按表头词中心推算」稳——表头识别偏一点，列就整体错位。
+    layout: dict | None = None
 
 
 class Transaction(BaseModel):

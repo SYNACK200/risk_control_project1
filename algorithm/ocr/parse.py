@@ -28,6 +28,8 @@ from .table import (
 )
 
 DATE_RE = re.compile(r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})")
+# 压缩日期：银行导出常见 20210513 这种 8 位无分隔写法（与 generic_parse 保持一致）
+COMPACT_DATE = re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)")
 MONEY_RE = re.compile(r"[-+]?[¥￥]?\d[\d,]*(?:\.\d+)?")
 FOOTER_RE = re.compile(r"(?:共|合计|总计)\s*(\d{1,5})\s*笔")
 FOOTER_LABEL_RE = re.compile(r"(?:交易笔数|总笔数|笔数)\s*[:：]?\s*(\d{1,5})")
@@ -84,13 +86,27 @@ class OcrUnavailable(RuntimeError):
 
 
 def parse_date(text: str) -> str | None:
-    match = DATE_RE.search(re.sub(r"\s+", "", text or ""))
-    if not match:
-        return None
-    year, month, day = (int(g) for g in match.groups())
-    if not (1 <= month <= 12 and 1 <= day <= 31):
-        return None
-    return f"{year:04d}-{month:02d}-{day:02d}"
+    """日期归一为 YYYY-MM-DD。
+
+    必须同时支持压缩写法（20210513）：多数银行导出把日期打印成 8 位纯数字，
+    早期这里只认带分隔符的格式，导致模板路径一行都解析不出来、整份文件回退通用解析——
+    模板看起来"生成了"却从未真正生效（generic_parse 自己另写了一个兼容压缩格式的 _date，
+    于是掩盖了这个缺口）。
+    """
+    raw = re.sub(r"\s+", "", text or "")
+    match = DATE_RE.search(raw)
+    if match:
+        year, month, day = (int(g) for g in match.groups())
+        if not (1 <= month <= 12 and 1 <= day <= 31):
+            return None
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    compact = COMPACT_DATE.search(raw)
+    if compact:
+        year, month, day = (int(g) for g in compact.groups())
+        if not (1 <= month <= 12 and 1 <= day <= 31):
+            return None
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    return None
 
 
 def parse_clock(text: str) -> str | None:
@@ -459,7 +475,7 @@ def _transactions_from_pages(
         header = find_header(lines, template.field_map if template else None)
         if header is not None:
             header_line, tokens, mapping = header
-            columns = build_columns(tokens, mapping)
+            columns = build_columns(tokens, mapping, layout=getattr(template, "layout", None))
             header_top = header_line.top
             fields = set(mapping.values())
             has_direction_column = has_direction_column or "direction" in fields
