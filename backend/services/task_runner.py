@@ -127,6 +127,21 @@ def run_task(task_id: int, password: str | None = None) -> dict:
             thresholds=threshold_service.build_config(session),
         )
 
+        # 临时标注没被采用时，必须在报告里说明——否则用户会以为解析用的是他那份标注
+        temp_err = (task.check_result or {}).get("temp_template_error")
+        if temp_err:
+            reasons = list(temp_err.get("warnings") or [])
+            if temp_err.get("error"):
+                reasons.append(str(temp_err["error"]))
+            head = (
+                "本次指定的临时标注未通过校验，已改用模板库/通用解析（结论与手工标注口径可能不同）："
+                if reasons else "本次指定的临时标注未生效，已改用模板库/通用解析"
+            )
+            note = head + ("；".join(reasons[:3]) if reasons else "")
+            report_payload = result.get("report") or {}
+            existing = list(report_payload.get("limitations") or [])
+            report_payload["limitations"] = [note, *existing]
+
         file_row.carrier = result["carrier"]
         file_row.pages = result["pages"]
         file_row.has_text_layer = result["has_text_layer"]

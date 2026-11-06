@@ -62,19 +62,50 @@ def _words(file_bytes: bytes) -> dict[int, list[dict]]:
 
     页面 rotate 90/180/270 时，原始 PDF 坐标与用户在界面上点选的坐标不一致；
     这里乘 rotation_matrix（与 parse.py 一致），让标注点、模板、解析三方同坐标系。
+
+    电子件走 PDF 文字层；图片件（jpg/png）或扫描件（PDF 无文字层）走 OCR，
+    否则图片件永远无法建模板/用临时标注——这是拍照件最常被卡住的地方。
     """
     pages: dict[int, list[dict]] = {}
-    with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
-        for idx, page in enumerate(doc):
-            matrix = page.rotation_matrix
-            ws: list[dict] = []
-            for x0, y0, x1, y1, text, *_rest in page.get_text("words"):
-                if not text.strip():
-                    continue
-                rect = pymupdf.Rect(x0, y0, x1, y1) * matrix
-                ws.append({"x0": rect.x0, "x1": rect.x1, "top": rect.y0,
-                           "bottom": rect.y1, "text": text})
-            pages[idx] = ws
+    if file_bytes[:4] == b"%PDF":
+        try:
+            with pymupdf.open(stream=file_bytes, filetype="pdf") as doc:
+                for idx, page in enumerate(doc):
+                    matrix = page.rotation_matrix
+                    ws: list[dict] = []
+                    for x0, y0, x1, y1, text, *_rest in page.get_text("words"):
+                        if not text.strip():
+                            continue
+                        rect = pymupdf.Rect(x0, y0, x1, y1) * matrix
+                        ws.append({"x0": rect.x0, "x1": rect.x1, "top": rect.y0,
+                                   "bottom": rect.y1, "text": text})
+                    pages[idx] = ws
+        except Exception:  # noqa: BLE001 - 加密/损坏的 PDF 交给上层处理
+            pages = {}
+
+    if any(pages.values()):
+        return pages
+
+    # 没有文字层：图片件或扫描件 → OCR（延迟导入，避免与 parse 循环引用）
+    try:
+        from .engine import get_default_engine
+        from .parse import _ocr_to_words
+
+        ocr = get_default_engine().recognize(file_bytes)
+        ocr_pages: dict[int, list[dict]] = {}
+        for idx, page in enumerate(ocr.pages or []):
+            # _ocr_to_words 返回 Word 数据类，需转成与 PDF 分支一致的 dict。
+            # 页码统一成 0-based：OCR 的 page_no 可能是 1-based，而标注里的 page 是 0-based，
+            # 直接沿用会导致调用方用 get(0) 取不到数据（图片件建模板失败的真正原因）。
+            ocr_pages[idx] = [
+                {"x0": w.x0, "x1": w.x1, "top": w.top, "bottom": w.bottom,
+                 "text": w.text, "confidence": getattr(w, "confidence", 1.0)}
+                for w in _ocr_to_words(page)
+            ]
+        if any(ocr_pages.values()):
+            return ocr_pages
+    except Exception:  # noqa: BLE001 - OCR 不可用时不阻断，交给上层报「无有效标注」
+        pass
     return pages
 
 
