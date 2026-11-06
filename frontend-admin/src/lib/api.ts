@@ -316,7 +316,9 @@ export interface ThresholdPayload {
   values: Record<string, string | number | null>;
   defaults: Record<string, string | number | null>;
   defs: ThresholdDef[];
-  history: { version: number; note: string | null; created_at: string | null; values: Record<string, string | number | null> }[];
+  history: { version: number; note: string | null; created_at: string | null;
+    values: Record<string, string | number | null>;
+    related_metrics?: { action: string; detail: string; at: string | null }[] }[];
 }
 
 export async function getThresholds(): Promise<ThresholdPayload> {

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db.models import CustomMetric
+from db.models import AuditLog, CustomMetric
 from db.session import get_session
 from helpers.security import require_admin, require_banker
 
@@ -52,6 +52,8 @@ def create_custom_metric(payload: CustomMetricIn, db: Session = Depends(get_sess
                        group_name=payload.group_name, formula=payload.formula,
                        inputs=payload.inputs, note=payload.note)
     db.add(row)
+    db.add(AuditLog(action="add_metric", object_type="custom_metric", object_id=0,
+                    detail=f"{code} {payload.name.strip()}"[:180]))
     db.commit()
     db.refresh(row)
     return _row(row)
@@ -62,6 +64,8 @@ def delete_custom_metric(metric_id: int, db: Session = Depends(get_session)):
     row = db.get(CustomMetric, metric_id)
     if row is None:
         raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "指标不存在"})
+    db.add(AuditLog(action="remove_metric", object_type="custom_metric", object_id=row.id,
+                    detail=f"{row.code} {row.name}"[:180]))
     db.delete(row)
     db.commit()
     return {"ok": True}
