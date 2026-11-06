@@ -22,6 +22,7 @@ type Drag =
   | { mode: 'create'; start: { x: number; y: number }; rect: Rect }
   | { mode: 'move'; kind: 'meta' | 'table'; id: string; start: { x: number; y: number }; origin: Rect }
   | { mode: 'resize'; kind: 'meta' | 'table'; id: string; origin: Rect }
+  | { mode: 'col-move'; tableId: string; index: number; startX: number; originX: number; originW: number; areaX: number; areaW: number }
   | { mode: 'col-left'; tableId: string; index: number; startX: number; originX: number; originW: number }
   | { mode: 'col-right'; tableId: string; index: number; startX: number; originX: number; originW: number }
   | null;
@@ -89,6 +90,15 @@ export function Stage(p: Props) {
       const ny = Math.min(1 - drag.origin.h, Math.max(0, drag.origin.y + dy));
       const rect = { x: round4(nx), y: round4(ny), w: drag.origin.w, h: drag.origin.h };
       p.onMove(drag.kind, drag.id, rect);
+      return;
+    }
+    if (drag.mode === 'col-move') {
+      if (!p.onColumnResize) return;
+      const dx = now.x - drag.startX;
+      const minX = drag.areaX;
+      const maxX = drag.areaX + drag.areaW - drag.originW;
+      const nx = Math.min(maxX, Math.max(minX, drag.originX + dx));
+      p.onColumnResize(drag.tableId, drag.index, nx, drag.originW);
       return;
     }
     if (drag.mode === 'col-left' || drag.mode === 'col-right') {
@@ -175,6 +185,10 @@ export function Stage(p: Props) {
                         onPointerDown={ev => {
                           ev.stopPropagation();
                           p.onSelect({ kind: 'column', tableId: t.id, index: idx });
+                          if (!p.onColumnResize) return;
+                          setDrag({ mode: 'col-move', tableId: t.id, index: idx, startX: toRel(ev).x,
+                                    originX: col.x, originW: col.w, areaX: t.area.x, areaW: t.area.w });
+                          ev.currentTarget.setPointerCapture(ev.pointerId);
                         }}
                       >
                         <span className="box-label">{col.field ? labelOf(col.field, p.map.custom_fields) : '未指定'}</span>
