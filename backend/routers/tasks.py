@@ -673,6 +673,64 @@ def get_task(task_id: int, db: Session = Depends(get_session), user: User = Depe
             "created_at": task.created_at.isoformat() if task.created_at else None}
 
 
+@router.get("/{task_id}/file")
+def get_task_file(task_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)):
+    """取任务的原始文件：给「临时标注重解析」用（用户要在原文件上重新画框）。"""
+    from fastapi.responses import FileResponse
+
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(404, "任务不存在")
+    _ensure_access(task, user)
+    file_row = db.get(FileObj, task.file_id) if task.file_id else None
+    if file_row is None or not file_row.storage_path:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "原始文件已被清理"})
+    path = Path(file_row.storage_path)
+    if not path.exists():
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "原始文件已被清理"})
+    return FileResponse(path, filename=f"task-{task_id}{path.suffix}")
+
+
+@router.post("/{task_id}/reparse", dependencies=[Depends(require_banker)])
+def reparse_task(
+    task_id: int,
+    marks: str = Form(..., description="临时标注 JSON，只对这一次重解析生效，用完即弃"),
+    db: Session = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """用一次性标注把某个任务重新解析一遍。
+
+    生命周期是「临时变量」：标注只写进这个任务的 field_map_override，重跑后结果覆盖旧结果，
+    不进模板库、不产生新模板；下次重跑若不带标注，仍按模板库/通用解析走。
+    """
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(404, "任务不存在")
+    _ensure_access(task, user)
+
+    import json as _json
+
+    try:
+        parsed = _json.loads(marks)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, detail={"code": "E_PARAM", "message": f"临时标注不是合法 JSON：{exc}"}) from exc
+    if not isinstance(parsed, list) or not parsed:
+        raise HTTPException(400, detail={"code": "E_PARAM", "message": "临时标注必须是非空数组"})
+
+    task.field_map_override = _json.dumps(parsed, ensure_ascii=False)
+    task.check_result = {
+        **(task.check_result or {}),
+        "reparse": {"by": "temp_marks", "marks": len(parsed)},
+    }
+    transition(task, "QUEUED")
+    db.add(AuditLog(action="reparse_task", object_type="task", object_id=task.id,
+                    detail=f"temp_marks n={len(parsed)}"))
+    db.commit()
+
+    mode = worker.submit_task(task.id)
+    return {"task_id": task.id, "status": task.status, "mode": mode}
+
+
 @router.get("/merge/modes")
 def merge_modes():
     """可选的多账户合并方式（含公式、适用条件与已知偏差）。"""

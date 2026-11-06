@@ -198,7 +198,7 @@ export function TaskListPage() {
                 <th>业务号</th><th>银行</th><th>账期</th><th>笔数</th>
                 <th>期间收入</th><th>月均收入</th><th>DTI</th>
                 <th>流水合格性</th><th>原始文件</th><th>信用风险</th><th>解析质量</th>
-                <th>受限</th><th>生成时间</th>
+                <th>受限</th><th>生成时间</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -230,6 +230,11 @@ export function TaskListPage() {
                   </td>
                   <td className="num">{t.limitations}</td>
                   <td className="muted">{t.created_at?.slice(0, 16).replace('T', ' ') ?? '—'}</td>
+                  <td onClick={e => e.stopPropagation()}>
+                    <button className="link-btn" type="button"
+                      title="解析不对时，用一份一次性标注重解析这个任务（不进模板库）"
+                      onClick={() => navigate('/annotate/check?task=' + t.id)}>临时标注</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

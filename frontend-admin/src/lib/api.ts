@@ -574,3 +574,21 @@ export async function undoConflict(accountKey: string): Promise<{ ok: boolean }>
     { method: 'DELETE' },
   ));
 }
+
+/** 用一次性标注把某个任务重新解析（临时模板：用完即弃，不进模板库）。 */
+export async function reparseTask(taskId: number, marks: unknown[]): Promise<{ task_id: number; status: string; mode: string }> {
+  const form = new FormData();
+  form.append('marks', JSON.stringify(marks));
+  return json<{ task_id: number; status: string; mode: string }>(
+    await authFetch(BASE + '/tasks/' + taskId + '/reparse', { method: 'POST', body: form }),
+  );
+}
+
+/** 取任务原始文件，用于在标注页直接重解析（不必让用户重新选文件）。 */
+export async function getTaskFile(taskId: number): Promise<File> {
+  const res = await authFetch(BASE + '/tasks/' + taskId + '/file');
+  if (!res.ok) throw new Error('取原始文件失败（HTTP ' + res.status + '）');
+  const blob = await res.blob();
+  const name = 'task-' + taskId + (blob.type.includes('pdf') ? '.pdf' : '.jpg');
+  return new File([blob], name, { type: blob.type || 'application/pdf' });
+}
