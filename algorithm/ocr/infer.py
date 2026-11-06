@@ -314,7 +314,7 @@ def _guess_fields(cols: list[dict], labeled: dict[int, str]) -> dict[int, Proven
     for i, st in stats.items():
         if i in out:
             continue
-        if free("summary") and 1.5 <= st["avg_len"] <= 8 and st["distinct"] > 1:
+        if free("summary") and 1.5 <= st["avg_len"] <= 8 and st["distinct"] > 1 and st["num_ratio"] < 0.3:
             out[i] = Provenance("summary", i, "inferred", 0.7, "短文本、有重复，判定为摘要"); used.add("summary"); continue
     for i, st in stats.items():
         if i in out:
@@ -332,27 +332,60 @@ def _guess_fields(cols: list[dict], labeled: dict[int, str]) -> dict[int, Proven
 
 
 def _header_aliases(cols: list[dict], pages: dict[int, list[dict]], limit: int = 25) -> dict[int, str]:
-    """在表头行里找每一列对应的文字，作为解析模板的别名（比列序号稳）。"""
-    best_row: list[dict] = []
-    best_score = -1
-    for ws in pages.values():
-        rows: dict[int, list[dict]] = {}
-        for w in ws:
-            rows.setdefault(int(round(w["top"] / 3)), []).append(w)
-        for key in sorted(rows)[:limit]:
-            row = rows[key]
-            score = 0
-            for c in cols:
-                if any(abs((w["x0"] + w["x1"]) / 2 - c["center"]) <= 18 for w in row):
-                    score += 1
-            if score > best_score:
-                best_score, best_row = score, row
+    """在表头行里找每一列对应的文字，作为解析模板的别名（比列序号稳）。
+
+    必须用 detect_header_row 的结果：早期版本按"命中列数最多"自选一行，会选到数据行，
+    导致 field_map 里存进单元格内容（如 "12,271.62"），模板看似生成成功实则不可用。
+    """
+    best_row = detect_header_row(pages)
+    if not best_row:
+        return {}
     aliases: dict[int, str] = {}
     for idx, c in enumerate(cols):
         near = [w for w in best_row if abs((w["x0"] + w["x1"]) / 2 - c["center"]) <= 18]
         if near:
             aliases[idx] = min(near, key=lambda w: abs((w["x0"] + w["x1"]) / 2 - c["center"]))["text"]
     return aliases
+
+
+def _check_label_consistency(
+    cols: list[dict], aliases: dict[int, str], labeled: dict[int, str]
+) -> list[str]:
+    """人工标注的列，其表头文字必须与该字段语义一致，否则判定为标错列。
+
+    没有这道检查时：把 amount 标到"账户余额"列，模板会存成 balance→"交易金额"，
+    而解析时 find_header 又按表头自动识别纠正回来，反验照样通过 —— 标注等于白标。
+    """
+    problems: list[str] = []
+
+    # 1) 人工标注的列与其表头语义不符 → 标错列
+    for idx, field in labeled.items():
+        alias = aliases.get(idx)
+        if not alias:
+            continue
+        expect = FIELD_BY_HEADER.get(str(alias).strip())
+        if expect and expect != field:
+            problems.append(
+                f"字段「{field}」标在第 {idx + 1} 列，但该列表头是「{alias}」（应属于 {expect}），疑似标错列"
+            )
+
+    # 2) 多个不同字段标到同一列（常见于坐标没换算好、全部落在左上角）
+    for idx, c in enumerate(cols):
+        fields = [f for f in c.get("fields", []) if f]
+        distinct = sorted(set(fields))
+        if len(distinct) >= 2:
+            problems.append(
+                f"第 {idx + 1} 列同时标了 {len(distinct)} 个字段（{'、'.join(distinct)}），请确认每个字段各画一列"
+            )
+
+    # 3) 关键字段必须由人工标注给出，不能全靠推测
+    need = ["txn_date", "amount", "balance"]
+    lack = [f for f in need if f not in labeled.values()]
+    if lack:
+        problems.append(
+            f"标注不足：{('、'.join(lack))} 没有人工标注，解析规则会退化成猜测；请把这三列各自画一列并指定字段"
+        )
+    return problems
 
 
 def _validate(file_bytes: bytes, template: Template) -> list[str]:
@@ -444,7 +477,8 @@ def infer_template(file_bytes: bytes, marks: list[Mark], bank_code: str = "UNKNO
         return InferResult(template=None, provenance=_sorted(prov), columns=_columns(cols), warnings=warnings, draft_map=field_map)
 
     template = Template(bank_code=bank_code.upper(), version=1, field_map=field_map)
-    problems = _validate(file_bytes, template)
+    problems = _check_label_consistency(cols, aliases, labeled)
+    problems.extend(_validate(file_bytes, template))
     if problems:
         warnings.extend(problems)
         warnings.append("反验未通过，未生成模板；请修正标注后重试")
@@ -466,4 +500,3 @@ def _columns(cols: list[dict]) -> list[dict]:
         {"index": i, "x0": round(c["x0"], 1), "x1": round(c["x1"], 1), "samples": c["samples"][:3]}
         for i, c in enumerate(cols)
     ]
-
