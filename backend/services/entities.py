@@ -117,6 +117,17 @@ def _latest_report(db: Session, task_id: int) -> dict:
 
 def collect_entities(db: Session) -> dict:
     tasks = db.execute(select(Task).where(Task.status == "DONE", Task.deleted_at.is_(None)).order_by(Task.id.desc())).scalars().all()
+
+    # 文件指纹：同一份文件重复上传（sha256 相同）与「不同流水文件」是两件事，
+    # 合并前必须分清——把重复上传当多账户合并会把同一笔钱算两遍。
+    file_hash: dict[int, str | None] = {}
+    file_ids = {t.file_id for t in tasks if t.file_id}
+    if file_ids:
+        from db.models import FileObj  # noqa: PLC0415
+
+        for row in db.execute(select(FileObj).where(FileObj.id.in_(file_ids))).scalars():
+            file_hash[row.id] = row.sha256
+
     accounts: dict[str, dict] = {}
     subjects: dict[str, dict] = {}
     for task in tasks:
@@ -136,12 +147,21 @@ def collect_entities(db: Session) -> dict:
             "account_masked": account,
             "holders": {},
             "tasks": [],
+            "files": {},          # sha256 -> {tasks, period}
             "period_start": None,
             "period_end": None,
         })
         if holder:
             acc["holders"][holder] = acc["holders"].get(holder, 0) + 1
         acc["tasks"].append(task.id)
+        digest = file_hash.get(task.file_id) if task.file_id else None
+        file_key = digest or f"task-{task.id}"
+        fentry = acc["files"].setdefault(file_key, {"sha256": digest, "tasks": [], "period_start": None, "period_end": None})
+        fentry["tasks"].append(task.id)
+        if task.period_start and (fentry["period_start"] is None or task.period_start < fentry["period_start"]):
+            fentry["period_start"] = task.period_start
+        if task.period_end and (fentry["period_end"] is None or task.period_end > fentry["period_end"]):
+            fentry["period_end"] = task.period_end
         if task.period_start and (acc["period_start"] is None or task.period_start < acc["period_start"]):
             acc["period_start"] = task.period_start
         if task.period_end and (acc["period_end"] is None or task.period_end > acc["period_end"]):
@@ -183,6 +203,50 @@ def collect_entities(db: Session) -> dict:
                     "at": decided.created_at.isoformat() if decided.created_at else None,
                 } if decided else None),
             })
+    # 给每个账户标注「上传形态」与「覆盖完整度」
+    for acc in accounts.values():
+        files = list(acc["files"].values())
+        acc["file_count"] = len(files)
+        repeats = [f for f in files if len(f["tasks"]) > 1]
+        if len(files) == 1:
+            acc["upload_kind"] = "single"
+            acc["upload_note"] = "只有 1 份文件"
+        elif len(files) > 1:
+            acc["upload_kind"] = "distinct_files"
+            acc["upload_note"] = f"{len(files)} 份不同文件"
+        else:
+            acc["upload_kind"] = "unknown"
+            acc["upload_note"] = ""
+        if repeats:
+            acc["upload_note"] += "；其中 " + "、".join(
+                f"任务 {'/'.join(str(x) for x in f['tasks'])} 是同一份文件重复上传" for f in repeats[:2])
+        # 覆盖完整度：以该账户所有任务的最长期间为基准，某文件期间明显短于它记为部分
+        starts = [x for x in (acc["period_start"],) if x]
+        ends = [x for x in (acc["period_end"],) if x]
+        partial = []
+        if starts and ends:
+            from datetime import date  # noqa: PLC0415
+
+            span = None
+            try:
+                s0 = date.fromisoformat(str(starts[0])[:10]); e0 = date.fromisoformat(str(ends[0])[:10])
+                span = (e0 - s0).days
+            except Exception:  # noqa: BLE001
+                span = None
+            if span and span > 20:
+                for f in files:
+                    if not f["period_start"] or not f["period_end"]:
+                        continue
+                    try:
+                        fs = date.fromisoformat(str(f["period_start"])[:10]); fe = date.fromisoformat(str(f["period_end"])[:10])
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if (fe - fs).days < span * 0.6:
+                        partial.append({"tasks": f["tasks"], "from": f["period_start"], "to": f["period_end"]})
+        acc["partial_files"] = partial
+        if partial:
+            acc["upload_note"] += f"；{len(partial)} 份只覆盖部分期间"
+
     multi = [s for s in subjects.values() if len(s["accounts"]) > 1]
     return {
         "accounts": sorted(accounts.values(), key=lambda a: -len(a["tasks"])),

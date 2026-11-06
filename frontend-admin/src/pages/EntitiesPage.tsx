@@ -211,6 +211,18 @@ export function EntitiesPage() {
                     </div>
                     <div className="suggest-reason">
                       同一户名下有多份流水，建议合并成一份画像后再评价；不合并时，收入、负债与余额会被重复计算或低估。
+                      {(() => {
+                        const accs = Object.keys(s.accounts).map(k => (data?.accounts ?? []).find(a => a.key === k)).filter(Boolean);
+                        const kinds = new Set(accs.map(a => a?.upload_kind));
+                        const notes = accs.map(a => a?.upload_note).filter(Boolean);
+                        if (kinds.size === 1 && kinds.has('single')) return null;
+                        return (
+                          <span className="muted small">
+                            {' '}· {accs.length} 个账户 / {accs.reduce((n, a) => n + (a?.file_count ?? 0), 0)} 份不同文件
+                            {notes.length > 0 && <span>（{notes[0]}）</span>}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div className="suggest-actions">
                       <button className="pill-btn" type="button" onClick={() => { void mergeMany([name]); }}>只看这一个</button>

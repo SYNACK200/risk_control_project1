@@ -218,6 +218,10 @@ export async function inferTemplate(form: FormData): Promise<InferResult> {
 }
 
 export interface EntityAccount {
+  file_count?: number;
+  upload_kind?: 'single' | 'distinct_files' | 'unknown';
+  upload_note?: string;
+  partial_files?: { tasks: number[]; from: string; to: string }[];
   key: string; bank_name: string | null; bank_code: string | null;
   account_masked: string | null; holders: Record<string, number>;
   tasks: number[]; period_start: string | null; period_end: string | null;
