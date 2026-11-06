@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getMetricAtoms, type MetricAtom } from '../lib/api';
 import {
   createCustomMetric, deleteCustomMetric, getMetricDefinitions, listCustomMetrics,
   type CustomMetric, type MetricDef,
@@ -9,6 +10,8 @@ import { useIsAdmin } from '../lib/auth';
 export function MetricDefsPage() {
   const isAdmin = useIsAdmin();
   const [items, setItems] = useState<MetricDef[]>([]);
+  const [atoms, setAtoms] = useState<MetricAtom[]>([]);
+  const [atomsOpen, setAtomsOpen] = useState(false);
   const [version, setVersion] = useState<number | null>(null);
   const [custom, setCustom] = useState<CustomMetric[]>([]);
   const [error, setError] = useState('');
@@ -20,10 +23,11 @@ export function MetricDefsPage() {
 
   async function loadAll() {
     try {
-      const [d, c] = await Promise.all([getMetricDefinitions(), listCustomMetrics()]);
+      const [d, c, at] = await Promise.all([getMetricDefinitions(), listCustomMetrics(), getMetricAtoms()]);
       setItems(d.items);
       setVersion(d.metric_set_version);
       setCustom(c.items);
+      setAtoms(at.items);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -86,6 +90,39 @@ export function MetricDefsPage() {
 
       {msg && <div className="notice ok">{msg}</div>}
       {error && <div className="notice error">{error}</div>}
+
+      <section className="card">
+        <div className="card-head-static">
+          <strong>计算元（{atoms.length}）</strong>
+          <span className="muted small">自定义指标用这些基础计算组合出来，不必改代码</span>
+          <button className="pill-btn" type="button" style={{ marginLeft: 'auto' }}
+            onClick={() => setAtomsOpen(v => !v)}>{atomsOpen ? '收起' : '展开'}</button>
+        </div>
+        {atomsOpen && (
+          <div className="card-body">
+            <table className="mini">
+              <thead><tr><th>计算元</th><th>说明</th><th>例子</th></tr></thead>
+              <tbody>
+                {atoms.map(a => (
+                  <tr key={a.key}>
+                    <td className="mono">{a.key}<span className="muted small"> {a.unit}</span></td>
+                    <td>{a.detail}
+                      {a.params.length > 0 && (
+                        <span className="muted small">（参数：{a.params.map(p => p.name + '=' + String(p.default)).join('、')}）</span>
+                      )}
+                    </td>
+                    <td className="muted small">{a.example}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="muted small" style={{ marginTop: 8 }}>
+              组合方式：先用「过滤 / 分组」缩小数据，再用「聚合」出数，最后按「按月聚合」切时间窗。
+              例：近 3 个月夜间小额高频占比 = filter（金额&lt;500 且 out）→ group_by_month → count ÷ 当月总笔数。
+            </p>
+          </div>
+        )}
+      </section>
 
       <section className="card">
         <div className="card-head-static">

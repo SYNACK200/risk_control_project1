@@ -635,3 +635,13 @@ export async function getTemplateById(templateId: number): Promise<{
 }> {
   return json(await authFetch(BASE + '/templates/' + templateId));
 }
+
+export interface MetricAtom {
+  key: string; label: string; kind: string; unit: string; detail: string; example: string;
+  params: { name: string; type: string; default: unknown; detail: string }[];
+}
+
+/** 计算元目录：自定义指标可组合的基础计算。 */
+export async function getMetricAtoms(): Promise<{ items: MetricAtom[] }> {
+  return json(await authFetch(BASE + '/custom-metrics/atoms'));
+}
