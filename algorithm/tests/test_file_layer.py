@@ -147,7 +147,13 @@ def test_append_after_signature_is_source_suspicious():
     assert "签名后" in f3.detail
 
 
-def test_long_modification_gap_is_source_suspicious():
+def test_long_modification_gap_is_recorded_not_veto():
+    """F2（修改时间晚于创建时间）是时间戳类弱信号，检测照常 fail，但不单独定性。
+
+    产品决策：文件被转发、另存、邮件传输都会让 modDate 晚于 creationDate，
+    这在正常业务里极为普遍。把它当一票否决等于把「载体层」的权重抬到 100%，
+    与「载体层只是辅证」的定位矛盾；它的影响改为通过真实性加权得分体现。
+    """
     doc = fitz.open()
     doc.new_page()
     doc.set_metadata(
@@ -159,8 +165,9 @@ def test_long_modification_gap_is_source_suspicious():
     )
     result = analyze_file(doc.tobytes())
     doc.close()
-    assert check(result, "F2").status == "fail"
-    assert result.outcome == "来源可疑"
+    assert check(result, "F2").status == "fail"   # 检测仍然命中
+    assert result.outcome != "来源可疑"           # 但不再一票否决
+    assert any("F2" in item and "仅记录" in item for item in result.limitations)
 
 
 def test_hidden_text_single_hit_is_recorded_not_blocking():

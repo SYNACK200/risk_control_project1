@@ -132,6 +132,26 @@ function SummaryPanel({ report, txnCount }: { report: ReportPayload; txnCount: n
         本件为{report.carrier === 'electronic' ? '电子版流水' : report.carrier === 'image' ? '图片件' : '截图件'}，
         真实性{a.label}；{hits.length === 0 ? '未命中主要风险提示' : '命中 ' + (report.conclusions?.length ?? 0) + ' 项风险提示'}。
       </p>
+      {report.trust && (
+        <div className="trust-box">
+          <div className="trust-head">
+            <span className="summary-label">真实性得分</span>
+            <span className={'trust-score trust-' + report.trust.level}>
+              {report.trust.score.toFixed(1)}<span className="muted small"> /100 · {report.trust.label}</span>
+            </span>
+          </div>
+          <div className="trust-layers">
+            {report.trust.layers.map((x: { layer: string; label: string; status: string; score: number; weight: number; note: string }) => (
+              <span key={x.layer} className={'trust-chip' + (x.weight === 0 ? ' off' : '')}
+                title={x.note || ''}>
+                {x.label} {x.weight === 0 ? '未执行' : Math.round(x.weight * 100) + '%'}
+              </span>
+            ))}
+          </div>
+          {report.trust.note && <div className="muted small">{report.trust.note}</div>}
+        </div>
+      )}
+
       <div className="summary-kpi">
         {kpi.map(item => (
           <div className="summary-kpi-item" key={item.k}>
@@ -548,4 +568,3 @@ export function ReportView({ taskId }: { taskId: number }) {
     </div>
   );
 }
-

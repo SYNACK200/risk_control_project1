@@ -12,8 +12,13 @@ from .models import CheckResult, Evidence, LayerConclusion
 
 MAX_EVIDENCE = 20
 
-GROUP_GENERATION = ("F1", "F2", "F3", "F4")
-GROUP_LAYOUT = ("F5", "F6", "F7", "F9")
+# 只有「生成器指纹异常（F1）」与「与同期真件结构指纹不符（F4）」才算强证据，可单独定性。
+# F2/F3 是时间戳类信号：文件被转发、另存、邮件传输都会让修改时间晚于创建时间，
+# 这类现象在正常业务里极为普遍，把它当一票否决等于把责任推给用户。
+GROUP_GENERATION = ("F1", "F3", "F4")
+# F5（字体未嵌入）单独不算证据：大量正常银行流水用系统字体、不嵌入，属常见版式，不是伪造。
+# 它仍会被检测并记录，只是不再参与「≥2 项即定性」的计数。
+GROUP_LAYOUT = ("F6", "F7", "F9")
 GROUP_OVERALL = ("F8", "F10", "F11")
 
 OFFICE_MARKERS = (
@@ -633,6 +638,13 @@ def analyze_file(
         )
     if len(group2) == 1:
         limitations.append(f"{group2[0].code} {group2[0].name}：{group2[0].detail}（单项命中，记录不阻断）")
+    # 时间戳类信号：常见于转发/另存，不单独定性，但如实记录并影响真实性得分
+    for weak_code in ("F2", "F3"):
+        weak = by_code.get(weak_code)
+        if weak is not None and weak.status == "fail":
+            limitations.append(
+                f"{weak.code} {weak.name}：{weak.detail}（时间戳类信号，也可能是转发/另存造成，仅记录不单独定性）"
+            )
     if by_code["F8"].detail.startswith("无 PAdES 签名"):
         limitations.append("F8 签名与时间戳：文件未签名，无法做密码学校验")
 

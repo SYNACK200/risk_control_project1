@@ -23,6 +23,26 @@ from .verdict import Verdict, VerdictResult
 Carrier = Literal["electronic", "image", "screenshot"]
 
 
+class ReportTrustLayer(BaseModel):
+    """真实性加权得分里的一层：得分、权重、是否计入。"""
+    layer: str
+    label: str
+    status: str
+    score: float
+    weight: float
+    note: str = ""
+
+
+class ReportTrust(BaseModel):
+    """真实性加权得分：给非技术人员一个「这份材料有多可信」的直白数字。"""
+    score: float
+    level: str
+    label: str
+    carrier: str
+    note: str = ""
+    layers: list[ReportTrustLayer] = Field(default_factory=list)
+
+
 class ReportCheck(BaseModel):
     """单个检查点的运行结果；方法说明见 verification_defs。"""
 
@@ -69,6 +89,7 @@ class Report(BaseModel):
     threshold_version: int
     conclusions: list[Conclusion] = Field(default_factory=list)
     scores: ScoreResult | None = None
+    trust: ReportTrust | None = None
     trend: list[MonthlyFlow] = Field(default_factory=list)
     evidence: list[ReportEvidence] = Field(default_factory=list)
     materials: list[ReportMaterial] = Field(default_factory=list)
@@ -256,10 +277,22 @@ def build_report(
         limitations.append(f"{no_coord} 条证据为文件级判断或原行无坐标，无法跳转到页内位置")
     limitations = _dedupe(limitations)
 
+    trust_payload = None
+    if verdict.trust is not None:
+        trust_payload = ReportTrust(
+            score=verdict.trust.score, level=verdict.trust.level,
+            label=verdict.trust.label, carrier=verdict.trust.carrier,
+            note=verdict.trust.note,
+            layers=[ReportTrustLayer(layer=x.layer, label=x.label, status=x.status,
+                                     score=x.score, weight=x.weight, note=x.note)
+                    for x in verdict.trust.layers],
+        )
+
     return Report(
         carrier=carrier,
         verdict=verdict.verdict,
         verdict_reason=verdict.verdict_reason,
+        trust=trust_payload,
         limitations=limitations,
         layers=[
             ReportLayer(
