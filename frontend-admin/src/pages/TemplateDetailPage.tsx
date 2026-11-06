@@ -157,6 +157,9 @@ export function TemplateDetailPage() {
             }}>停用</button>}
             <button className="btn secondary" type="button" disabled={busy} onClick={() => { void act('已复制为新草稿', () => duplicateTemplate(row.id)); }}>复制为新草稿</button>
             <button className="btn secondary" type="button" onClick={openEdit}>改字段映射</button>
+            <button className="btn secondary" type="button"
+              title="在当时的样本上调整表格区与每一列，保存为新版本"
+              onClick={() => navigate('/templates/' + row.id + '/layout')}>改框画范围</button>
             <button className="btn secondary" type="button" onClick={() => setPreviewOpen(v => !v)}>{previewOpen ? '收起试跑' : '试跑这个模板'}</button>
           </div>
         </div>
