@@ -12,9 +12,12 @@ from .models import CheckResult, Evidence, LayerConclusion
 
 MAX_EVIDENCE = 20
 
-# 只有「生成器指纹异常（F1）」与「与同期真件结构指纹不符（F4）」才算强证据，可单独定性。
-# F2/F3 是时间戳类信号：文件被转发、另存、邮件传输都会让修改时间晚于创建时间，
-# 这类现象在正常业务里极为普遍，把它当一票否决等于把责任推给用户。
+# 证据强弱通过「分组门槛」体现，11 项判据一项不少，全部照常检测并输出 pass/fail：
+#   强证据组（F1 生成器指纹 / F3 增量更新 / F4 与真件指纹不符）：单项即定性；
+#   中证据组（F6 隐藏文字 / F7 覆盖图元 / F9 版面不一致）：两项才定性；
+#   弱证据（F2 时间戳 / F5 字体未嵌入 / F8 无签名 / F10 体量 / F11 图文混排）：
+#       照常检测、照常在 limitations 记录，但不单独掀桌——它们对真实性得分的影响，
+#       由 trust 的分层权重体现（见 verdict.py 与 docs/报告结构契约.md）。
 GROUP_GENERATION = ("F1", "F3", "F4")
 # F5（字体未嵌入）单独不算证据：大量正常银行流水用系统字体、不嵌入，属常见版式，不是伪造。
 # 它仍会被检测并记录，只是不再参与「≥2 项即定性」的计数。
@@ -352,7 +355,13 @@ def _iou(a: fitz.Rect, b: fitz.Rect) -> float:
 
 def _check_hidden_text(doc: fitz.Document) -> CheckResult:
     code, name = "F6", "隐藏文字层"
-    hits: list[Evidence] = []
+    # 两类要分开：
+    #   invisible —— 真正不可见的文字（type=3 或 opacity=0），是隐藏/覆盖数据的典型手段，强证据
+    #   overlap   —— 同一文字在同一位置重复绘制，多半是水印/底纹（银行流水上极常见），弱信号
+    # 早期把两类混在一起计数，结果带水印的正常流水（如「中国工商银行」叠 30 处）
+    # 被当成伪造 —— 这是把正常版式判成可疑，必须分开。
+    invisible: list[Evidence] = []
+    overlap: list[tuple[str, Evidence]] = []
     for page in doc:
         visible: dict[str, list[fitz.Rect]] = {}
         for span in page.get_texttrace():
@@ -361,21 +370,48 @@ def _check_hidden_text(doc: fitz.Document) -> CheckResult:
                 continue
             bbox = fitz.Rect(span["bbox"])
             if span.get("type") == 3 or span.get("opacity", 1) == 0:
-                hits.append(page_evidence(_page_no(page), tuple(bbox), code))
+                invisible.append(page_evidence(_page_no(page), tuple(bbox), code))
                 continue
             if len(text) >= 2:
                 visible.setdefault(text, []).append(bbox)
-        for rects in visible.values():
+        for text, rects in visible.items():
             matched = False
             for i in range(len(rects)):
                 for j in range(i + 1, len(rects)):
                     if _iou(rects[i], rects[j]) >= 0.9:
-                        hits.append(page_evidence(_page_no(page), tuple(rects[j]), code))
+                        overlap.append((text, page_evidence(_page_no(page), tuple(rects[j]), code)))
                         matched = True
                         break
                 if matched:
                     break
 
+    # 水印判定：同一段文字重复次数多、且不含数字（金额/账号的数字才可能是篡改目标）
+    wm_texts: dict[str, int] = {}
+    for text, _ev in overlap:
+        wm_texts[text] = wm_texts.get(text, 0) + 1
+    def _looks_watermark(text: str, count: int) -> bool:
+        import re as _re
+        has_digit = bool(_re.search(r"\d", text))
+        return count >= 3 and not has_digit
+
+    watermark = [(t, ev) for t, ev in overlap if _looks_watermark(t, wm_texts.get(t, 0))]
+    suspicious_overlap = [(t, ev) for t, ev in overlap if not _looks_watermark(t, wm_texts.get(t, 0))]
+    hits = invisible + [ev for _t, ev in suspicious_overlap]
+
+    if hits:
+        parts = []
+        if invisible:
+            parts.append(f"不可见文字 {len(invisible)} 处")
+        if suspicious_overlap:
+            shown = "、".join(sorted({t for t, _ in suspicious_overlap})[:3])
+            parts.append(f"含数字或非同文重叠 {len(suspicious_overlap)} 处（{shown}）")
+        return CheckResult(
+            code=code,
+            name=name,
+            status="fail",
+            detail="；".join(parts),
+            evidence=hits[:MAX_EVIDENCE],
+        )
     if hits:
         return CheckResult(
             code=code,
@@ -625,6 +661,7 @@ def analyze_file(
     group1 = [by_code[code] for code in GROUP_GENERATION if by_code[code].status == "fail"]
     group2 = [by_code[code] for code in GROUP_LAYOUT if by_code[code].status == "fail"]
     group3 = [by_code[code] for code in GROUP_OVERALL if by_code[code].status == "fail"]
+
 
     limitations = [
         f"{check.code} {check.name}：{check.detail}"
