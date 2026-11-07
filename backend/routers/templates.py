@@ -165,6 +165,38 @@ def probe_template(file: UploadFile = File(...), password: str | None = Form(Non
     full_text = page.get_text() or ""
     page_size = {"width": round(page.rect.width, 1), "height": round(page.rect.height, 1)}
     rotation = int(page.rotation)
+
+    # 扫描每一页有没有明细表头。
+    # 之前只读第 0 页，用户没法知道「第 2 页起是不是同一版式」——
+    # 而模板能否复用整套解析，全看这一点。
+    pages_info = []
+    for idx, pg in enumerate(doc):
+        try:
+            if idx == 0:
+                ws0 = words
+            else:
+                ws0 = []
+                mtx = pg.rotation_matrix
+                for x0, y0, x1, y1, tx, *_r in pg.get_text("words"):
+                    if not tx.strip():
+                        continue
+                    rr = pymupdf.Rect(x0, y0, x1, y1) * mtx
+                    ws0.append({"x0": rr.x0, "x1": rr.x1, "top": rr.y0, "bottom": rr.y1, "text": tx})
+            try:
+                from algorithm.ocr.infer import detect_header_row as _dhr
+                hdr0 = _dhr({idx: ws0})
+            except Exception:
+                hdr0 = []
+            pages_info.append({
+                "page_no": idx,
+                "words": len(ws0),
+                "header_words": len(hdr0),
+                # ≥2 个表头词才算这一页有明细表头；1 个可能是页眉里的「交易日期」字样
+                "has_header": len(hdr0) >= 2,
+            })
+        except Exception:
+            pages_info.append({"page_no": idx, "words": 0, "header_words": 0, "has_header": False})
+
     doc.close()
 
     from algorithm.algo.preread import BANK_ALIASES
@@ -219,7 +251,8 @@ def probe_template(file: UploadFile = File(...), password: str | None = Form(Non
     return {"bank_name": bank_name, "bank_code": bank_code, "rotation": rotation,
             "page_size": page_size, "header_found": len(header) > 0,
             "headers": headers, "suggestions": suggestions, "meta": meta,
-            "boundaries": boundaries, "table_area": table_area}
+            "boundaries": boundaries, "table_area": table_area,
+            "page_count": len(pages_info), "pages": pages_info}
 
 
 @router.post("/infer")

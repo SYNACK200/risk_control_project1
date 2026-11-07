@@ -184,6 +184,8 @@ export function Stage(p: Props) {
                   className={`box table ${selected ? 'selected' : ''}`}
                   style={{ left: `${t.area.x * 100}%`, top: `${t.area.y * 100}%`, width: `${t.area.w * 100}%`, height: `${t.area.h * 100}%` }}
                   onPointerDown={ev => {
+                    // 画列/画框模式下放行：让 overlay 去画，而不是拖表格区
+                    if (p.tool === 'column' || p.tool === 'table' || p.tool === 'meta') return;
                     ev.stopPropagation();
                     p.onSelect({ kind: 'table', id: t.id });
                     const start = toRel(ev);
@@ -201,6 +203,9 @@ export function Stage(p: Props) {
                         className={`box column ${colSel ? 'selected' : ''} ${col.field ? '' : 'unassigned'}`}
                         style={{ left: `${(col.x - t.area.x) / t.area.w * 100}%`, top: 0, width: `${col.w / t.area.w * 100}%`, height: '100%' }}
                         onPointerDown={ev => {
+                          // 画列模式下必须放行：否则用户想在已有列之间再画一条，
+                          // 点下去被当成「拖动这一列」，永远加不上新列。
+                          if (p.tool === 'column') return;
                           ev.stopPropagation();
                           p.onSelect({ kind: 'column', tableId: t.id, index: idx });
                           if (!p.onColumnResize) return;
