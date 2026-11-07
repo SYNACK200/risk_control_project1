@@ -591,6 +591,16 @@ def purge_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
     return {"purged": purged, "ids": sorted(ids)}
 
 
+@router.post("/{task_id}/verify", dependencies=[Depends(require_banker)])
+def verify_now(task_id: int, db: Session = Depends(get_session)):
+    """手动触发慢通道复核。正常情况下不用点，后台空闲时会自动跑。"""
+    from services.verify import verify_report, save_verification  # noqa: PLC0415
+
+    result = verify_report(db, task_id)
+    save_verification(db, task_id, result)
+    return result
+
+
 @router.post("/{task_id}/reanalyze")
 def reanalyze_task(
     task_id: int,

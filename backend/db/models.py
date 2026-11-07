@@ -131,6 +131,9 @@ class Report(Base):
     evidence: Mapped[list | None] = mapped_column(JSON)
     materials: Mapped[list | None] = mapped_column(JSON)
     metric_set_version: Mapped[int | None] = mapped_column(Integer)
+    # 快慢双通道：快通道出报告时写 pending，后台用另一引擎复核后改写。
+    # 见 docs/快慢双通道解析设计.md
+    verification: Mapped[dict | None] = mapped_column(JSON)
     threshold_version: Mapped[int | None] = mapped_column(Integer)
     payload: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

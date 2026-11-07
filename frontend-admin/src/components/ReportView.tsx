@@ -159,6 +159,29 @@ function SummaryPanel({ report, txnCount }: { report: ReportPayload; txnCount: n
         </div>
       )}
 
+      {/* 快慢双通道：这份结果由快通道出，后台用另一个引擎复核过没有 */}
+      {(() => {
+        const v = (report as { verification?: { status?: string; diff_count?: number; txn_count_fast?: number; txn_count_slow?: number } }).verification;
+        if (!v || !v.status) return null;
+        if (v.status === 'passed') {
+          return <div className="verify-note verify-passed">
+            已复核：另一套解析引擎逐笔比对一致（{v.txn_count_fast ?? '—'} 笔）。
+          </div>;
+        }
+        if (v.status === 'discrepancy') {
+          return <div className="verify-note verify-warn">
+            复核发现 {v.diff_count ?? '若干'} 处差异（快通道 {v.txn_count_fast ?? '—'} 笔 / 复核引擎 {v.txn_count_slow ?? '—'} 笔），
+            建议在明细版逐笔核对后再采信。
+          </div>;
+        }
+        if (v.status === 'failed') {
+          return <div className="verify-note verify-muted">
+            复核未完成。这不代表结果有错，只说明这套结果还没有被第二套引擎验证过。
+          </div>;
+        }
+        return <div className="verify-note verify-muted">结果已出，后台复核中。</div>;
+      })()}
+
       <div className="summary-kpi">
         {kpi.map(item => (
           <div className="summary-kpi-item" key={item.k}>

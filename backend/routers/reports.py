@@ -37,7 +37,10 @@ def get_report(task_id: int, db: Session = Depends(get_session), user: User = De
     rep = db.execute(select(Report).where(Report.task_id == task_id).order_by(Report.version.desc())).scalars().first()
     if rep is None:
         raise HTTPException(404, "报告不存在")
-    return rep.payload
+    payload = dict(rep.payload or {})
+    # 快慢双通道：把复核状态挂在报告顶层（不改动其余字段）
+    payload["verification"] = rep.verification or {"status": "pending"}
+    return payload
 
 
 @router.get("/tasks/{task_id}/transactions")
