@@ -2,14 +2,23 @@
 html, body, #root { height: 100%; margin: 0; }
 body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #0f172a; background: #f1f5f9; }
 
-.app { display: flex; flex-direction: column; height: 100%; }
+.app {
+  display: flex; flex-direction: column;
+  /* 用 100vh 而不是 100%：标注页是整屏工作台，靠百分比高度会在祖先链没定型时塌成几十像素 */
+  height: 100vh; overflow: hidden;
+}
 .topbar { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: #0f172a; color: #fff; }
 .topbar h1 { font-size: 15px; margin: 0; font-weight: 600; }
 .topbar .tabs { display: flex; gap: 6px; margin-left: auto; }
 .topbar button { background: transparent; color: #cbd5e1; border: 1px solid #334155; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .topbar button.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
 
-.workspace { flex: 1; display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+.workspace {
+  flex: 1; display: grid; grid-template-columns: 1fr 380px;
+  /* 关键：min-height:0 + overflow:hidden 让左右两栏各自滚动，
+     否则整页会一起滚，PDF 展示区跟着侧栏往上跑（用户实际遇到的情况）。 */
+  min-height: 420px; overflow: hidden;
+}
 .stage-wrap { overflow: auto; padding: 18px; background: #e2e8f0; display: flex; justify-content: center; align-items: flex-start; }
 .page-holder { position: relative; background: #fff; box-shadow: 0 6px 24px rgba(15, 23, 42, .18); }
 .page-holder canvas { display: block; width: 100%; height: auto; user-select: none; }
@@ -577,7 +586,7 @@ table.thr-table input.thr-input { width: 96px; border: 1px solid #d6deeb; border
 .wizard-step-btn:disabled { opacity: .45; cursor: not-allowed; }
 .wizard-num { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,.35);
   display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
-.wizard-step { display: flex; flex-direction: column; }
+.wizard-step { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .upload-card { margin: 16px 18px; padding: 18px 20px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
 .upload-card h3 { margin: 0 0 6px; font-size: 15px; }
 .upload-actions { display: flex; gap: 10px; margin: 12px 0 6px; }
@@ -717,5 +726,3 @@ tr.clickable:hover { background: #f6f8fb; }
 .trust-score.trust-low { color: #b42318; }
 .trust-layers { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 .trust-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px;
-  background: #eef4ff; color: #24508f; }
-.trust-chip.off { background: #f1f5f9; color: #94a3b8; }

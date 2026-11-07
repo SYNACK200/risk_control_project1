@@ -74,7 +74,7 @@ export function AnnotatePage() {
   const step: 1 | 2 | 3 = location.pathname.endsWith('/mark') ? 2 : location.pathname.endsWith('/check') ? 3 : 1;
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const probeAutoRef = useRef(false);
-  const [guideOpen, setGuideOpen] = useState(true);
+  const [guideOpen, setGuideOpen] = useState(false);
   // 自动定列后显示来源说明，避免「这些框哪来的」
   const [autoLayoutInfo, setAutoLayoutInfo] = useState<string>('');
   // 从「解析结果」页带过来的任务号：本次标注用于重解析该任务（临时变量语义）
@@ -1065,8 +1065,4 @@ export function AnnotatePage() {
       )}
     </div>
   );
-}
-
-export function hasIssues(map: FieldMapV1): boolean {
-  return hasBlockingError(validate(map, 1));
 }

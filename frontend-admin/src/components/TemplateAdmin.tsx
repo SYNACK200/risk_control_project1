@@ -65,7 +65,7 @@ export function TemplateAdmin() {
         <div className="card-body">
           <table className="mini">
             <thead>
-              <tr><th>ID</th><th>银行</th><th>版本</th><th>状态</th><th>使用</th><th>成功率</th><th>字段</th><th>操作</th></tr>
+              <tr><th>ID</th><th>银行</th><th>版本</th><th>状态</th><th>使用</th><th>成功率</th><th>字段</th><th>最后修改</th><th>操作</th></tr>
             </thead>
             <tbody>
               {rows.map(t => {
@@ -84,6 +84,9 @@ export function TemplateAdmin() {
                     </td>
                     <td className="num">{s?.success_rate === null || s?.success_rate === undefined ? '—' : Math.round(s.success_rate * 100) + '%'}</td>
                     <td className="muted small">{Object.keys(t.field_map ?? {}).length} 项</td>
+                  <td className="muted small" title={'创建 ' + (t.created_at ?? '—')}>
+                    {t.updated_at ? t.updated_at.slice(0, 16).replace('T', ' ') : (t.created_at ? t.created_at.slice(0, 16).replace('T', ' ') : '—')}
+                  </td>
                     <td className="row-actions">
                       <button className="link-btn" type="button" onClick={() => navigate('/templates/' + t.id)}>详情</button>
                       {t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}

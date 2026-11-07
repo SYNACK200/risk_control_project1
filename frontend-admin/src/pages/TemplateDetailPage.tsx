@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { TemplateLayoutView } from '../components/TemplateLayoutView';
+import { InferPreviewPanel } from '../components/InferPreviewPanel';
 import {
   disableTemplate, duplicateTemplate, getTemplateLayout, listTemplates, previewTemplate,
   publishTemplate, templateStats, updateTemplate,
@@ -253,6 +254,10 @@ export function TemplateDetailPage() {
           {preview && (
             <div>
               <p className="muted">解析出 <b>{preview.txn_count}</b> 笔 / {preview.page_count} 页</p>
+              <InferPreviewPanel preview={(preview as { pages?: import('../components/InferPreviewPanel').PreviewPage[]; base_page?: number }).pages
+                ? { pages: (preview as { pages?: import('../components/InferPreviewPanel').PreviewPage[] }).pages,
+                    page_count: preview.page_count, txn_count: preview.txn_count, base_page: 0 }
+                : null} />
               {preview.warnings.length > 0 && <ul className="muted small">{preview.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
               {preview.rows.length > 0 && (
                 <table className="mini">

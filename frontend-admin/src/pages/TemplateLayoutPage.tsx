@@ -47,7 +47,14 @@ export function TemplateLayoutPage() {
           };
           const lay = tpl.layout as { tables?: unknown[] } | null;
           if (lay && Array.isArray(lay.tables) && lay.tables.length > 0) {
-            next.tables = lay.tables as FieldMapV1['tables'];
+            // 存储用 0-based（与 PDF 页索引一致），界面用 1-based；
+            // 直接把 0 塞给 Stage 会被 t.page === page 过滤掉，画布上一个框都看不到。
+            // 同时补 id：layout 里没存 id，Stage 用 key/选中都靠它。
+            next.tables = (lay.tables as FieldMapV1['tables']).map(t => ({
+              ...t,
+              id: t.id || uid('t'),
+              page: Math.max(1, (t.page ?? 0) + 1),
+            }));
           }
           return next;
         });
@@ -78,7 +85,8 @@ export function TemplateLayoutPage() {
       const layout = {
         page_size: map.page_size,
         tables: map.tables.map(tb => ({
-          page: tb.page, area: tb.area, headerY: tb.headerY,
+          // 存回 0-based，和算法端/PDF 页索引保持一致
+          page: Math.max(0, tb.page - 1), area: tb.area, headerY: tb.headerY,
           columns: tb.columns.map(c => ({ field: c.field, fields: c.fields, x: c.x, w: c.w })),
         })),
       };

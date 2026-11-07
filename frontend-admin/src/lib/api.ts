@@ -189,7 +189,11 @@ export async function getTask(taskId: number): Promise<TaskRow> {
   return json<TaskRow>(await authFetch(`${BASE}/tasks/${taskId}`));
 }
 
-export interface TemplateRow { id: number; bank_code: string; version: number; status: string; field_map: Record<string, unknown> }
+export interface TemplateRow {
+  id: number; bank_code: string; version: number; status: string;
+  field_map: Record<string, unknown>;
+  created_at?: string | null; updated_at?: string | null;
+}
 
 export async function listTemplates(): Promise<TemplateRow[]> {
   return json<TemplateRow[]>(await authFetch(`${BASE}/templates`));
