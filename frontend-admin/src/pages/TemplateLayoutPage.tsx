@@ -12,6 +12,30 @@ import type { FieldMapV1, SamplePage, Selection, Tool } from '../lib/types';
  * 单独一页而不是塞进标注向导：标注向导承担「从零建模板」，框画范围编辑只做一件事——
  * 在当时的样本上调整表格区与列，保存为新版本草稿。混在一起会让两边都难维护。
  */
+/** 页号 → 语义槽位。边界：1 页时首页即末页；2 页时第二页即末页。 */
+export function slotOf(page: number, total: number): 'first' | 'second' | 'last' | 'middle' {
+  if (page <= 1) return 'first';
+  if (total <= 1) return 'first';
+  if (total === 2) return 'last';
+  if (page === 2) return 'second';
+  if (page === total) return 'last';
+  return 'middle';
+}
+
+/** 槽位 → 页号（1-based）。 */
+export function pageOfSlot(slot: string | undefined, total: number): number {
+  if (slot === 'second') return Math.min(2, Math.max(1, total));
+  if (slot === 'last') return Math.max(1, total);
+  return 1;
+}
+
+const SLOT_LABEL: Record<string, string> = {
+  first: '第 1 页（首页）',
+  second: '第 2 页',
+  last: '最后一页',
+  middle: '中间页（沿用第 1 页）',
+};
+
 export function TemplateLayoutPage() {
   const { id } = useParams<{ id: string }>();
   const templateId = Number(id);
@@ -50,10 +74,11 @@ export function TemplateLayoutPage() {
             // 存储用 0-based（与 PDF 页索引一致），界面用 1-based；
             // 直接把 0 塞给 Stage 会被 t.page === page 过滤掉，画布上一个框都看不到。
             // 同时补 id：layout 里没存 id，Stage 用 key/选中都靠它。
-            next.tables = (lay.tables as FieldMapV1['tables']).map(t => ({
+            next.tables = (lay.tables as (FieldMapV1['tables'][number] & { slot?: string })[]).map(t => ({
               ...t,
               id: t.id || uid('t'),
-              page: Math.max(1, (t.page ?? 0) + 1),
+              // 有 slot 就按槽位算页号（多页版式差异）；没有就按存的绝对页号
+              page: t.slot ? pageOfSlot(t.slot, 1) : Math.max(1, (t.page ?? 0) + 1),
             }));
           }
           return next;
@@ -86,7 +111,11 @@ export function TemplateLayoutPage() {
         page_size: map.page_size,
         tables: map.tables.map(tb => ({
           // 存回 0-based，和算法端/PDF 页索引保持一致
-          page: Math.max(0, tb.page - 1), area: tb.area, headerY: tb.headerY,
+          page: Math.max(0, tb.page - 1),
+          // 槽位是给「多页版式不同」用的：算法优先按 slot 解析，
+          // 这样 2 页文件的「第 2 页」不会被误当成「第 2 页槽位」。
+          slot: slotOf(tb.page, sample?.pageCount ?? 1),
+          area: tb.area, headerY: tb.headerY,
           columns: tb.columns.map(c => ({ field: c.field, fields: c.fields, x: c.x, w: c.w })),
         })),
       };
@@ -161,7 +190,7 @@ export function TemplateLayoutPage() {
               </p>
               {map.tables.map((t, i) => (
                 <div key={t.id} className="muted small" style={{ marginTop: 6 }}>
-                  表格 {i + 1} · 第 {t.page} 页 · {t.columns.length} 列
+                  表格 {i + 1} · {SLOT_LABEL[slotOf(t.page, sample?.pageCount ?? 1)] ?? ('第 ' + t.page + ' 页')} · {t.columns.length} 列
                 </div>
               ))}
               {page < (sample?.pageCount ?? 1) && (

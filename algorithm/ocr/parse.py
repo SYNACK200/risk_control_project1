@@ -211,13 +211,13 @@ def _is_body_char(obj: dict) -> bool:
     return MIN_BODY_SIZE <= size <= MAX_BODY_SIZE
 
 
-def _clip_for_page(layout, page_no, rect):
+def _clip_for_page(layout, page_no, rect, total_pages=None):
     """把模板框换算成该页的文字提取区域（PDF 点坐标）。
 
     上方多留 12%：表头通常画在框外，裁掉就找不到表头。
     返回 None 表示不裁剪。
     """
-    area = _layout_area_for(layout, page_no)
+    area = _layout_area_for(layout, page_no, total_pages)
     if not area:
         return None
     try:
@@ -306,7 +306,7 @@ def _fitz_extract(
         has_text = False
         _lay = getattr(template, "layout", None) if template is not None else None
         for page_no, page in enumerate(doc, start=1):
-            _clip = _clip_for_page(_lay, page_no - 1, page.rect)
+            _clip = _clip_for_page(_lay, page_no - 1, page.rect, doc.page_count)
             words, texts, page_has_text = _fitz_page_words(page, clip=_clip)
             pages.append((page_no, words))
             body_texts.extend(texts)
@@ -483,32 +483,56 @@ def _page_header(
     return header
 
 
-def _layout_area_for(layout, page_no):
-    """取该页的表格框；该页没画过就用第 0 页的。
+def _layout_area_for(layout, page_no, total_pages=None):
+    """取该页的表格框。
 
-    版式一致是模板成立的前提：用户在样本第 1 页框了表格区，
-    后续页只要能对上表头，就沿用同一个框——这也是用模板解析更快的来源。
+    支持两种存法，优先级从高到低：
+      1. 绝对页号 table["page"]（旧数据，也用于单页模板）
+      2. 语义槽位 table["slot"]：first / second / last
+
+    槽位是为了处理「首页、第二页、末页版式可能不同」：
+      - 1 页文件：first 就是 last，用 first
+      - 2 页文件：second 与 last 是同一页，用 last
+      - 3 页及以上：三段各自独立
+    中间页（第 3 页到倒数第 2 页）没有自己的槽位时，沿用 first —— 版式一致是模板成立的前提。
     """
     if not layout:
         return None
-    tables = layout.get("tables") or []
+    tables = [t for t in (layout.get("tables") or []) if t.get("area")]
     if not tables:
         return None
     for t in tables:
-        if int(t.get("page") or 0) == page_no and t.get("area"):
+        if int(t.get("page") or 0) == page_no:
             return t["area"]
-    first = tables[0].get("area")
-    return first if first else None
+
+    def _by_slot(name):
+        for t in tables:
+            if (t.get("slot") or "first") == name:
+                return t["area"]
+        return None
+
+    total = total_pages if total_pages and total_pages > 0 else 1
+    if page_no == 0:
+        return _by_slot("first")
+    if total == 1:
+        return _by_slot("first")
+    if total == 2:
+        return _by_slot("last") or _by_slot("second") or _by_slot("first")
+    if page_no == 1:
+        return _by_slot("second") or _by_slot("first")
+    if page_no == total - 1:
+        return _by_slot("last") or _by_slot("first")
+    return _by_slot("first")
 
 
-def _crop_by_layout(words, layout, page_no):
+def _crop_by_layout(words, layout, page_no, total_pages=None):
     """按模板框把词裁到表格区里。
 
     不裁的话，模板只是换了一种切列算法，整页文字照样要处理，
     实测反而比不用模板慢 30%。裁掉区域外的词才有真正收益。
     上方留 12%：表头通常画在表格区之外，裁掉就找不到表头了。
     """
-    area = _layout_area_for(layout, page_no)
+    area = _layout_area_for(layout, page_no, total_pages)
     if not area:
         return words
     size = (layout or {}).get("page_size") or {}
@@ -552,15 +576,22 @@ def _transactions_from_pages(
 
     _layout = getattr(template, "layout", None) if template is not None else None
 
-    for page_no, words in pages:
+    _layout = getattr(template, "layout", None) if template is not None else None
+    _page_list = list(pages)
+    _total_pages = len(_page_list)
+
+    for page_no, words in _page_list:
         if _layout:
-            words = _crop_by_layout(words, _layout, page_no)
+            words = _crop_by_layout(words, _layout, page_no, _total_pages)
         page_footer: int | None = None
         page_summary = PageSummary(page_no=page_no)
         summaries.append(page_summary)
         lines = group_lines(words, y_tol=y_tol if y_tol else LINE_Y_TOLERANCE)
 
         header = find_header(lines, template.field_map if template else None)
+        page_footer: int | None = None
+        page_summary = PageSummary(page_no=page_no)
+        summaries.append(page_summary)
         if header is not None:
             header_line, tokens, mapping = header
             columns = build_columns(tokens, mapping, layout=getattr(template, "layout", None))
