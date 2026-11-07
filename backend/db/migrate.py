@@ -30,6 +30,16 @@ def ensure_columns() -> list[str]:
             done.append("task.field_map_override")
     except Exception:  # noqa: BLE001 - 老库可能还没有 task 表
         pass
+    # 模板自定义字段的原始值
+    try:
+        tcols = {c["name"] for c in insp.get_columns("txn")}
+        if tcols and "extra" not in tcols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE txn ADD COLUMN extra JSON NULL"))
+            done.append("txn.extra")
+    except Exception:  # noqa: BLE001
+        pass
+
     # 快慢双通道：复核状态
     try:
         rpcols = {c["name"] for c in insp.get_columns("report")}

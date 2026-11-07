@@ -316,6 +316,27 @@ def _fitz_extract(
         doc.close()
 
 
+# 已有专列的字段，其余都算「自定义字段」进 extra
+_KNOWN_FIELDS = {"txn_date", "trade_time", "summary", "counterparty", "direction",
+                 "amount", "balance", "amount_in", "amount_out", "reference_no"}
+
+
+def _extra_cells(cells: dict[str, list[Word]]) -> dict[str, str] | None:
+    """把模板里自定义字段的单元格文本收进 extra。
+
+    自定义字段没有专列，不在这里落下来就永远看不到——
+    之前「自定义字段在哪里都看不到」正是这个原因。
+    """
+    out: dict[str, str] = {}
+    for field, ws in (cells or {}).items():
+        if field in _KNOWN_FIELDS:
+            continue
+        text = _cell_text(ws).strip()
+        if text:
+            out[field] = text[:255]
+    return out or None
+
+
 def _assign_money(txn: Transaction, cells: dict[str, list[Word]]) -> None:
     """从单元格补全金额/方向/余额；正数带 '+' 视为收入。"""
     if txn.amount is None:
@@ -695,6 +716,7 @@ def _transactions_from_pages(
                 direction=parse_direction(direction_text, None),
                 confidence=_line_confidence(line),
                 bbox=_bbox(line.words),
+                extra=_extra_cells(cells),
             )
             _assign_money(current, cells)
             transactions.append(current)
@@ -824,6 +846,8 @@ def _prepare_image(file_bytes: bytes) -> tuple[bytes, list[str]]:
 def _parse_ocr(file_bytes: bytes, template: Template | None, warnings: list[str] | None = None, y_tol: float | None = None) -> ParseResult:
     from .engine import get_default_engine
 
+    # 路由：云端 API 单张 4-10s 比本地慢，只有多张并发才划算。
+    # 是否走云端、多少张才走、并发几路，都由 ocr_routing 配置决定（管理页可改）。
     ocr = get_default_engine().recognize(file_bytes)
     warnings = list(warnings or [])
     warnings.append(f"经 OCR 识别（{ocr.engine}），结果需人工核对")

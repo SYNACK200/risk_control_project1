@@ -48,6 +48,9 @@ class Transaction(BaseModel):
     balance: Decimal | None = None
     confidence: float = 1.0
     bbox: tuple[float, float, float, float] | None = None
+    # 模板自定义字段的原始单元格文本（键是字段代号）。
+    # 固定字段走上面的专列；用户自己加的列没有专列，落在这里。
+    extra: dict[str, str] | None = None
 
 
 class PageSummary(BaseModel):
