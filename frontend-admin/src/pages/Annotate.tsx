@@ -107,7 +107,7 @@ export function AnnotatePage() {
   const [sampleName, setSampleName] = useState('');
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [tool, setTool] = useState<Tool>('meta');
+  const [tool, setTool] = useState<Tool>('select');
   const [sel, setSel] = useState<Selection>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [source, setSource] = useState<{ file: File; password?: string } | null>(null);

@@ -44,7 +44,10 @@ export interface Issue {
   targetId?: string;
 }
 
-export type Tool = 'meta' | 'table' | 'column';
+// select 是「不画任何东西，只选中/拖动」的模式。
+// 之前没有它，默认是 meta（画字段框），导致表格区和列都点不中——
+// 选不中就没有手柄，也就改不了大小。
+export type Tool = 'select' | 'meta' | 'table' | 'column';
 
 export type Selection =
   | { kind: 'meta'; id: string }

@@ -36,6 +36,11 @@ export function Toolbar(p: Props) {
       </div>
 
       <div className="group">
+        {/* 选择模式：不画东西，只用来点中对象、拖动、拖手柄改大小 */}
+        <button className={`btn ${p.tool === 'select' ? 'tool-active' : ''}`} onClick={() => p.onTool('select')}
+          title="选中对象后可以拖动位置、拖八个手柄改大小">
+          选择 / 调整
+        </button>
         <button className={`btn ${p.tool === 'meta' ? 'tool-active' : ''}`} onClick={() => p.onTool('meta')}>
           画字段框
         </button>
