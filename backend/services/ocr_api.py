@@ -18,7 +18,13 @@ from pathlib import Path
 import requests
 
 BASE = os.environ.get("PADDLEOCR_BASE_URL", "https://paddleocr.aistudio-app.com").rstrip("/")
-JOBS = BASE + "/api/v2/ocr/jobs"
+
+
+def _jobs_url() -> str:
+    """优先用界面配置的地址，留空回落到默认 BASE。"""
+    ep = (_db_config().get("endpoint") or "").strip()
+    base = (ep or BASE).rstrip("/")
+    return base + "/api/v2/ocr/jobs"
 CONF = Path(os.path.expanduser("~")) / ".dsh" / "ocr" / "paddle.json"
 
 # 并发上限。2026-11-07 实测：
@@ -33,14 +39,41 @@ class OcrApiError(RuntimeError):
     pass
 
 
+def _db_config() -> dict:
+    """从库里的 ocr_routing 取 endpoint/api_key。取不到返回空。"""
+    try:
+        from db.session import SessionLocal  # noqa: PLC0415
+
+        if SessionLocal is None:
+            return {}
+        from db.models import OcrRouting  # noqa: PLC0415
+        from sqlalchemy import select  # noqa: PLC0415
+
+        with SessionLocal() as db:
+            row = db.execute(select(OcrRouting).order_by(OcrRouting.id)).scalars().first()
+            if row is None:
+                return {}
+            return {"endpoint": row.endpoint, "api_key": row.api_key}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _token() -> str:
+    """取 API Key：优先界面里配的，其次环境变量，最后配置文件。
+
+    界面配置优先，是因为换供应商时用户会在页面上直接改；
+    改动理应立刻生效，不该还要求他再去改 ~/.dsh/ocr/paddle.json。
+    """
+    dbkey = (_db_config().get("api_key") or "").strip()
+    if dbkey:
+        return dbkey
     tok = os.environ.get("PADDLEOCR_ACCESS_TOKEN")
     if tok:
         return tok
     try:
         return json.loads(CONF.read_text(encoding="utf-8")).get("token") or ""
     except Exception as exc:  # noqa: BLE001
-        raise OcrApiError("读不到 PaddleOCR 凭据（~/.dsh/ocr/paddle.json）") from exc
+        raise OcrApiError("读不到 PaddleOCR 凭据（界面未配 API Key，~/.dsh/ocr/paddle.json 也不存在）") from exc
 
 
 def _session() -> requests.Session:
@@ -70,7 +103,7 @@ def submit(session: requests.Session, name: str, content: bytes, model: str = "P
     data = {"model": model, "optionalPayload": "{}"}
     if pages:
         data["pageRanges"] = pages
-    resp = session.post(JOBS, data=data, files={"file": (name, content)}, timeout=120)
+    resp = session.post(_jobs_url(), data=data, files={"file": (name, content)}, timeout=120)
     job_id = _check(resp).get("jobId")
     if not job_id:
         raise OcrApiError("PaddleOCR 没有返回 jobId")
@@ -80,7 +113,7 @@ def submit(session: requests.Session, name: str, content: bytes, model: str = "P
 def wait(session: requests.Session, job_id: str, timeout: float = POLL_TIMEOUT) -> str:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        data = _check(session.get(JOBS + "/" + job_id, timeout=60))
+        data = _check(session.get(_jobs_url() + "/" + job_id, timeout=60))
         state = (data.get("state") or "").lower()
         if state == "failed":
             raise OcrApiError("PaddleOCR 任务失败：" + str(data.get("errorMsg") or "")[:200])

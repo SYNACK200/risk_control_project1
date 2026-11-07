@@ -17,6 +17,8 @@ class RoutingIn(BaseModel):
     model: str = "PP-OCRv6"
     # 换供应商时改这里（留空则用默认 aistudio 地址）
     endpoint: str | None = None
+    # 只在填了新值时覆盖已存的 key；留空表示不改
+    api_key: str | None = None
     note: str | None = None
 
 
