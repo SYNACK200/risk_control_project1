@@ -36,7 +36,9 @@ def list_templates(bank_code: str | None = None, include_deleted: bool = False,
         stmt = stmt.where(Template.bank_code == bank_code.upper())
     rows = db.execute(stmt).scalars().all()
     return [{"id": t.id, "bank_code": t.bank_code, "version": t.version,
-             "status": t.status, "field_map": t.field_map, "header_columns": t.header_columns} for t in rows]
+             "status": t.status, "field_map": t.field_map, "header_columns": t.header_columns,
+             "created_at": t.created_at.isoformat() if t.created_at else None,
+             "updated_at": t.updated_at.isoformat() if t.updated_at else None} for t in rows]
 
 
 @router.post("")
@@ -275,6 +277,35 @@ def infer_template_api(
         layout = None
     payload["layout"] = layout
 
+    # 用这份临时模板把整份文件试跑一遍，返回逐页情况：
+    # 用户要看到的不只是「总笔数」，还有「第 2、3…页模板还好不好用」。
+    try:
+        from algorithm.ocr.models import Template as _PT
+        from algorithm.ocr.parse import parse as _parse
+
+        tpl = _PT(bank_code=bank_code.upper(), version=0,
+                  field_map=dict(result["field_map"] or {}), layout=layout)
+        parsed = _parse(data, tpl)
+        from collections import Counter as _Counter
+
+        per_page = _Counter(t.page_no for t in parsed.transactions)
+        hdr_pages = {h.page_no for h in (parsed.headers or []) if any([
+            getattr(h, "account_no", None) is not None,
+            getattr(h, "account_name", None) is not None,
+            getattr(h, "period_start", None) is not None,
+        ])}
+        payload["preview"] = {
+            "txn_count": len(parsed.transactions),
+            "page_count": parsed.page_count,
+            "base_page": int(parsed_marks[0].get("page") or 0),
+            "pages": [
+                {"page_no": pno, "rows": per_page.get(pno, 0), "header_found": pno in hdr_pages}
+                for pno in range(parsed.page_count or 0)
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001 - 试跑失败不影响建模板
+        payload["preview"] = {"error": str(exc)[:120]}
+
     payload["valid"] = result["valid"]
     if save_draft:
         file_id = None
@@ -322,9 +353,13 @@ def update_template(template_id: int, payload: TemplatePatch, db: Session = Depe
         header_columns=payload.header_columns if payload.header_columns is not None else row.header_columns,
         sample_file_id=row.sample_file_id,
         layout=payload.layout if payload.layout is not None else row.layout,
+        updated_at=_dt_now.utcnow(),
     )
+    from datetime import datetime as _dt_now  # noqa: PLC0415
+
     old_status = row.status
     row.status = "disabled"
+    row.updated_at = _dt_now.utcnow()
     db.add(new_row)
     db.commit()
     db.refresh(new_row)
@@ -344,6 +379,7 @@ def get_template(template_id: int, db: Session = Depends(get_session)):
         "header_columns": row.header_columns, "layout": row.layout,
         "sample_file_id": row.sample_file_id,
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
 
 
@@ -463,8 +499,33 @@ def preview_template(template_id: int, file: UploadFile = File(...), password: s
         if doc.needs_pass:
             if not password or doc.authenticate(password) <= 0:
                 raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "PDF 需要打开口令"})
-    tpl = ParseTemplate(bank_code=row.bank_code, version=row.version, field_map=dict(row.field_map or {}))
+    # 必须带 layout：不带的话列边界只能按表头词中心推算，试跑结果与真实解析不一致
+    tpl = ParseTemplate(bank_code=row.bank_code, version=row.version,
+                        field_map=dict(row.field_map or {}), layout=row.layout)
     parsed = parse(raw, tpl)
+
+    # 逐页统计：用户要看到「模板在第 2、3…页还好不好用」，只给总笔数看不出问题页
+    from collections import Counter
+
+    per_page = Counter(t.page_no for t in parsed.transactions)
+    header_by_page = {h.page_no: h for h in (parsed.headers or [])}
+    pages = []
+    for pno in range(parsed.page_count or 0):
+        h = header_by_page.get(pno)
+        # PageHeader 是「跨页可比对字段」（账号/户名/起止日期），不是列清单；
+        # 有它说明这一页的页眉被识别到了，能用来判断「后续页是否还是同一账户同一期间」。
+        has_header = bool(h and any([
+            getattr(h, "account_no", None) is not None,
+            getattr(h, "account_name", None) is not None,
+            getattr(h, "period_start", None) is not None,
+        ]))
+        pages.append({
+            "page_no": pno,
+            "rows": per_page.get(pno, 0),
+            "header_found": has_header,
+            "columns": 0,
+        })
+
     rows = [
         {
             "txn_date": t.txn_date, "summary": t.summary, "direction": t.direction,
@@ -472,12 +533,13 @@ def preview_template(template_id: int, file: UploadFile = File(...), password: s
             "balance": None if t.balance is None else str(t.balance),
             "page_no": t.page_no,
         }
-        for t in parsed.transactions[:10]
+        for t in parsed.transactions[:12]
     ]
     return {
         "template_id": row.id,
         "txn_count": len(parsed.transactions),
         "page_count": parsed.page_count,
+        "pages": pages,
         "warnings": parsed.warnings[:8],
         "rows": rows,
     }

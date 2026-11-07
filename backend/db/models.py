@@ -150,6 +150,8 @@ class Template(Base):
     # 有历史流水引用时不允许物理删除，改为从列表移除（审计可查）
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # 审计用：模板什么时候被改过（改字段映射/改框画范围/复制/启停都会刷）
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class Rule(Base):

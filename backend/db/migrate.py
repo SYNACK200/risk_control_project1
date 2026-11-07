@@ -30,6 +30,17 @@ def ensure_columns() -> list[str]:
             done.append("task.field_map_override")
     except Exception:  # noqa: BLE001 - 老库可能还没有 task 表
         pass
+    # 模板修改时间（审计）：列表要显示「最后改于」。
+    try:
+        tpcols = {c["name"] for c in insp.get_columns("template")}
+        if tpcols and "updated_at" not in tpcols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE template ADD COLUMN updated_at DATETIME NULL"))
+                conn.execute(text("UPDATE template SET updated_at = created_at WHERE updated_at IS NULL"))
+            done.append("template.updated_at")
+    except Exception:  # noqa: BLE001 - 老库可能还没有 template
+        pass
+
     # 审计 detail 里会拼任务 id 列表，255 不够用（批量 61 条会超）
     try:
         acols = {c["name"]: c for c in insp.get_columns("audit_log")}
