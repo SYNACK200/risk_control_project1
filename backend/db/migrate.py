@@ -30,6 +30,16 @@ def ensure_columns() -> list[str]:
             done.append("task.field_map_override")
     except Exception:  # noqa: BLE001 - 老库可能还没有 task 表
         pass
+    # OCR 路由的 api_key
+    try:
+        acols = {c["name"] for c in insp.get_columns("ocr_routing")}
+        if acols and "api_key" not in acols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE ocr_routing ADD COLUMN api_key VARCHAR(255) NULL"))
+            done.append("ocr_routing.api_key")
+    except Exception:  # noqa: BLE001
+        pass
+
     # OCR 路由的 endpoint（换供应商用）
     try:
         ocols = {c["name"] for c in insp.get_columns("ocr_routing")}

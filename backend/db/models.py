@@ -258,6 +258,11 @@ class OcrRouting(Base):
     model: Mapped[str] = mapped_column(String(32), default="PP-OCRv6", server_default=text("'PP-OCRv6'"))
     # 换供应商时地址也要能改，不能只改模型名
     endpoint: Mapped[str | None] = mapped_column(String(255))
+    # API Key：换供应商时它比地址更常变。优先用这里的值，
+    # 没填才回落到 ~/.dsh/ocr/paddle.json。
+    # 存明文是因为这是服务端独占的配置表（不像仓库会被分发），
+    # 但接口层永远不回显它，只告诉前端「是否已配置」。
+    api_key: Mapped[str | None] = mapped_column(String(255))
     note: Mapped[str | None] = mapped_column(String(255))
     updated_by: Mapped[str | None] = mapped_column(String(64))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)

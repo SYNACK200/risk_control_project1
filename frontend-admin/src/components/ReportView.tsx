@@ -4,6 +4,7 @@ import { downloadAttachment, getMetricDefinitions, getReport, getTask, getTransa
 import { InsightSection } from './Charts';
 import { MetricExplain } from './MetricExplain';
 import { CheckTable } from './CheckTable';
+import { useIsAdmin } from '../lib/auth';
 
 const METRIC_GROUPS = [
   { key: 'income', prefix: 'A', name: '收入能力' },
@@ -218,6 +219,10 @@ export function ReportView({ taskId }: { taskId: number }) {
   const [defs, setDefs] = useState<Record<string, MetricDef>>({});
   const [openMetric, setOpenMetric] = useState<string | null>(null);
   const [vmethods, setVmethods] = useState<Record<string, string>>({});
+  // 模板不匹配：系统先匹配到某个模板，但发现这份文件与它差得太远。
+  // 这时候才提示用户走临时标注——不是让用户自己猜什么时候该用。
+  const isAdmin = useIsAdmin();
+  const [mismatch, setMismatch] = useState<{ reasons?: string[] } | null>(null);
   const [preread, setPreread] = useState<PrereadInfo | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [openLayers, setOpenLayers] = useState<Record<string, boolean>>({});
@@ -238,6 +243,8 @@ export function ReportView({ taskId }: { taskId: number }) {
         if (!alive) return;
         setReport(rep);
         setTxns(rows);
+        const mm = (task.check_result as { template_mismatch?: { reasons?: string[] } } | undefined)?.template_mismatch;
+        setMismatch(mm ?? null);
         setPreread(task.check_result?.preread ?? null);
         const wl = (task.check_result as Record<string, unknown> | undefined)?.whitelist as
           { reason: string; at: string } | undefined;
@@ -321,6 +328,13 @@ export function ReportView({ taskId }: { taskId: number }) {
   }
 
   function printReport() {
+    // 明细版含客户流水的逐笔原文，打印前强制切到结论版：
+    // 打印物往往是要发出去的（给客户、给审批人），不能顺手把原件带走。
+    if (view === 'detail') {
+      setView('summary');
+      window.setTimeout(() => window.print(), 150);
+      return;
+    }
     window.print();
   }
 
@@ -354,7 +368,11 @@ export function ReportView({ taskId }: { taskId: number }) {
                 ))}
               </select>
               <button className="btn" type="button" onClick={() => { void reanalyzeWithTpl(); }}>重新解析</button>
-              <button className="btn secondary" type="button" onClick={() => { void exportCsv(); }}>导出明细 CSV</button>
+              {/* 原始逐笔明细只给管理员：那是客户流水原文，导出即二次分发 */}
+              {isAdmin && (
+                <button className="btn secondary" type="button" onClick={() => { void exportCsv(); }}
+                  title="导出原始逐笔明细（含客户流水原文，谨慎分发）">导出原始明细 CSV</button>
+              )}
               <button className="btn secondary" type="button" onClick={() => { void exportJson(); }}>导出报告 JSON</button>
               <button className="btn secondary" type="button" onClick={printReport}>打印 / 存为 PDF</button>
               {!whitelist && (
@@ -368,6 +386,21 @@ export function ReportView({ taskId }: { taskId: number }) {
               </div>
             )}
             <p className="muted">载体 {report.carrier} · 指标集 v{report.metric_set_version} · 阈值 v{report.threshold_version} · 材料 {report.materials.length} 份</p>
+
+            {/* 模板不匹配：这才是「临时标注」该出现的时机——
+                系统先匹配到某个模板，但发现这份文件与它差得太远 */}
+            {mismatch && (
+              <div className="notice warn">
+                <div><b>当前模板可能不适用这份流水</b></div>
+                <ul style={{ margin: '6px 0 8px 18px' }}>
+                  {(mismatch.reasons ?? []).map((r, i) => <li key={i}>{r}</li>)}
+                </ul>
+                <div className="muted small">
+                  可以针对这一份流水临时标注一次：在原文件上重新画表格区和列。
+                  临时模板只用于本任务，不会改动、也不会新增模板库里的模板。
+                </div>
+              </div>
+            )}
 
             {(() => {
               const a = authenticity(report.layers, report.carrier, report.limitations);

@@ -193,10 +193,16 @@ export interface TemplateRow {
   id: number; bank_code: string; version: number; status: string;
   field_map: Record<string, unknown>;
   created_at?: string | null; updated_at?: string | null;
+  deleted_at?: string | null;
 }
 
-export async function listTemplates(): Promise<TemplateRow[]> {
-  return json<TemplateRow[]>(await authFetch(`${BASE}/templates`));
+export async function listTemplates(includeDeleted = false): Promise<TemplateRow[]> {
+  return json<TemplateRow[]>(await authFetch(`${BASE}/templates` + (includeDeleted ? '?include_deleted=true' : '')));
+}
+
+/** 从回收站恢复一个模板 */
+export async function restoreTemplate(id: number): Promise<{ id: number; restored: boolean; message: string }> {
+  return json(await authFetch(BASE + '/templates/' + id + '/restore', { method: 'POST' }));
 }
 
 export async function publishTemplate(id: number): Promise<{ status: string }> {
@@ -667,13 +673,14 @@ export async function createBankUser(payload: {
 
 export type OcrRouting = {
   enabled: boolean; min_images: number; workers: number; model: string;
-  endpoint?: string | null; credential_ready?: boolean;
+  endpoint?: string | null; has_api_key?: boolean; credential_ready?: boolean;
 };
 export async function getOcrRouting(): Promise<OcrRouting> {
   return json(await authFetch(BASE + '/ocr-routing'));
 }
 export async function saveOcrRouting(payload: {
-  enabled: boolean; min_images: number; workers: number; model: string; endpoint?: string; note?: string;
+  enabled: boolean; min_images: number; workers: number; model: string;
+  endpoint?: string; api_key?: string; note?: string;
 }): Promise<OcrRouting> {
   return json(await authFetch(BASE + '/ocr-routing', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },

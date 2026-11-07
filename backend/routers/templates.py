@@ -473,19 +473,30 @@ def delete_template(template_id: int, db: Session = Depends(get_session)):
     if row.deleted_at is not None:
         return {"deleted": template_id, "soft": True, "used": 0, "message": "该模板已从列表移除"}
     used = db.execute(select(func.count(Task.id)).where(Task.template_id == template_id)).scalar() or 0
-    if used:
-        # 有历史流水引用：不能物理删除，否则报告溯源断链；改为从列表移除（历史保留）
-        row.deleted_at = now()
-        row.status = "disabled"
-        _audit_template(db, "delete_template", template_id, f"软删除（被 {used} 个任务引用）")
-        db.commit()
-        return {"deleted": template_id, "soft": True, "used": used,
-                "message": f"该模板被 {used} 条流水引用，已从列表移除（历史解析记录仍保留），未做物理删除"}
+    # 一律软删除：模板是花了人工在样本上画出来的，物理删掉就再也找不回来。
+    # 之前对「无任务引用」的模板做物理删除，导致 ICBC / CMB / CGB 三个模板被删后无法恢复，
+    # 只能重新标注。现在统一进回收站，可恢复。
+    row.deleted_at = now()
+    row.status = "disabled"
     _audit_template(db, "delete_template", template_id,
-                    f"物理删除 {row.bank_code} v{row.version}（无任务引用）")
-    db.delete(row)
+                    f"软删除 {row.bank_code} v{row.version}（引用 {used} 个任务，可恢复）")
     db.commit()
-    return {"deleted": template_id, "soft": False, "used": 0, "message": "已删除"}
+    return {"deleted": template_id, "soft": True, "used": used,
+            "message": "已移入回收站，可在模板库「回收站」里恢复"}
+
+
+@router.post("/{template_id}/restore", dependencies=[Depends(require_admin)])
+def restore_template(template_id: int, db: Session = Depends(get_session)):
+    row = db.get(Template, template_id)
+    if row is None:
+        raise HTTPException(404, "模板不存在")
+    if row.deleted_at is None:
+        return {"id": template_id, "restored": False, "message": "该模板未在回收站"}
+    row.deleted_at = None
+    _audit_template(db, "restore_template", template_id,
+                    f"从回收站恢复 {row.bank_code} v{row.version}")
+    db.commit()
+    return {"id": template_id, "restored": True, "message": "已恢复（状态为停用，需要时再启用）"}
 
 
 @router.get("/{template_id}/stats")

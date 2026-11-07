@@ -14,7 +14,8 @@ from sqlalchemy import select
 
 from db.models import OcrRouting
 
-DEFAULTS = {"enabled": False, "min_images": 3, "workers": 2, "model": "PP-OCRv6", "endpoint": None}
+DEFAULTS = {"enabled": False, "min_images": 3, "workers": 2, "model": "PP-OCRv6",
+            "endpoint": None, "api_key": None}
 
 
 def get_config(db) -> dict:
@@ -27,6 +28,8 @@ def get_config(db) -> dict:
         "workers": int(row.workers or DEFAULTS["workers"]),
         "model": row.model or DEFAULTS["model"],
         "endpoint": row.endpoint,
+        # 故意不回显 key：只说有没有。前端拿不到明文，日志也不会带出去。
+        "has_api_key": bool(row.api_key),
     }
 
 
@@ -41,6 +44,10 @@ def save_config(db, payload: dict, username: str | None = None) -> dict:
     row.model = (payload.get("model") or DEFAULTS["model"])[:32]
     ep = (payload.get("endpoint") or "").strip()
     row.endpoint = ep[:255] if ep else None
+    # key 只在用户填了新值时才覆盖；传空串表示「不改」，避免误把已存的 key 清掉
+    key = (payload.get("api_key") or "").strip()
+    if key:
+        row.api_key = key[:255]
     row.note = (payload.get("note") or "")[:255] or None
     row.updated_by = username
     row.updated_at = datetime.utcnow()

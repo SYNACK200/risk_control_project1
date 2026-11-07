@@ -64,7 +64,65 @@ def build_layout(pdf_bytes: bytes, marks: list[dict], columns: list[dict], field
             "x1": round(x1, 1), "y1": round(y1, 1),
         })
     doc.close()
-    return {"pages": pages, "page_count": len(pages) or 1, "boxes": boxes}
+
+    # 输出新格式（tables + columns）。
+    # 之前这里返回的是旧的 boxes 结构，而解析（table.build_columns）和前端画布
+    # 都按 tables[].columns[] 读——结果新模板的 layout 永远被当成空的，
+    # 「按框解析」和「改框画范围能看到框」都失效。
+    tables_out: list[dict] = []
+    for page_no, _meta in pages.items():
+        page_boxes = [b for b in boxes if b["page"] == page_no]
+        if not page_boxes:
+            continue
+        page = None
+        doc2 = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            if page_no < doc2.page_count:
+                page = doc2[page_no]
+        except Exception:  # noqa: BLE001
+            page = None
+        W = float(page.rect.width) if page is not None else 1.0
+        H = float(page.rect.height) if page is not None else 1.0
+        try:
+            if page is not None:
+                doc2.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+        xs0 = [b["x0"] for b in page_boxes]
+        xs1 = [b["x1"] for b in page_boxes]
+        ys = [b["y0"] for b in page_boxes]
+        area_x = max(0.0, min(xs0) / W - 0.01)
+        area_x1 = min(1.0, max(xs1) / W + 0.01)
+        area_y = max(0.0, min(ys) / H - 0.01)
+        cols = []
+        for b in page_boxes:
+            if not b.get("column"):
+                continue
+            cx = max(0.0, b["x0"] / W)
+            cw = max(0.004, (b["x1"] - b["x0"]) / W)
+            cols.append({"field": b["field"], "fields": [b["field"]] if b["field"] else [],
+                         "x": round(cx, 4), "w": round(min(1.0 - cx, cw), 4)})
+        cols.sort(key=lambda c: c["x"])
+        tables_out.append({
+            "page": page_no,
+            "slot": "first" if page_no == 0 else "middle",
+            "area": {"x": round(area_x, 4), "y": round(area_y, 4),
+                     "w": round(max(0.01, area_x1 - area_x), 4),
+                     "h": round(max(0.05, 0.98 - area_y), 4)},
+            "headerY": round(area_y + 0.01, 4),
+            "columns": cols,
+        })
+
+    page_size = None
+    if pages:
+        first = pages[sorted(pages)[0]]
+        page_size = {"w": first["width"], "h": first["height"]}
+
+    return {"page_size": page_size, "page_count": len(pages) or 1,
+            "tables": tables_out,
+            # 保留旧字段，避免老代码读不到
+            "pages": pages, "boxes": boxes}
 
 
 def render_page_png(pdf_bytes: bytes, layout: dict, page_no: int, dpi: int = 140) -> bytes:

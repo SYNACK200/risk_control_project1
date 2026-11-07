@@ -25,17 +25,17 @@ _thread: threading.Thread | None = None
 
 
 def _fast_busy() -> bool:
-    """快通道是否还有活。有就跳过这一轮，不抢资源。"""
+    """快通道是否还有活。有就跳过这一轮，不抢资源。
+
+    之前读的是 worker._PENDING，那个变量根本不存在，导致这里永远返回 False——
+    慢通道会一直和用户上传的任务抢资源。现在读真实的在跑计数。
+    """
     try:
         from services import worker  # noqa: PLC0415
 
-        alive = getattr(worker, "_PENDING", None)
-        if isinstance(alive, (set, dict, list)):
-            return len(alive) > 0
+        return int(worker.active_count()) > 0
     except Exception:  # noqa: BLE001
-        pass
-    return False
-
+        return False
 
 def _pick_one() -> int | None:
     """取一个待复核的任务。只看电子件、只看最新报告。"""

@@ -185,6 +185,19 @@ def run_task(task_id: int, password: str | None = None) -> dict:
                 value_num=None if m["value"] is None else Decimal(m["value"]),
                 unit=m["unit"], note=m["note"], caliber_version=m["caliber_version"],
             ))
+        # 模板不匹配检测：模板解析成功不代表模板适用。
+        # 命中信号时标记出来，前端才能提示「可以临时标注补救」。
+        try:
+            from services.template_mismatch import detect_mismatch  # noqa: PLC0415
+            from algorithm.ocr.models import Template as _T  # noqa: PLC0415
+
+            _mm = detect_mismatch(result, template if isinstance(template, dict) else None)
+            if _mm:
+                task.check_result = dict(task.check_result or {})
+                task.check_result["template_mismatch"] = _mm
+        except Exception as _exc:  # noqa: BLE001
+            pass
+
         report_row = result["report"]
         session.query(Report).filter(Report.task_id == task.id).delete()
         session.add(Report(
