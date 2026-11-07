@@ -78,6 +78,37 @@ def get_dashboard(db: Session = Depends(get_session)):
 
     grades: Counter[str] = Counter()
     verdicts: Counter[str] = Counter()
+
+    # 自定义指标的逐项汇总：口径页加了指标、报告里算了值，看板必须能看见——
+    # 否则「加了口径」和「看板上真有数」之间是断的。
+    from db.models import CustomMetric as _CM  # noqa: PLC0415
+
+    cm_rows = db.execute(select(_CM).where(_CM.enabled.is_(True))).scalars().all()
+    cm_meta = {r.code: {"code": r.code, "name": r.name, "unit": r.unit or "",
+                        "has_steps": bool(r.steps)} for r in cm_rows}
+    cm_values: dict[str, list[float]] = {code: [] for code in cm_meta}
+    if cm_meta:
+        for _tid, rep in reports.items():
+            payload = rep.payload if isinstance(rep.payload, dict) else {}
+            for m in payload.get("metrics") or []:
+                code = str(m.get("code") or "")
+                if code not in cm_meta:
+                    continue
+                try:
+                    v = float(m.get("value"))
+                except (TypeError, ValueError):
+                    continue
+                cm_values[code].append(v)
+    custom_metric_values = []
+    for code, vals in cm_values.items():
+        meta = cm_meta[code]
+        custom_metric_values.append({
+            **meta,
+            "tasks": len(vals),
+            "avg": round(sum(vals) / len(vals), 2) if vals else None,
+            "max": round(max(vals), 2) if vals else None,
+            "min": round(min(vals), 2) if vals else None,
+        })
     banks: dict[str, dict[str, int]] = {}
     hit_counter: Counter[tuple[str, str]] = Counter()
     coverage_warn = 0
@@ -170,5 +201,6 @@ def get_dashboard(db: Session = Depends(get_session)):
             {"code": code, "name": name, "count": n, "threshold_key": CONCLUSION_TO_PARAM.get(code)}
             for (code, name), n in hit_counter.most_common(15)
         ],
+        "custom_metric_values": custom_metric_values,
         "recent": recent,
     }
