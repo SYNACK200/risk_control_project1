@@ -95,6 +95,12 @@ export function Inspector(p: Props) {
 
       <h2>当前选中</h2>
       <div className="row"><label>对象</label><span className="muted">{currentLabel}</span></div>
+      {!target && (
+        <p className="muted small">
+          先在画布上点一个对象（表格区 / 某一列 / 字段框），这里才会出现对应的字段下拉。
+          账号、交易期间这类页眉信息只能用「画字段框」圈；明细列用「画列边界」拖。
+        </p>
+      )}
       {target?.kind === 'meta' && (
         <>
           <div className="row">

@@ -823,7 +823,12 @@ export function AnnotatePage() {
                   <li><b>补字段框</b>：页眉里的账号、交易期间等，用「画字段框」单独圈出来。</li>
                 </ol>
                 <p className="mark-guide-required">
-                  <b>必填 6 项</b>：账号、交易期间（页眉）· 交易日期、摘要、发生额、余额（明细列）
+                  <b>必填 6 项分两种标法</b>：
+                  <span className="muted">页眉里用「画字段框」圈 —— </span>
+                  <b>账号</b>、<b>交易期间</b>；
+                  <span className="muted">明细列上用「画列边界」—— </span>
+                  <b>交易日期</b>、<b>摘要</b>、<b>发生额</b>、<b>余额</b>。
+                  <span className="muted">（账号和交易期间不会出现在列的下拉里，它们不是列。）</span>
                   {missingRequired ? <span className="dash-warn"> · {missingRequired}</span> : <span className="mark-guide-ok"> · 已满足</span>}
                 </p>
                 <p className="muted small">
