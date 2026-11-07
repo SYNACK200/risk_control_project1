@@ -34,6 +34,11 @@ def _attribute(txns: list[Transaction], detail: str) -> Attribution:
     )
 
 
+# 一票否决项：这些核对失败说明流水自身对不上，不能靠加权稀释成「扣几分」。
+# C1 余额链（逐笔递推）、C2 页合计（页脚声明 vs 明细求和）、C3 笔数（页脚声明 vs 实际行数）
+CRITICAL_CHECKS = {"C1", "C2", "C3"}
+
+
 def _check_balance_chain(transactions: list[Transaction]) -> CheckResult:
     code, name = "C1", "余额链"
     failures: list[tuple[Transaction, Decimal]] = []
@@ -970,9 +975,26 @@ def analyze_content(
             checks=checks,
             limitations=limitations + ["未解析到交易明细，无法核对"],
         )
-    if any(check.status == "fail" and check.attribution and check.attribution.cause == "data" for check in checks):
+    # 关键项一票否决：余额链这类项一旦 fail，说明流水本身对不上。
+    # 加权平均会把它稀释成「扣几分」，那是错的——真实性不是打分题，是有与没有。
+    # 非关键项（时间分布、金额形态、语义）只作补充提示，不单独否掉整份材料。
+    # 关键项 fail 分两种成因：
+    #   data        —— 原始数据自身矛盾（余额接不上、页合计不符）→ 一票否决
+    #   recognition —— 低置信度行导致的断裂，是识别问题不是造假 → 无法判定
+    # 一刀切会把「字没认准」误判成「流水造假」，这个区分必须保留。
+    critical_fail = [c for c in checks if c.code in CRITICAL_CHECKS and c.status == "fail"]
+    critical_data_fail = [c for c in critical_fail
+                          if not c.attribution or c.attribution.cause != "recognition"]
+    if critical_data_fail:
+        status = "inconsistent"
+    elif critical_fail:
+        status = "undetermined"
+    elif any(check.status == "fail" and check.attribution and check.attribution.cause == "data"
+             for check in checks):
+        # 非关键项 fail 且属于「原始数据就矛盾」：仍记为不一致
         status = "inconsistent"
     elif any(check.status == "fail" for check in checks):
+        # 非关键项 fail 但成因在识别/版式：降为无法判定，不当成造假
         status = "undetermined"
     elif any(check.status in ("skipped", "partial") for check in checks):
         status = "limited"
