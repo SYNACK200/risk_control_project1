@@ -18,8 +18,6 @@ interface Props {
 }
 
 export function Inspector(p: Props) {
-  const [code, setCode] = useState('');
-  const [label, setLabel] = useState('');
   // 列表输入框用本地文本做受控值：
   // 直接在 onChange 里 split 再 join 会把用户刚敲下的分隔符立刻吃掉，
   // 表现就是「填了第一个词以后再也打不进第二个」。
@@ -47,17 +45,6 @@ export function Inspector(p: Props) {
     const col = table?.columns[target.index];
     currentField = col?.field ?? '';
     currentLabel = `列 · ${col?.field ? labelOf(col.field, p.map.custom_fields) : '未指定'}`;
-  }
-
-  function addCustom() {
-    if (!CODE_PATTERN.test(code)) {
-      p.onHint('字段编码只能用小写字母开头，含小写字母、数字、下划线，2–31 位');
-      return;
-    }
-    if (!label.trim()) { p.onHint('请填写中文名'); return; }
-    p.onAddCustom({ code, label: label.trim() });
-    setCode('');
-    setLabel('');
   }
 
   return (
@@ -163,13 +150,14 @@ export function Inspector(p: Props) {
         <button className="btn danger" disabled={!target} onClick={p.onDelete}>删除选中</button>
       </div>
 
-      <h2>自定义字段</h2>
-      <div className="row">
-        <input type="text" value={code} placeholder="编码 如 branch_code" onChange={e => setCode(e.target.value)} />
-        <input type="text" value={label} placeholder="中文名 如 开户网点" onChange={e => setLabel(e.target.value)} />
-        <button className="btn" onClick={addCustom}>添加</button>
-      </div>
-      {p.map.custom_fields.length === 0 && <p className="muted">还没有自定义字段。内置字段不够时再加。</p>}
+      {/* 新建入口只在字段下拉的最后一项（+ 自定义字段…），这里不重复放输入框。
+          这里只列出已经建好的，方便查看和移除。 */}
+      <h2>已建的自定义字段</h2>
+      {p.map.custom_fields.length === 0 && (
+        <p className="muted small">
+          还没有。在任意字段下拉里选最后一项「+ 自定义字段…」就地新建，建完这里会列出来。
+        </p>
+      )}
       {p.map.custom_fields.map(cf => (
         <div className="row" key={cf.code}>
           <span className="mono" style={{ fontSize: 12 }}>{cf.code}</span>
