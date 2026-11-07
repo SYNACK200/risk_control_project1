@@ -83,6 +83,9 @@ export function AnnotatePage() {
   const [reparseMsg, setReparseMsg] = useState('');
 
   const autoLoadedRef = useRef(false);
+  // 进入步骤 3 自动跑一次试解析：用户要看的是「划定模板的解析效果」，
+  // 不该让他先猜要点哪个按钮
+  const autoInferRef = useRef(false);
   useEffect(() => {
     if (!reparseTarget || autoLoadedRef.current || sample) return;
     autoLoadedRef.current = true;
@@ -559,6 +562,18 @@ export function AnnotatePage() {
     setSel(null);
     setNotice({ level: 'info', text: '已清空标注。' });
   }
+
+  // 进入步骤 3 自动跑一次试解析：用户要看的是「划定模板的解析效果」，
+  // 不该让他先猜要点哪个按钮。若已有结果或正在跑则跳过。
+  useEffect(() => {
+    if (step !== 3) { autoInferRef.current = false; return; }
+    if (autoInferRef.current) return;
+    if (!source || map.tables.length === 0) return;
+    if (inference || inferring) return;
+    autoInferRef.current = true;
+    void runInfer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   async function runInfer(overrideMarks?: { field: string; page: number; x: number; y: number }[]) {
     if (!source) { hint('先载入一份 PDF 样例；内置示例页没有源文件，不能试解析。'); return; }
