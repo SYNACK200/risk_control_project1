@@ -65,7 +65,11 @@ export function ColumnFieldList({
                 {tb.columns.map((c, i) => {
                   const codes = c.fields && c.fields.length ? c.fields : (c.field ? [c.field] : []);
                   return (
-                    <div className="column-row" key={i}>
+                    <div
+                      className={'column-row' + (sel?.kind === 'column' && sel.tableId === tb.id && sel.index === i ? ' active' : '')}
+                      key={i}
+                      id={'col-' + tb.id + '-' + i}
+                    >
                       <button className="link-btn" type="button"
                         onClick={() => { onSelect({ kind: 'column', tableId: tb.id, index: i }); }}>
                         #{i + 1}
