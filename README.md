@@ -5,7 +5,7 @@
 
 | 现在是什么 | 值 |
 | --- | --- |
-| 版本 | `v0.4.0`（规则见 [docs/版本管理规范.md](docs/版本管理规范.md)） |
+| 版本 | `v0.40.0`（变更见 [CHANGELOG.md](CHANGELOG.md)；规则见 [docs/版本管理规范.md](docs/版本管理规范.md)） |
 | 形态 | 单进程：一个后端同时托管 API 和两个前端；分析走 2 进程池 |
 | 测试 | 算法 285 通过 · 后端 17 通过 |
 | 默认端口 | 8000（`APP_PORT` 可改） |
@@ -87,7 +87,7 @@ cp .env.example .env     # 填 MYSQL_PASSWORD
 | `frontend/` | 借款侧 SPA（构建到 `/app/`） |
 | `frontend-admin/` | 银行侧 SPA（构建到 `/bank/`） |
 | `portal/` | 首页（单文件，选身份） |
-| `docs/` | PR 流程、版本规范、历史归档 |
+| `docs/` | 文档索引在 [docs/README.md](docs/README.md)：PR 流程、版本规范、历史归档、报告契约 |
 | `方案设计/` | 15 份设计文档（合并、合格性、评分、模板回看、隐私…） |
 | `scripts/` | 一键启动脚本 |
 
@@ -124,7 +124,9 @@ python -m uvicorn main:app --app-dir backend --reload --port 8000
 | `v0.3.0` | 账号体系与角色隔离、合格性五级、单进程独立部署 |
 | `v0.4.0` | 数据模块 V2、结论摘要、模板框选回看、合并口径业务化 |
 
-2026-10 之前收回的 37 个旧标签见 [docs/版本历史归档-2026-10.md](docs/版本历史归档-2026-10.md)。
+变更记录以 [CHANGELOG.md](CHANGELOG.md) 为准。
+
+标签历史：2026-10 收回的 37 个旧标签见 [版本历史归档-2026-10.md](docs/版本历史归档-2026-10.md)；2026-11-07 收编的 15 个标签见 [版本历史归档-2026-11.md](docs/版本历史归档-2026-11.md)。
 
 ---
 
@@ -135,6 +137,8 @@ python -m uvicorn main:app --app-dir backend --reload --port 8000
 | 部署、换端口、配 HTTPS | [部署与运行.md](部署与运行.md) |
 | 提 PR、审查与合并 | [docs/PR合并流程.md](docs/PR合并流程.md) |
 | 版本号怎么定 | [docs/版本管理规范.md](docs/版本管理规范.md) |
+| 这一版做了什么 | [CHANGELOG.md](CHANGELOG.md) |
+| 文档从哪找 | [docs/README.md](docs/README.md) |
 | 接口契约与变更记录 | [contract.md](contract.md) |
 | 为什么这么设计 | `方案设计/` 下 15 份文档 |
 | 分工任务书 | `{backend,algorithm,frontend,frontend-admin,data}/tasks.md` |
