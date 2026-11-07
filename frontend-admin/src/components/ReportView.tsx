@@ -218,6 +218,9 @@ export function ReportView({ taskId }: { taskId: number }) {
   const [defs, setDefs] = useState<Record<string, MetricDef>>({});
   const [openMetric, setOpenMetric] = useState<string | null>(null);
   const [vmethods, setVmethods] = useState<Record<string, string>>({});
+  // 模板不匹配：系统先匹配到某个模板，但发现这份文件与它差得太远。
+  // 这时候才提示用户走临时标注——不是让用户自己猜什么时候该用。
+  const [mismatch, setMismatch] = useState<{ reasons?: string[] } | null>(null);
   const [preread, setPreread] = useState<PrereadInfo | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [openLayers, setOpenLayers] = useState<Record<string, boolean>>({});
@@ -238,6 +241,8 @@ export function ReportView({ taskId }: { taskId: number }) {
         if (!alive) return;
         setReport(rep);
         setTxns(rows);
+        const mm = (task.check_result as { template_mismatch?: { reasons?: string[] } } | undefined)?.template_mismatch;
+        setMismatch(mm ?? null);
         setPreread(task.check_result?.preread ?? null);
         const wl = (task.check_result as Record<string, unknown> | undefined)?.whitelist as
           { reason: string; at: string } | undefined;
@@ -368,6 +373,21 @@ export function ReportView({ taskId }: { taskId: number }) {
               </div>
             )}
             <p className="muted">载体 {report.carrier} · 指标集 v{report.metric_set_version} · 阈值 v{report.threshold_version} · 材料 {report.materials.length} 份</p>
+
+            {/* 模板不匹配：这才是「临时标注」该出现的时机——
+                系统先匹配到某个模板，但发现这份文件与它差得太远 */}
+            {mismatch && (
+              <div className="notice warn">
+                <div><b>当前模板可能不适用这份流水</b></div>
+                <ul style={{ margin: '6px 0 8px 18px' }}>
+                  {(mismatch.reasons ?? []).map((r, i) => <li key={i}>{r}</li>)}
+                </ul>
+                <div className="muted small">
+                  可以针对这一份流水临时标注一次：在原文件上重新画表格区和列。
+                  临时模板只用于本任务，不会改动、也不会新增模板库里的模板。
+                </div>
+              </div>
+            )}
 
             {(() => {
               const a = authenticity(report.layers, report.carrier, report.limitations);
