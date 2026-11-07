@@ -339,6 +339,10 @@ class TemplatePatch(BaseModel):
 @router.put("/{template_id}", dependencies=[Depends(require_admin)])
 def update_template(template_id: int, payload: TemplatePatch, db: Session = Depends(get_session)):
     # 改模板 = 出新版本：旧版本保留为 disabled，历史可追溯
+    # 注意：import 必须放在函数最前面。放在下面会让 Python 把 _dt_now 当局部变量，
+    # 上面第一次使用时就 UnboundLocalError —— 这正是「保存为新版本显示失败」的原因。
+    from datetime import datetime as _dt_now  # noqa: PLC0415
+
     row = db.get(Template, template_id)
     if row is None:
         raise HTTPException(404, "模板不存在")
@@ -355,8 +359,6 @@ def update_template(template_id: int, payload: TemplatePatch, db: Session = Depe
         layout=payload.layout if payload.layout is not None else row.layout,
         updated_at=_dt_now.utcnow(),
     )
-    from datetime import datetime as _dt_now  # noqa: PLC0415
-
     old_status = row.status
     row.status = "disabled"
     row.updated_at = _dt_now.utcnow()

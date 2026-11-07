@@ -598,7 +598,10 @@ table.thr-table input.thr-input { width: 96px; border: 1px solid #d6deeb; border
 .wizard-step-btn:disabled { opacity: .45; cursor: not-allowed; }
 .wizard-num { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,.35);
   display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
-.wizard-step { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+/* 步骤条内容允许整页滚动：步骤 1（预览）和步骤 3（试解析）都是长内容，
+   之前这里统一 overflow:hidden 是为了双栏布局，结果把这两步裁成空白。
+   双栏只出现在步骤 2，由 .workspace 自己管滚动。 */
+.wizard-step { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
 .upload-card { margin: 16px 18px; padding: 18px 20px; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
 .upload-card h3 { margin: 0 0 6px; font-size: 15px; }
 .upload-actions { display: flex; gap: 10px; margin: 12px 0 6px; }
@@ -724,7 +727,3 @@ tr.clickable:hover { background: #f6f8fb; }
 .merge-metrics > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #1f2d3d; list-style: none; padding: 2px 0; }
 .merge-metrics > summary::-webkit-details-marker { display: none; }
 /* 快慢双通道的复核状态 */
-.verify-note { margin: 10px 0 4px; padding: 8px 12px; border-radius: 9px; font-size: 13px; line-height: 1.6; }
-.verify-passed { background: #f0fdf4; color: #177245; border: 1px solid #bbf7d0; }
-.verify-warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-.verify-muted { background: #f8fafc; color: #5b6b80; border: 1px solid #e6edf7; }
