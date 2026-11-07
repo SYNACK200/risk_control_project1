@@ -83,7 +83,7 @@ export function DashboardPage() {
         <button className="dash-kpi" type="button" onClick={() => navigate('/metrics')}>
           <span className="dash-kpi-value">{s.custom_metrics ?? 0}</span>
           <span className="dash-kpi-label">自定义指标</span>
-          <span className="dash-kpi-sub">实验性口径登记 · 暂不参与计算</span>
+          <span className="dash-kpi-sub">配置了计算元的会参与报告计算</span>
         </button>
       </div>
 
@@ -177,6 +177,29 @@ export function DashboardPage() {
           </table>
           {data.threshold_hits.length === 0 && <p className="muted">目前没有命中的风险结论。</p>}
         </section>
+        {(data.custom_metric_values ?? []).length > 0 && (
+          <section className="dash-block">
+            <div className="dash-block-head">
+              <h3>自定义指标</h3>
+              <span className="muted small">「指标口径」里加的指标，报告算出的值汇总到这里</span>
+            </div>
+            <table className="mini dash-table">
+              <thead><tr><th>指标</th><th className="num">已计算</th><th className="num">均值</th><th className="num">最大</th><th className="num">最小</th></tr></thead>
+              <tbody>
+                {(data.custom_metric_values ?? []).map(m => (
+                  <tr key={m.code} onClick={() => navigate('/metrics')}>
+                    <td>{m.name} <span className="muted small mono">{m.code}</span>
+                      {!m.has_steps && <span className="muted small">（未配置计算元）</span>}</td>
+                    <td className="num">{m.tasks} 份</td>
+                    <td className="num">{m.avg === null ? '—' : m.avg.toLocaleString('zh-CN')}</td>
+                    <td className="num">{m.max === null ? '—' : m.max.toLocaleString('zh-CN')}</td>
+                    <td className="num">{m.min === null ? '—' : m.min.toLocaleString('zh-CN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
       </div>
 
       <section className="dash-block">

@@ -534,6 +534,10 @@ export type DashboardData = {
   verdicts: { verdict: string; count: number }[];
   banks: { bank_code: string; tasks: number; txn: number }[];
   threshold_hits: { code: string; name: string; count: number; threshold_key: string | null }[];
+  custom_metric_values?: {
+    code: string; name: string; unit: string; has_steps: boolean;
+    tasks: number; avg: number | null; max: number | null; min: number | null;
+  }[];
   recent: {
     task_id: number; biz_no: string | null; status: string; bank_code: string | null;
     verdict: string | null; overall: number | null; grade: string | null; txn_count: number;

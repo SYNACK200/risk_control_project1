@@ -4,6 +4,7 @@ import { Toolbar } from '../components/Toolbar';
 import { Stage } from '../components/Stage';
 import { Inspector } from '../components/Inspector';
 import { ValidationPanel } from '../components/ValidationPanel';
+import { InferPreviewPanel } from '../components/InferPreviewPanel';
 import {
   clearDraft, createEmpty, downloadText, hasBlockingError,
   loadDraft, saveDraft, serialize, uid, validate,
@@ -996,6 +997,7 @@ export function AnnotatePage() {
             </p>
           </section>
 
+          <InferPreviewPanel preview={inference ? (inference as { preview?: { pages?: { page_no: number; rows: number; header_found: boolean }[]; page_count?: number; txn_count?: number; base_page?: number } }).preview : null} />
           {inference && (
             <section className="infer-panel">
               <div className="infer-head">
