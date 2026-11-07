@@ -5,9 +5,8 @@ export function UserBar() {
   const me = useMe();
   if (!me) return null;
 
-  const roleText = me.role === 'banker'
-    ? (me.is_admin ? '管理员' : '银行员工')
-    : '借款侧';
+  // 只标权限级别，不标账号属于哪一侧——屏幕上不需要出现「你是什么身份」这类可被旁观者读到的信息
+  const roleText = me.is_admin ? '管理员' : '员工';
 
   return (
     <div className="side-user">

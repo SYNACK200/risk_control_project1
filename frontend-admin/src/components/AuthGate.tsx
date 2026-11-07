@@ -30,8 +30,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="auth-gate">
         <div className="auth-gate-card">
-          <h2>需要银行侧账号</h2>
-          <p className="muted">当前登录的是借款侧账号，请换成银行侧账号，或去借款端操作。</p>
+          {/* 不提示账号属于哪一侧：避免把「这个用户名是哪类账号」暴露给旁人。 */}
+          <h2>当前账号无法使用本页面</h2>
+          <p className="muted">请换一个账号，或联系管理员确认权限。</p>
           <button className="btn" type="button" onClick={() => { clearToken(); window.location.reload(); }}>换账号</button>
         </div>
       </div>

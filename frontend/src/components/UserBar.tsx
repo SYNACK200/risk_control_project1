@@ -10,14 +10,15 @@ export function UserBar() {
       if (!raw) return;
       const user = JSON.parse(raw);
       setName(user.display_name || user.username || '');
-      setRole(user.role === 'banker' ? '银行侧' : '借款侧');
+      // 不把侧别写到界面上：屏幕共享、截图都会留下来
+      setRole('');
     } catch { /* ignore */ }
   }, []);
 
   if (!name) return null;
   return (
     <div className="user-bar">
-      <span className="muted">{role} · {name}</span>
+      <span className="muted">{role ? role + ' · ' : ''}{name}</span>
       <button
         className="link-btn"
         type="button"

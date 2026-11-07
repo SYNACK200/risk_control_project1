@@ -146,8 +146,10 @@ def current_user(
 
 
 def require_banker(user: User = Depends(current_user)) -> User:
+    # 不写「需要银行侧账号」：那等于把「这个账号不是银行侧」写进响应体，
+    # 截屏、日志、代理抓包都会留下来。403 本身已经表达了「无权访问」。
     if user.role != "banker":
-        raise HTTPException(status_code=403, detail={"code": "E_FORBIDDEN", "message": "需要银行侧账号"})
+        raise HTTPException(status_code=403, detail={"code": "E_FORBIDDEN", "message": "当前账号无权访问"})
     return user
 
 
@@ -155,5 +157,5 @@ def require_admin(user: User = Depends(require_banker)) -> User:
     """改阈值、启停/删模板、删任务、看审计、管账号：只给银行侧管理员。"""
     if not getattr(user, "is_admin", False):
         raise HTTPException(status_code=403,
-                            detail={"code": "E_FORBIDDEN", "message": "需要银行侧管理员权限"})
+                            detail={"code": "E_FORBIDDEN", "message": "需要管理员权限"})
     return user
