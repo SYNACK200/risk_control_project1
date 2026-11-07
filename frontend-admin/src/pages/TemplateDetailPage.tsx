@@ -61,23 +61,6 @@ export function TemplateDetailPage() {
     try { setStats(await templateStats(row.id)); } catch { setStats(null); }
   }
 
-  /** 把后端 field_map（{字段: 列号|别名}）转成下拉可用的字符串值。 */
-  function toDraft(map: Record<string, unknown>): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(map ?? {})) {
-      if (typeof v === 'number') out[k] = String(v);
-      else out[k] = String(v ?? '');
-    }
-    return out;
-  }
-
-  function openEdit() {
-    if (!row) return;
-    setEditOpen(true);
-    setEditBank(row.bank_code);
-    setDraft(toDraft(row.field_map ?? {}));
-  }
-
   function columnOptions(): { value: string; label: string }[] {
     if (headers.length > 0) {
       return headers.map((h, i) => ({ value: String(i), label: h }));
@@ -157,7 +140,6 @@ export function TemplateDetailPage() {
               void act('已停用', () => disableTemplate(row.id));
             }}>停用</button>}
             <button className="btn secondary" type="button" disabled={busy} onClick={() => { void act('已复制为新草稿', () => duplicateTemplate(row.id)); }}>复制为新草稿</button>
-            <button className="btn secondary" type="button" onClick={openEdit}>改字段映射</button>
             <button className="btn secondary" type="button"
               title="在当时的样本上调整表格区与每一列，保存为新版本"
               onClick={() => navigate('/templates/' + row.id + '/layout')}>改框画范围</button>
@@ -170,7 +152,7 @@ export function TemplateDetailPage() {
       <section className="card">
         <div className="card-head-static">
           <strong>字段映射</strong>
-          <span className="muted small">点「改字段映射」用下拉调整，不需要写 JSON</span>
+          <span className="muted small">字段由「改框画范围」里给每一列指定；这里只读</span>
         </div>
         <div className="card-body">
           <table className="mini">
