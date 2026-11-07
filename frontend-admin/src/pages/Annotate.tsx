@@ -100,6 +100,9 @@ export function AnnotatePage() {
     })();
   }, [reparseTarget]); // eslint-disable-line react-hooks/exhaustive-deps
   const [map, setMap] = useState<FieldMapV1>(() => loadDraft() ?? createEmpty());
+  // 保存按钮据此禁用：没有指定字段的列就没有可保存的东西，点下去只会失败
+  const marksCount = map.tables.reduce(
+    (n, t) => n + t.columns.filter(c => ((c.fields?.length ?? 0) > 0 || !!c.field)).length, 0);
   const [sample, setSample] = useState<SamplePage | null>(null);
   const [sampleName, setSampleName] = useState('');
   const [page, setPage] = useState(1);
@@ -613,7 +616,12 @@ export function AnnotatePage() {
   async function saveAsTemplate(allowInvalid: boolean) {
     if (!source || source.file.type !== 'application/pdf') { hint('请先载入 PDF 样例'); return; }
     const marks = marksFromMap(map);
-    if (marks.length === 0) { hint('先给表格列指定字段，再保存模板'); return; }
+    if (marks.length === 0) {
+      // 说清楚缺什么、去哪一步补，而不是笼统一句「先指定字段」
+      setNotice({ level: 'error', text: '还没有可保存的列。回步骤 2：点「按表头自动定列」，或在画布上拖出列并在「已标注字段」里给每列选字段。' });
+      hint('还没有可保存的列：先回步骤 2 定列');
+      return;
+    }
     setInferring(true);
     try {
       const form = new FormData();
@@ -632,6 +640,9 @@ export function AnnotatePage() {
             ? "已保存为草稿 #" + res.template_id + "（反验未通过，仅供人工确认后使用）"
             : "已保存为模板草稿 #" + res.template_id + "，可在「模板管理」里启用",
         });
+        // 保存成功直接去模板库：之前只弹一条提示，用户很容易以为「没动静」。
+        // 停 1.2 秒让提示被看见，再跳。
+        window.setTimeout(() => { window.location.hash = '#/templates'; }, 1200);
       } else {
         setNotice({ level: 'error', text: '反验未通过，未生成模板：' + (res.warnings[0] || '请修正标注') });
       }
@@ -941,7 +952,10 @@ export function AnnotatePage() {
               <button className="btn" type="button" onClick={() => { void runInfer(); }} disabled={inferring}>
                 {inferring ? '正在试解析…' : '用当前标注试解析'}
               </button>
-              <button className="btn secondary" type="button" onClick={() => { void saveAsTemplate(false); }} disabled={inferring}>
+              <button className="btn secondary" type="button"
+                onClick={() => { void saveAsTemplate(false); }}
+                disabled={inferring || marksCount === 0}
+                title={marksCount === 0 ? '还没有可保存的列：先回步骤 2，点「按表头自动定列」或在表格区里画列并指定字段' : ''}>
                 保存为模板草稿
               </button>
               {inference && inference.valid === false && (
