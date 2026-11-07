@@ -4,6 +4,7 @@ import { TaskListPage } from './pages/TaskListPage';
 import { EntitiesPage } from './pages/EntitiesPage';
 import { TemplateLayoutPage } from './pages/TemplateLayoutPage';
 import { ThresholdsPage } from './pages/ThresholdsPage';
+import { OcrRoutingPage } from './pages/OcrRoutingPage';
 import { TemplateAdmin } from './components/TemplateAdmin';
 import { TemplateDetailPage } from './pages/TemplateDetailPage';
 import { MetricDefsPage } from './pages/MetricDefsPage';
@@ -46,7 +47,10 @@ const NAV: NavGroup[] = [
   },
   {
     group: '配置',
-    items: [{ key: 'thresholds', label: '判定阈值', desc: '阈值与版本' }],
+    items: [
+      { key: 'thresholds', label: '判定阈值', desc: '阈值与版本' },
+      { key: 'ocr-routing', label: 'OCR 路由', desc: '本地引擎与云端 API' },
+    ],
   },
   {
     group: '系统',
@@ -111,6 +115,7 @@ function Home() {
       {tab === 'tasks' && <TaskListPage />}
       {tab === 'entities' && <EntitiesPage />}
       {tab === 'thresholds' && <ThresholdsPage />}
+      {tab === 'ocr-routing' && <OcrRoutingPage />}
       {tab === 'annotate' && <AnnotatePage />}
       {tab === 'templates' && <TemplateAdmin />}
       {tab === 'metrics' && <MetricDefsPage />}

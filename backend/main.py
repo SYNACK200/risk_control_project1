@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from db.session import init_db
 from helpers.logging_config import configure_logging
-from routers import audit, custom_metrics, dashboard, auth, entities, reports, tasks, templates, thresholds
+from routers import (audit, custom_metrics, dashboard, auth, entities, ocr_routing, reports,
+                     tasks, templates, thresholds)
 
 logger = logging.getLogger("risk_control")
 
@@ -67,6 +68,7 @@ app.include_router(custom_metrics.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(thresholds.router, prefix=settings.api_prefix)
+app.include_router(ocr_routing.router, prefix=settings.api_prefix)
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

@@ -664,3 +664,19 @@ export async function createBankUser(payload: {
     body: JSON.stringify({ ...payload, role: 'banker' }),
   }));
 }
+
+export type OcrRouting = {
+  enabled: boolean; min_images: number; workers: number; model: string;
+  credential_ready?: boolean;
+};
+export async function getOcrRouting(): Promise<OcrRouting> {
+  return json(await authFetch(BASE + '/ocr-routing'));
+}
+export async function saveOcrRouting(payload: {
+  enabled: boolean; min_images: number; workers: number; model: string; note?: string;
+}): Promise<OcrRouting> {
+  return json(await authFetch(BASE + '/ocr-routing', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }));
+}

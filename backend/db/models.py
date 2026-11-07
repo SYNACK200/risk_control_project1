@@ -238,3 +238,20 @@ class SubjectDecision(Base):
     note: Mapped[str | None] = mapped_column(String(255))
     created_by: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class OcrRouting(Base):
+    """OCR 路由配置（单行）。
+
+    为什么不写死在代码里：云端 API 单张 4-10s，比本地慢；只有多张并发才划算。
+    「多少张算多」和「要不要开」会随网络、限流、文件类型变化，必须能改。
+    """
+    __tablename__ = "ocr_routing"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    # 图片张数达到这个值才走云端 API；低于它走本地
+    min_images: Mapped[int] = mapped_column(Integer, default=3, server_default=text("3"))
+    workers: Mapped[int] = mapped_column(Integer, default=2, server_default=text("2"))
+    model: Mapped[str] = mapped_column(String(32), default="PP-OCRv6", server_default=text("'PP-OCRv6'"))
+    note: Mapped[str | None] = mapped_column(String(255))
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
