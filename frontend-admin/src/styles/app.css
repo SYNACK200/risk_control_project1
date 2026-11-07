@@ -726,3 +726,10 @@ tr.clickable:hover { background: #f6f8fb; }
 .trust-score.trust-low { color: #b42318; }
 .trust-layers { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 .trust-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px;
+
+/* ---- 列清单里的就地输入（自定义字段 / 加属性）---- */
+.inline-field { display: flex; align-items: center; gap: 6px; margin: 6px 0 2px 12px;
+  padding: 7px 9px; background: #f7faff; border: 1px solid #dbe7fb; border-radius: 9px; }
+.inline-field input, .inline-field select { flex: 1; padding: 6px 9px; font-size: 12.5px;
+  border: 1px solid #d6deeb; border-radius: 7px; font-family: inherit; }
+.inline-field .btn { padding: 6px 12px; font-size: 12.5px; }
