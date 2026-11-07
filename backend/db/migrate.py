@@ -30,6 +30,16 @@ def ensure_columns() -> list[str]:
             done.append("task.field_map_override")
     except Exception:  # noqa: BLE001 - 老库可能还没有 task 表
         pass
+    # 快慢双通道：复核状态
+    try:
+        rpcols = {c["name"] for c in insp.get_columns("report")}
+        if rpcols and "verification" not in rpcols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE report ADD COLUMN verification JSON NULL"))
+            done.append("report.verification")
+    except Exception:  # noqa: BLE001
+        pass
+
     # 模板修改时间（审计）：列表要显示「最后改于」。
     try:
         tpcols = {c["name"] for c in insp.get_columns("template")}

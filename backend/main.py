@@ -31,10 +31,15 @@ async def lifespan(app: FastAPI):
         from services import worker as _worker
 
         _worker.warmup()
+        # 慢通道：系统空闲时用另一个引擎复核已出报告（见 docs/快慢双通道解析设计.md）
+        from services import verify_scheduler
+
+        verify_scheduler.start()
         yield
     finally:
-        from services import worker
+        from services import verify_scheduler, worker
 
+        verify_scheduler.stop()
         worker.shutdown()
         logger.info("服务已停止。")
 

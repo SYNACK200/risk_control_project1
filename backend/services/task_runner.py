@@ -192,6 +192,8 @@ def run_task(task_id: int, password: str | None = None) -> dict:
             evidence=report_row["evidence"], materials=report_row["materials"],
             metric_set_version=report_row["metric_set_version"],
             threshold_version=report_row["threshold_version"], payload=report_row,
+            # 快通道出结果。慢通道（另一个引擎）会在系统空闲时复核，见 docs/快慢双通道解析设计.md
+            verification={"status": "pending"},
         ))
         transition(task, "DONE")
         session.add(AuditLog(action="analyze_done", object_type="task", object_id=task.id,
