@@ -4,6 +4,7 @@ import { downloadAttachment, getMetricDefinitions, getReport, getTask, getTransa
 import { InsightSection } from './Charts';
 import { MetricExplain } from './MetricExplain';
 import { CheckTable } from './CheckTable';
+import { useIsAdmin } from '../lib/auth';
 
 const METRIC_GROUPS = [
   { key: 'income', prefix: 'A', name: '收入能力' },
@@ -220,6 +221,7 @@ export function ReportView({ taskId }: { taskId: number }) {
   const [vmethods, setVmethods] = useState<Record<string, string>>({});
   // 模板不匹配：系统先匹配到某个模板，但发现这份文件与它差得太远。
   // 这时候才提示用户走临时标注——不是让用户自己猜什么时候该用。
+  const isAdmin = useIsAdmin();
   const [mismatch, setMismatch] = useState<{ reasons?: string[] } | null>(null);
   const [preread, setPreread] = useState<PrereadInfo | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -326,6 +328,13 @@ export function ReportView({ taskId }: { taskId: number }) {
   }
 
   function printReport() {
+    // 明细版含客户流水的逐笔原文，打印前强制切到结论版：
+    // 打印物往往是要发出去的（给客户、给审批人），不能顺手把原件带走。
+    if (view === 'detail') {
+      setView('summary');
+      window.setTimeout(() => window.print(), 150);
+      return;
+    }
     window.print();
   }
 
@@ -359,7 +368,11 @@ export function ReportView({ taskId }: { taskId: number }) {
                 ))}
               </select>
               <button className="btn" type="button" onClick={() => { void reanalyzeWithTpl(); }}>重新解析</button>
-              <button className="btn secondary" type="button" onClick={() => { void exportCsv(); }}>导出明细 CSV</button>
+              {/* 原始逐笔明细只给管理员：那是客户流水原文，导出即二次分发 */}
+              {isAdmin && (
+                <button className="btn secondary" type="button" onClick={() => { void exportCsv(); }}
+                  title="导出原始逐笔明细（含客户流水原文，谨慎分发）">导出原始明细 CSV</button>
+              )}
               <button className="btn secondary" type="button" onClick={() => { void exportJson(); }}>导出报告 JSON</button>
               <button className="btn secondary" type="button" onClick={printReport}>打印 / 存为 PDF</button>
               {!whitelist && (

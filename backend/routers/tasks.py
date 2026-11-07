@@ -460,10 +460,14 @@ def _load_tasks(db: Session, ids: list[int]) -> list[Task]:
     return list(rows)
 
 
-@router.get("/{task_id}/transactions.csv")
+@router.get("/{task_id}/transactions.csv", dependencies=[Depends(require_admin)])
 def transactions_export(task_id: int, db: Session = Depends(get_session),
                         user: User = Depends(current_user)):
-    # 明细导出：UTF-8 BOM + CRLF，Excel 直接双击可读
+    """导出原始逐笔明细（仅管理员）。
+
+    这是客户的银行流水原文，不是平台的结论。普通员工不该能一键导出——
+    导出即二次分发，发出去就收不回来。界面上也只在管理员登录时显示这个入口。
+    """
     task = db.get(Task, task_id)
     if task is None or task.deleted_at is not None:
         raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在或已删除"})
@@ -489,7 +493,7 @@ def transactions_export(task_id: int, db: Session = Depends(get_session),
 @router.get("/{task_id}/export.json")
 def report_export(task_id: int, db: Session = Depends(get_session),
                   user: User = Depends(current_user)):
-    # 完整报告导出：报告 + 明细 + 阈值版本，用于归档或二次分析
+    # 报告导出：只导平台算出的结论（评分/指标/结论/证据），不含原始流水
     task = db.get(Task, task_id)
     if task is None or task.deleted_at is not None:
         raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在或已删除"})
@@ -499,23 +503,14 @@ def report_export(task_id: int, db: Session = Depends(get_session),
     ).scalars().first()
     if report_row is None:
         raise HTTPException(404, detail={"code": "E_STATE", "message": "该流水还没有报告"})
-    rows = db.execute(select(Txn).where(Txn.task_id == task_id)
-                      .order_by(Txn.txn_date, Txn.id)).scalars().all()
+    # 不查原始逐笔：导出物只应有平台得出的结论
     payload = {
         "biz_no": task.biz_no,
         "status": task.status,
         "carrier": task.carrier,
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "report": report_row.payload,
-        "transactions": [
-            {
-                "txn_date": r.txn_date, "direction": r.direction,
-                "amount": None if r.amount is None else str(r.amount),
-                "balance": None if r.balance is None else str(r.balance),
-                "summary": r.summary, "counterparty_name": r.counterparty_name, "page_no": r.page_no,
-            }
-            for r in rows
-        ],
+        "transactions": [],
     }
     filename = f"{task.biz_no}.json"
     return Response(
