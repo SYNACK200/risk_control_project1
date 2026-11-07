@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { createBankUser, listUsers, type AppUserRow } from '../lib/api';
-import { useIsAdmin } from '../lib/auth';
+import { createBankUser, disableUser, listUsers, type AppUserRow } from '../lib/api';
+import { useIsAdmin, useMe } from '../lib/auth';
 
 /**
  * 账号：谁在用这套系统、角色是什么。
@@ -12,6 +12,7 @@ import { useIsAdmin } from '../lib/auth';
  */
 export function UsersPage() {
   const isAdmin = useIsAdmin();
+  const me = useMe();
   const [rows, setRows] = useState<AppUserRow[]>([]);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
@@ -25,6 +26,20 @@ export function UsersPage() {
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
   }
   useEffect(load, []);
+
+  async function removeUser(u: AppUserRow) {
+    if (!window.confirm('停用后 ' + u.username + ' 将无法登录（历史审计记录保留）。继续？')) return;
+    setBusy(true); setError(''); setMsg('');
+    try {
+      await disableUser(u.id);
+      setMsg('已停用 ' + u.username);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     setError(''); setMsg('');
@@ -84,7 +99,7 @@ export function UsersPage() {
             </div>
           )}
           <table className="mini">
-            <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>权限</th><th>显示名</th><th>状态</th></tr></thead>
+            <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>权限</th><th>显示名</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               {rows.map(u => (
                 <tr key={u.id}>
@@ -94,6 +109,12 @@ export function UsersPage() {
                   <td className="muted small">{u.role === 'banker' ? (u.is_admin ? '管理员' : '员工') : '—'}</td>
                   <td className="muted small">{u.display_name ?? '—'}</td>
                   <td className="muted small">{u.status ?? 'active'}</td>
+                  <td>
+                    {isAdmin && u.id !== me?.id && (u.status ?? 'active') === 'active' && (
+                      <button className="link-btn danger-text" type="button" disabled={busy}
+                        onClick={() => { void removeUser(u); }}>停用</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

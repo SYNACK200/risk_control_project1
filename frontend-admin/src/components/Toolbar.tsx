@@ -53,12 +53,24 @@ export function Toolbar(p: Props) {
         <button className="btn" disabled={p.page >= p.pageCount} onClick={() => p.onPage(p.page + 1)}>下一页</button>
       </div>
 
-      <div className="group">
-        {[0.75, 1, 1.35].map(z => (
-          <button key={z} className={`btn ${p.zoom === z ? 'tool-active' : ''}`} onClick={() => p.onZoom(z)}>
-            {Math.round(z * 100)}%
-          </button>
-        ))}
+      <div className="group zoom-group">
+        {/* 连续缩放：三档按钮不够用，长表格和小字都要能调到合适的比例 */}
+        <button className="btn zoom-step" type="button" title="缩小"
+          onClick={() => p.onZoom(Math.max(0.2, Math.round((p.zoom - 0.05) * 100) / 100))}>−</button>
+        <input
+          className="zoom-range"
+          type="range"
+          min={20}
+          max={400}
+          step={5}
+          value={Math.round(p.zoom * 100)}
+          onChange={e => p.onZoom(Number(e.target.value) / 100)}
+          title="拖动调整缩放（20%–400%，每格 5%）"
+        />
+        <button className="btn zoom-step" type="button" title="放大"
+          onClick={() => p.onZoom(Math.min(4, Math.round((p.zoom + 0.05) * 100) / 100))}>＋</button>
+        <span className="muted small zoom-value">{Math.round(p.zoom * 100)}%</span>
+        <button className="btn zoom-reset" type="button" onClick={() => p.onZoom(1)}>100%</button>
       </div>
 
       <div className="group">

@@ -19,9 +19,9 @@ class ThresholdPayload(BaseModel):
 
 
 @router.get("/definitions")
-def get_definitions():
+def get_definitions(db: Session = Depends(get_session)):
     """阈值定义（标签/分组/说明/默认值），用于前端展示「标准参考」。"""
-    return {"items": svc.definitions()}
+    return {"items": svc.definitions(db)}
 
 
 @router.get("")
@@ -31,7 +31,7 @@ def get_thresholds(db: Session = Depends(get_session)):
         "version": version,
         "values": values,
         "defaults": svc.default_values(),
-        "defs": svc.definitions(),
+        "defs": svc.definitions(db),
         "history": svc.history(db),
     }
 

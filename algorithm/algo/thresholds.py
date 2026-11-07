@@ -38,6 +38,9 @@ class ThresholdConfig(BaseModel):
     """
 
     version: int = THRESHOLD_VERSION
+    # 自定义指标的阈值：{指标代号: 上限}。这些指标的代号是运行时才知道的，
+    # 不可能写成固定字段，所以单独放一个字典。
+    custom: dict[str, Decimal] = {}
     dti_high: Decimal = Decimal("0.5")
     income_cv_high: Decimal = Decimal("0.5")
     low_balance_multiple: Decimal = Decimal("1.0")
@@ -225,6 +228,7 @@ def evaluate_thresholds(
     config: ThresholdConfig | None = None,
     monthly_payment: Decimal | None = None,
     transactions: list[Transaction] | None = None,
+    custom_values: dict | None = None,
 ) -> ThresholdResult:
     """按阈值给出提示结论；阈值只影响提示，不影响五态真伪结论。
 
@@ -655,6 +659,25 @@ def evaluate_thresholds(
         if e06 is not None and e06 > 0:
             notes.append("未传交易明细，涉币仅按 E06 记录，未核金额条件")
 
+    # ---- 自定义指标阈值 ----
+    # 只在用户给该指标设了上限时才判定；没设就是不启用，不误伤。
+    if custom_values:
+        for code, limit in (config.custom or {}).items():
+            if limit is None:
+                continue
+            try:
+                value = custom_values.get(code)
+                if value is None:
+                    continue
+                if Decimal(str(value)) > Decimal(str(limit)):
+                    conclusions.append(Conclusion(
+                        code=f"CUSTOM_{code}_HIGH",
+                        threshold=_fmt(Decimal(str(limit))),
+                        value=_fmt(Decimal(str(value))),
+                    ))
+            except Exception:  # noqa: BLE001
+                continue
+
     return ThresholdResult(
         version=config.version,
         conclusions=conclusions,
@@ -755,7 +778,8 @@ def threshold_defs() -> list[dict]:
 def validate_values(values: dict) -> dict:
     """按定义表校验一组参数：范围、类型、未知键。返回规范化后的配置字典。"""
     known = {d.key: d for d in THRESHOLD_DEFS}
-    unknown = set(values) - set(known) - {"version"}
+    # custom_<指标代号>_max 是运行时按自定义指标生成的，不在静态定义表里
+    unknown = {k for k in set(values) - set(known) - {"version"} if not k.startswith("custom_")}
     if unknown:
         raise ValueError(f"未知参数：{', '.join(sorted(unknown))}")
     cleaned: dict = {}

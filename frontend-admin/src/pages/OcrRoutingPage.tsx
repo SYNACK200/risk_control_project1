@@ -12,7 +12,7 @@ import { useIsAdmin } from '../lib/auth';
 export function OcrRoutingPage() {
   const isAdmin = useIsAdmin();
   const [cfg, setCfg] = useState<{ enabled: boolean; min_images: number; workers: number; model: string; credential_ready?: boolean } | null>(null);
-  const [form, setForm] = useState({ enabled: false, min_images: 3, workers: 2, model: 'PP-OCRv6', note: '' });
+  const [form, setForm] = useState({ enabled: false, min_images: 3, workers: 2, model: 'PP-OCRv6', endpoint: '', note: '' });
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,7 @@ export function OcrRoutingPage() {
     getOcrRouting()
       .then(d => {
         setCfg(d);
-        setForm({ enabled: d.enabled, min_images: d.min_images, workers: d.workers, model: d.model, note: '' });
+        setForm({ enabled: d.enabled, min_images: d.min_images, workers: d.workers, model: d.model, endpoint: d.endpoint ?? '', note: '' });
       })
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
   }
@@ -98,7 +98,14 @@ export function OcrRoutingPage() {
               云端模型
               <input value={form.model} disabled={!isAdmin}
                 onChange={e => setForm(p => ({ ...p, model: e.target.value }))}
+                placeholder="PP-OCRv6"
                 style={{ width: 150 }} />
+            </label>
+            <label className="muted small" style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 260 }}>
+              API 地址（换供应商时改这里，留空用默认）
+              <input value={form.endpoint} disabled={!isAdmin}
+                onChange={e => setForm(p => ({ ...p, endpoint: e.target.value }))}
+                placeholder="https://paddleocr.aistudio-app.com" />
             </label>
             {isAdmin && (
               <button className="btn" type="button" disabled={busy} onClick={() => { void submit(); }}>
