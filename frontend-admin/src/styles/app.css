@@ -14,7 +14,7 @@ body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #0f172a
 .topbar button.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
 
 .workspace {
-  flex: 1; display: grid; grid-template-columns: 1fr 380px;
+  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px;
   /* 关键：min-height:0 + overflow:hidden 让左右两栏各自滚动，
      否则整页会一起滚，PDF 展示区跟着侧栏往上跑（用户实际遇到的情况）。 */
   min-height: 420px; overflow: hidden;
@@ -30,7 +30,19 @@ body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #0f172a
 .box.selected { border-width: 3px; box-shadow: 0 0 0 2px #f59e0b inset; }
 .box.unassigned { border-style: dashed; border-color: #dc2626; background: rgba(220, 38, 38, .08); }
 .box-label { position: absolute; top: -19px; left: -2px; background: inherit; padding: 1px 5px; white-space: nowrap; border-radius: 3px; border: 1px solid currentColor; }
-.handle { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; background: #f59e0b; border: 1px solid #92400e; cursor: nwse-resize; }
+/* 八方向缩放手柄：四角 12px 方块、四边 8px 长条，够手指点中 */
+.handle { position: absolute; background: #f59e0b; border: 1px solid #92400e; border-radius: 2px; z-index: 3; }
+.handle.dir-nw, .handle.dir-ne, .handle.dir-sw, .handle.dir-se { width: 12px; height: 12px; }
+.handle.dir-nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.handle.dir-ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.handle.dir-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.handle.dir-se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.handle.dir-n, .handle.dir-s { left: 50%; margin-left: -14px; width: 28px; height: 8px; }
+.handle.dir-n { top: -5px; cursor: ns-resize; }
+.handle.dir-s { bottom: -5px; cursor: ns-resize; }
+.handle.dir-w, .handle.dir-e { top: 50%; margin-top: -14px; width: 8px; height: 28px; }
+.handle.dir-w { left: -5px; cursor: ew-resize; }
+.handle.dir-e { right: -5px; cursor: ew-resize; }
 
 .side { display: flex; flex-direction: column; border-left: 1px solid #cbd5e1; background: #fff; min-height: 0; }
 .side-scroll { flex: 1; overflow: auto; padding: 14px 16px; }

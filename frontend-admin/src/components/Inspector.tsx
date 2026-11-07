@@ -20,6 +20,14 @@ interface Props {
 export function Inspector(p: Props) {
   const [code, setCode] = useState('');
   const [label, setLabel] = useState('');
+  // 列表输入框用本地文本做受控值：
+  // 直接在 onChange 里 split 再 join 会把用户刚敲下的分隔符立刻吃掉，
+  // 表现就是「填了第一个词以后再也打不进第二个」。
+  const [customFor, setCustomFor] = useState<'meta' | 'table' | null>(null);
+  const [newCode, setNewCode] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [kwText, setKwText] = useState(p.map.match_rule.bank_name_keywords.join('、'));
+  const [fpText, setFpText] = useState(p.map.match_rule.header_fingerprint.join('、'));
 
   const target = p.sel;
   const scope = target?.kind === 'column' || target?.kind === 'table' ? 'table' : 'meta';
@@ -63,20 +71,24 @@ export function Inspector(p: Props) {
         <label>银行名</label>
         <input
           type="text"
-          value={p.map.match_rule.bank_name_keywords.join('、')}
-          placeholder="页面里出现的银行名，逗号分隔"
-          onChange={e => p.onKeywords(splitList(e.target.value))}
+          value={kwText}
+          placeholder="页面里出现的银行名，用顿号分隔"
+          onChange={e => { setKwText(e.target.value); p.onKeywords(splitList(e.target.value)); }}
         />
       </div>
       <div className="row">
         <label>表头词</label>
         <input
           type="text"
-          value={p.map.match_rule.header_fingerprint.join('、')}
-          placeholder="如 交易日期、摘要、发生额"
-          onChange={e => p.onFingerprint(splitList(e.target.value))}
+          value={fpText}
+          placeholder="如 交易日期、摘要、发生额（顿号、逗号、空格都行）"
+          onChange={e => { setFpText(e.target.value); p.onFingerprint(splitList(e.target.value)); }}
         />
       </div>
+      <p className="muted small">
+        表头词用于「按表头自动定列」：每页表头里都该出现的列名，写 3–5 个即可。
+        用顿号分开，例如 <code>交易日期、摘要、发生额</code>；识别时只要有一半以上命中，就算这一页是明细页。
+      </p>
       <p className="muted">
         基准尺寸：{p.map.page_size.w > 0 ? `${round4(p.map.page_size.w)} × ${round4(p.map.page_size.h)} pt` : '未记录'}
       </p>
@@ -87,13 +99,43 @@ export function Inspector(p: Props) {
         <>
           <div className="row">
             <label>字段</label>
-            <select value={currentField} onChange={e => p.onAssign(e.target.value)}>
+            <select value={currentField} onChange={e => {
+              if (e.target.value === '__custom__') { setCustomFor('meta'); return; }
+              p.onAssign(e.target.value);
+            }}>
               <option value="">（未指定）</option>
-              {options.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+              <optgroup label="预设字段（账号、户名、期间等）">
+                {options.filter(o => !o.label.includes('自定义')).map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+              </optgroup>
+              {options.some(o => o.label.includes('自定义')) && (
+                <optgroup label="这个模板里你自己加的">
+                  {options.filter(o => o.label.includes('自定义')).map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
+                </optgroup>
+              )}
+              <option value="__custom__">+ 新建一个字段…</option>
             </select>
           </div>
         </>
       )}
+      {customFor && (
+        <div className="row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <label>新建字段</label>
+          <input placeholder="中文名，如 夜间消费笔数" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
+          <input placeholder="英文代号，如 night_cnt（小写字母开头）" value={newCode} onChange={e => setNewCode(e.target.value)} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn" type="button" onClick={() => {
+              if (!CODE_PATTERN.test(newCode)) { p.onHint('代号只能小写字母开头，含小写字母/数字/下划线，2–31 位'); return; }
+              if (!newLabel.trim()) { p.onHint('请填写中文名'); return; }
+              p.onAddCustom({ code: newCode, label: newLabel.trim() });
+              p.onAssign(newCode);
+              setCustomFor(null); setNewCode(''); setNewLabel('');
+            }}>创建并选中</button>
+            <button className="link-btn" type="button" onClick={() => { setCustomFor(null); setNewCode(''); setNewLabel(''); }}>取消</button>
+          </div>
+          <p className="muted small">自定义字段属于这个模板：建一次，之后模板里所有字段框和列都能选它。</p>
+        </div>
+      )}
+
       {target?.kind === 'table' && (
         <>
           <p className="muted">先选表格区，再点「画列边界」在区域内拖出每一列。</p>

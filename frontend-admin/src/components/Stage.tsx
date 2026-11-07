@@ -18,16 +18,37 @@ interface Props {
   onHint: (text: string) => void;
 }
 
+/** 八个方向的缩放手柄。原来只有右下角一个，用户根本调不动大框。 */
+type Dir = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+const DIRS: Dir[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
 type Drag =
   | { mode: 'create'; start: { x: number; y: number }; rect: Rect }
   | { mode: 'move'; kind: 'meta' | 'table'; id: string; start: { x: number; y: number }; origin: Rect }
-  | { mode: 'resize'; kind: 'meta' | 'table'; id: string; origin: Rect }
+  | { mode: 'resize'; kind: 'meta' | 'table'; id: string; origin: Rect; dir: Dir }
   | { mode: 'col-move'; tableId: string; index: number; startX: number; originX: number; originW: number; areaX: number; areaW: number }
   | { mode: 'col-left'; tableId: string; index: number; startX: number; originX: number; originW: number }
   | { mode: 'col-right'; tableId: string; index: number; startX: number; originX: number; originW: number }
   | null;
 
 export function Stage(p: Props) {
+  /** 八个方向的缩放手柄。只有右下角一个时，用户想拉大左边或上边完全没办法。 */
+  function renderHandles(kind: 'meta' | 'table', id: string, origin: Rect) {
+    return DIRS.map(dir => (
+      <span
+        key={dir}
+        className={'handle dir-' + dir}
+        title="拖动可调整边框"
+        onPointerDown={ev => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          setDrag({ mode: 'resize', kind, id, origin, dir });
+          try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 合成事件没有真实 pointer id，忽略 */ }
+        }}
+      />
+    ));
+  }
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const holderRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<Drag>(null);
@@ -116,12 +137,14 @@ export function Stage(p: Props) {
       return;
     }
     if (drag.mode === 'resize') {
-      const rect = rectFromPoints(
-        drag.origin.x, drag.origin.y,
-        Math.max(drag.origin.x + 0.002, now.x),
-        Math.max(drag.origin.y + 0.002, now.y),
-      );
-      p.onMove(drag.kind, drag.id, rect);
+      const o = drag.origin;
+      const MIN = 0.004;
+      let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h;
+      if (drag.dir.includes('w')) x1 = Math.min(Math.max(0, now.x), x2 - MIN);
+      if (drag.dir.includes('e')) x2 = Math.max(Math.min(1, now.x), x1 + MIN);
+      if (drag.dir.includes('n')) y1 = Math.min(Math.max(0, now.y), y2 - MIN);
+      if (drag.dir.includes('s')) y2 = Math.max(Math.min(1, now.y), y1 + MIN);
+      p.onMove(drag.kind, drag.id, { x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
     }
   }
 
@@ -165,20 +188,11 @@ export function Stage(p: Props) {
                     p.onSelect({ kind: 'table', id: t.id });
                     const start = toRel(ev);
                     setDrag({ mode: 'move', kind: 'table', id: t.id, start, origin: t.area });
-                    ev.currentTarget.setPointerCapture(ev.pointerId);
+                    try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 合成事件没有真实 pointer id，忽略 */ }
                   }}
                 >
                   <span className="box-label">表格区 · {t.columns.length} 列</span>
-                  {selected && (
-                    <span
-                      className="handle"
-                      onPointerDown={ev => {
-                        ev.stopPropagation();
-                        setDrag({ mode: 'resize', kind: 'table', id: t.id, origin: t.area });
-                        ev.currentTarget.setPointerCapture(ev.pointerId);
-                      }}
-                    />
-                  )}
+                  {selected && renderHandles('table', t.id, t.area)}
                   {t.columns.map((col, idx) => {
                     const colSel = p.sel?.kind === 'column' && p.sel.tableId === t.id && p.sel.index === idx;
                     return (
@@ -192,7 +206,7 @@ export function Stage(p: Props) {
                           if (!p.onColumnResize) return;
                           setDrag({ mode: 'col-move', tableId: t.id, index: idx, startX: toRel(ev).x,
                                     originX: col.x, originW: col.w, areaX: t.area.x, areaW: t.area.w });
-                          ev.currentTarget.setPointerCapture(ev.pointerId);
+                          try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 合成事件没有真实 pointer id，忽略 */ }
                         }}
                       >
                         <span className="box-label">{col.field ? labelOf(col.field, p.map.custom_fields) : '未指定'}</span>
@@ -204,7 +218,7 @@ export function Stage(p: Props) {
                               onPointerDown={ev => {
                                 ev.stopPropagation();
                                 setDrag({ mode: 'col-left', tableId: t.id, index: idx, startX: toRel(ev).x, originX: col.x, originW: col.w });
-                                ev.currentTarget.setPointerCapture(ev.pointerId);
+                                try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 合成事件没有真实 pointer id，忽略 */ }
                               }}
                             />
                             <span
@@ -213,7 +227,7 @@ export function Stage(p: Props) {
                               onPointerDown={ev => {
                                 ev.stopPropagation();
                                 setDrag({ mode: 'col-right', tableId: t.id, index: idx, startX: toRel(ev).x, originX: col.x, originW: col.w });
-                                ev.currentTarget.setPointerCapture(ev.pointerId);
+                                try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 合成事件没有真实 pointer id，忽略 */ }
                               }}
                             />
                           </>
@@ -237,17 +251,17 @@ export function Stage(p: Props) {
                     p.onSelect({ kind: 'meta', id: b.id });
                     const start = toRel(ev);
                     setDrag({ mode: 'move', kind: 'meta', id: b.id, start, origin: b.rect });
-                    ev.currentTarget.setPointerCapture(ev.pointerId);
+                    try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 合成事件没有真实 pointer id，忽略 */ }
                   }}
                 >
                   <span className="box-label">{b.field ? labelOf(b.field, p.map.custom_fields) : '未指定字段'}</span>
                   {selected && (
                     <span
-                      className="handle"
+                      className="handle dir-se"
                       onPointerDown={ev => {
                         ev.stopPropagation();
-                        setDrag({ mode: 'resize', kind: 'meta', id: b.id, origin: b.rect });
-                        ev.currentTarget.setPointerCapture(ev.pointerId);
+                        setDrag({ mode: 'resize', kind: 'meta', id: b.id, origin: b.rect, dir: 'se' });
+                        try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 合成事件没有真实 pointer id，忽略 */ }
                       }}
                     />
                   )}
