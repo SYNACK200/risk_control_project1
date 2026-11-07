@@ -825,10 +825,10 @@ export function AnnotatePage() {
                 <p className="mark-guide-required">
                   <b>必填 6 项分两种标法</b>：
                   <span className="muted">页眉里用「画字段框」圈 —— </span>
-                  <b>账号</b>、<b>交易期间</b>；
+                  <b>账号</b>、<b>流水起止日期</b>（整份文件的起止，页眉里一条）；
                   <span className="muted">明细列上用「画列边界」—— </span>
-                  <b>交易日期</b>、<b>摘要</b>、<b>发生额</b>、<b>余额</b>。
-                  <span className="muted">（账号和交易期间不会出现在列的下拉里，它们不是列。）</span>
+                  <b>每笔交易日期</b>（每行一个）、<b>摘要</b>、<b>发生额</b>、<b>余额</b>。
+                  <span className="muted">（账号和流水起止日期不会出现在列的下拉里，它们不是列。）</span>
                   {missingRequired ? <span className="dash-warn"> · {missingRequired}</span> : <span className="mark-guide-ok"> · 已满足</span>}
                 </p>
                 <p className="muted small">
