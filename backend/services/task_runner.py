@@ -176,6 +176,8 @@ def run_task(task_id: int, password: str | None = None) -> dict:
                 summary=t["summary"], counterparty_name=t["counterparty_name"],
                 page_no=t["page_no"],
                 confidence=None if t["confidence"] is None else Decimal(t["confidence"]),
+                # 模板自定义字段的原始值（没有专列，只能存这里）
+                extra=t.get("extra"),
             ))
         for m in result["metrics"]:
             session.add(MetricValue(

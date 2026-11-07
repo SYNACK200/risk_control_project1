@@ -127,6 +127,50 @@ class RapidOCREngine:
         )
 
 
+class PaddleApiEngine:
+    """云端 PaddleOCR（AI Studio）引擎：多张图并发提交。
+
+    为什么单独做成一个引擎而不是塞进 RapidOCR：两者的成本模型完全不同——
+    本地是 CPU（受 GIL 限制，并发无用），云端是 HTTP I/O（并发有效）。
+    路由交给 services/ocr_routing，按图片张数决定。
+    """
+
+    name = "paddle-api"
+
+    def __init__(self, workers: int = 2, model: str = "PP-OCRv6") -> None:
+        self.workers = workers
+        self.model = model
+
+    def recognize(self, file_bytes: bytes, dpi: int | None = None) -> OcrResult:
+        from services import ocr_api  # noqa: PLC0415
+
+        # PDF 直接整份提交（服务端自己分页）；图片单张提交
+        name = "document.pdf" if file_bytes[:4] == b"%PDF" else "page.jpg"
+        lines = ocr_api.ocr_one(file_bytes, name=name, model=self.model)
+        page = OcrPage(
+            page_no=0,
+            words=[OcrWord(text=str(x.get("text", "")), confidence=float(x.get("confidence") or 0.0),
+                           bbox=(0.0, 0.0, 0.0, 0.0))
+                   for x in lines if str(x.get("text", "")).strip()],
+        )
+        return OcrResult(engine="paddle-api", pages=[page] if page.words else [])
+
+    def recognize_many(self, images: list[bytes]) -> OcrResult:
+        """多张图并发——这才是用云端 API 的理由。"""
+        from services import ocr_api  # noqa: PLC0415
+
+        items = [("page-%d.jpg" % (i + 1), b) for i, b in enumerate(images)]
+        results = ocr_api.ocr_many(items, model=self.model, workers=self.workers)
+        pages = []
+        for idx, lines in enumerate(results):
+            words = [OcrWord(text=str(x.get("text", "")), confidence=float(x.get("confidence") or 0.0),
+                             bbox=(0.0, 0.0, 0.0, 0.0))
+                     for x in lines if str(x.get("text", "")).strip()]
+            if words:
+                pages.append(OcrPage(page_no=idx, words=words))
+        return OcrResult(engine="paddle-api", pages=pages)
+
+
 def get_default_engine() -> RapidOCREngine:
     """模型加载一次复用；多线程首次调用只初始化一份。"""
     global _default_engine

@@ -52,7 +52,8 @@ def get_transactions(task_id: int, limit: int = 500, db: Session = Depends(get_s
              "amount": None if r.amount is None else str(r.amount),
              "balance": None if r.balance is None else str(r.balance),
              "summary": r.summary, "counterparty_name": r.counterparty_name,
-             "page_no": r.page_no, "confidence": None if r.confidence is None else str(r.confidence)} for r in rows]
+             "page_no": r.page_no, "confidence": None if r.confidence is None else str(r.confidence),
+             "extra": r.extra} for r in rows]
 
 
 @router.get("/tasks/{task_id}/metrics")

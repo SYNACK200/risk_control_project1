@@ -28,6 +28,42 @@ from algorithm.ocr.infer import Mark as InferMark, infer_template as _infer_temp
 from algorithm.algo.self_check import run_self_check  # noqa: E402
 
 
+def _custom_field_stats(txns: list) -> list[dict]:
+    """把模板自定义字段的值汇总成统计，供报告与看板展示。
+
+    自定义字段是「列 → 字段」的映射，没有内置计算逻辑；
+    但要让人看到它在整份流水里长什么样，至少得给出「有值笔数 + 合计 + 平均值」。
+    数值型字段求和，非数值型只计数并给两个样例。
+    """
+    acc: dict[str, dict] = {}
+    for t in txns:
+        extra = getattr(t, "extra", None) or {}
+        for field, raw in extra.items():
+            box = acc.setdefault(field, {"field": field, "count": 0, "numeric_count": 0,
+                                          "sum": Decimal("0"), "samples": []})
+            box["count"] += 1
+            text = str(raw).strip()
+            try:
+                val = Decimal(text.replace(",", "").replace("¥", "").replace("￥", ""))
+                box["numeric_count"] += 1
+                box["sum"] += val
+            except Exception:  # noqa: BLE001
+                if len(box["samples"]) < 2 and text:
+                    box["samples"].append(text[:32])
+    out = []
+    for field, box in acc.items():
+        numeric = box["numeric_count"] > 0 and box["numeric_count"] == box["count"]
+        out.append({
+            "field": field,
+            "count": box["count"],
+            "numeric": numeric,
+            "sum": str(box["sum"]) if numeric else None,
+            "avg": str((box["sum"] / box["count"]).quantize(Decimal("0.01"))) if numeric and box["count"] else None,
+            "samples": box["samples"],
+        })
+    return sorted(out, key=lambda x: -x["count"])
+
+
 def _append_custom_metrics(metrics, transactions):
     """把带 steps 的自定义指标算进指标集。失败时写进指标的 note，不给假 0。"""
     try:
@@ -143,6 +179,8 @@ def run_analysis(
         thresholds=thresholds,
     )
     payload = json.loads(report.model_dump_json())
+    # 模板自定义字段的汇总（有值笔数、合计、均值、样例），报告与看板都用它
+    payload["custom_field_stats"] = _custom_field_stats(parsed.transactions or [])
 
     # 解析覆盖率门禁：笔数远少于页脚声明时，报告必须自我说明并降级，避免「只读到 12 笔还给良好」
     footer_count = getattr(parsed, "footer_count", None)
@@ -214,6 +252,7 @@ def run_analysis(
                 "counterparty_name": t.counterparty_name,
                 "page_no": t.page_no,
                 "confidence": str(t.confidence) if getattr(t, "confidence", None) is not None else None,
+                "extra": getattr(t, "extra", None),
             }
             for t in parsed.transactions
         ],

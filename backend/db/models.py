@@ -104,6 +104,10 @@ class Txn(Base):
     coord_y: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
     drop_reason: Mapped[str | None] = mapped_column(String(64))
+    # 模板里自定义字段的原始值（如夜间笔数、对手方分类）。
+    # Txn 的固定列只有摘要/金额/余额那几个，用户标注时加的自定义列没有地方落，
+    # 之前直接丢失——这也是「自定义字段在哪里都看不到」的根因。
+    extra: Mapped[dict | None] = mapped_column(JSON)
 
 
 class MetricValue(Base):
