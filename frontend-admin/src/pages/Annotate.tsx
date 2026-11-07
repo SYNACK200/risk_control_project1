@@ -4,9 +4,10 @@ import { Toolbar } from '../components/Toolbar';
 import { Stage } from '../components/Stage';
 import { Inspector } from '../components/Inspector';
 import { ValidationPanel } from '../components/ValidationPanel';
+import { ColumnFieldList } from '../components/ColumnFieldList';
 import { InferPreviewPanel } from '../components/InferPreviewPanel';
 import {
-  clearDraft, createEmpty, downloadText, hasBlockingError,
+  clearDraft, createEmpty, downloadText,
   loadDraft, saveDraft, serialize, uid, validate,
 } from '../lib/template';
 import { PdfPasswordError, openSampleFile } from '../lib/pdf';
@@ -15,7 +16,6 @@ import { PasswordDialog, type PasswordRequest } from '../components/PasswordDial
 import { createDemoPage } from '../lib/sample';
 import { decryptPdf, inferTemplate, probeTemplate, type InferResult, type ProbeResult } from '../lib/api';
 import type { FieldMapV1, Issue, Rect, SamplePage, Selection, Tool } from '../lib/types';
-import { FIELD_DICT } from '../lib/fields';
 
 type Notice = { level: 'info' | 'error' | 'warning'; text: string } | null;
 type SpecialLevel = 'info' | 'warn' | 'error';
@@ -845,72 +845,15 @@ export function AnnotatePage() {
 
             <div className="side">
               <div className="side-scroll">
-            {map.tables.length > 0 && (
-              <section className="column-list">
-                <div className="column-list-head">
-                  已标注字段（{map.tables.reduce((n, tb) => n + tb.columns.length, 0)} 列）
-                  <span className="muted small"> · 可改字段、一列加多个属性、删除或定位；字段支持自定义</span>
-                </div>
-                {map.tables.map((tb, ti) => (
-                  <div key={tb.id} className="column-table">
-                    <div className="muted small">表格 {ti + 1}（第 {tb.page} 页）· {tb.columns.length} 列</div>
-                    {tb.columns.length === 0 && <div className="muted small">还没有列：用「列」工具在画布上点选一列数据。</div>}
-                    {tb.columns.map((c, i) => {
-                      const codes = c.fields && c.fields.length ? c.fields : (c.field ? [c.field] : []);
-                      return (
-                        <div className="column-row" key={i}>
-                          <button className="link-btn" type="button"
-                            onClick={() => { setSel({ kind: 'column', tableId: tb.id, index: i }); }}>
-                            #{i + 1}
-                          </button>
-                          <span className="muted small">x {c.x.toFixed(3)} · w {c.w.toFixed(3)}</span>
-                          <select value={c.field}
-                            onChange={e => {
-                              const v = e.target.value;
-                              if (v === '__custom__') {
-                                const code = window.prompt('给这个字段起个英文代号（字母/下划线，如 night_ratio）', 'night_ratio');
-                                if (!code) return;
-                                customField(code.trim());
-                                updateColumn(tb.id, i, { field: code.trim(), fields: [code.trim()] });
-                                return;
-                              }
-                              updateColumn(tb.id, i, { field: v, fields: [v] });
-                            }}>
-                            <option value="">（未指定）</option>
-                            {FIELD_DICT.filter(f => f.scope !== 'meta').map(f => (
-                              <option key={f.code} value={f.code}>{f.label}（{f.code}）</option>
-                            ))}
-                            {map.custom_fields.map(f => (
-                              <option key={f.code} value={f.code}>{f.label}（自定义）</option>
-                            ))}
-                            <option value="__custom__">+ 自定义字段…</option>
-                          </select>
-                          {codes.slice(1).map(code => (
-                            <span className="field-chip" key={code}>
-                              {code}
-                              <button className="link-btn" type="button"
-                                onClick={() => removeColumnField(tb.id, i, codes, code)}>×</button>
-                            </span>
-                          ))}
-                          <button className="link-btn" type="button"
-                            onClick={() => {
-                            const options = FIELD_DICT.filter(f => f.scope !== 'meta' && !codes.includes(f.code));
-                            const picked = window.prompt('再给这列加一个属性，直接输编号：\n' + options.map((f, k) => (k + 1) + '. ' + f.label + '（' + f.code + '）').join('\n'), '1');
-                            if (!picked) return;
-                            const idx = Number(picked) - 1;
-                            const target = options[idx];
-                            if (!target) return;
-                            updateColumn(tb.id, i, { fields: [...codes, target.code] });
-                          }}>＋属性</button>
-                          <button className="link-btn danger-text" type="button"
-                            onClick={() => removeColumn(tb.id, i)}>删除</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </section>
-            )}
+            <ColumnFieldList
+              map={map}
+              sel={sel}
+              onSelect={setSel}
+              onUpdateColumn={updateColumn}
+              onRemoveColumn={removeColumn}
+              onRemoveColumnField={removeColumnField}
+              onAddCustomField={customField}
+            />
                 <Inspector
                   map={map}
                   sel={sel}
