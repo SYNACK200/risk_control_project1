@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+import threading
 import os
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -71,6 +72,17 @@ def _on_done(task_id: int, future) -> None:
         _mark_failed(task_id, f"分析失败：{exc}")
 
 
+# 正在跑的任务数：慢通道靠它判断「现在忙不忙」，忙就让路。
+_ACTIVE = 0
+_ACTIVE_LOCK = threading.Lock()
+
+
+def active_count() -> int:
+    """当前正在跑的分析任务数（含排队）。慢通道用这个决定要不要让路。"""
+    with _ACTIVE_LOCK:
+        return _ACTIVE
+
+
 def submit_task(task_id: int, password: str | None = None) -> str:
     """提交一次任务分析，返回执行方式（inline / queued）。"""
     from services.task_runner import run_task
@@ -79,8 +91,18 @@ def submit_task(task_id: int, password: str | None = None) -> str:
         run_task(task_id, password=password)
         return "inline"
 
+    global _ACTIVE
+    with _ACTIVE_LOCK:
+        _ACTIVE += 1
     future = _get_executor().submit(run_task, task_id, password)
-    future.add_done_callback(lambda f, tid=task_id: _on_done(tid, f))
+
+    def _done(f, tid=task_id):
+        global _ACTIVE
+        with _ACTIVE_LOCK:
+            _ACTIVE = max(0, _ACTIVE - 1)
+        _on_done(tid, f)
+
+    future.add_done_callback(_done)
     return "queued"
 
 

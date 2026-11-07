@@ -113,10 +113,11 @@ def fetch_lines(url: str) -> list[dict]:
     return lines
 
 
-def ocr_one(content: bytes, name: str = "page.jpg", model: str = "PP-OCRv6") -> list[dict]:
+def ocr_one(content: bytes, name: str = "page.jpg", model: str = "PP-OCRv6",
+            pages: str | None = None) -> list[dict]:
     s = _session()
     try:
-        job_id = submit(s, name, content, model)
+        job_id = submit(s, name, content, model, pages=pages)
         return fetch_lines(wait(s, job_id))
     finally:
         s.close()

@@ -107,7 +107,10 @@ export function UsersPage() {
                   <td className="mono">{u.username}</td>
                   <td><span className={'tag ' + (u.role === 'banker' ? 'pass' : 'limited')}>{u.role === 'banker' ? '银行侧' : '借款侧'}</span></td>
                   <td className="muted small">{u.role === 'banker' ? (u.is_admin ? '管理员' : '员工') : '—'}</td>
-                  <td className="muted small">{u.display_name ?? '—'}</td>
+                  <td className="muted small">
+                    {/* 显示名允许重复（同名很正常），所以后面始终带上唯一用户名做区分 */}
+                    {u.display_name ? <>{u.display_name} <span className="muted mono">（{u.username}）</span></> : <span className="mono">{u.username}</span>}
+                  </td>
                   <td className="muted small">{u.status ?? 'active'}</td>
                   <td>
                     {isAdmin && u.id !== me?.id && (u.status ?? 'active') === 'active' && (

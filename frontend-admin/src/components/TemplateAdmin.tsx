@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  deleteTemplate, disableTemplate, listTemplates, publishTemplate, templateStats,
+  deleteTemplate, disableTemplate, listTemplates, publishTemplate, restoreTemplate, templateStats,
   type TemplateRow, type TemplateStats,
 } from '../lib/api';
 
@@ -9,6 +9,8 @@ import {
 export function TemplateAdmin() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<TemplateRow[]>([]);
+  // 回收站开关：模板一律软删除，这里能看到并恢复
+  const [showDeleted, setShowDeleted] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -17,13 +19,13 @@ export function TemplateAdmin() {
 
   async function refresh() {
     try {
-      setRows(await listTemplates());
+      setRows(await listTemplates(showDeleted));
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); }, [showDeleted]);
 
   const banks = useMemo(() => Array.from(new Set(rows.map(r => r.bank_code))).sort(), [rows]);
 
@@ -57,6 +59,9 @@ export function TemplateAdmin() {
       <div className="result-head">
         <h2>模板库</h2>
         <span className="muted">{rows.length} 个版本 · {banks.length} 家银行 · 同一银行只允许一个启用版本</span>
+        <button className="btn secondary" type="button" onClick={() => setShowDeleted(v => !v)}>
+          {showDeleted ? '隐藏回收站' : '回收站'}
+        </button>
       </div>
       {msg && <div className="notice ok">{msg}</div>}
       {error && <div className="notice error">{error}</div>}
@@ -89,7 +94,10 @@ export function TemplateAdmin() {
                   </td>
                     <td className="row-actions">
                       <button className="link-btn" type="button" onClick={() => navigate('/templates/' + t.id)}>详情</button>
-                      {t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}
+                      {t.deleted_at
+                        ? <button className="link-btn" type="button" disabled={busy}
+                            onClick={() => { void act('已恢复 #' + t.id, () => restoreTemplate(t.id)); }}>从回收站恢复</button>
+                        : t.status !== 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => { void act('已启用 #' + t.id, () => publishTemplate(t.id)); }}>启用</button>}
                       {t.status === 'enabled' && <button className="link-btn" type="button" disabled={busy} onClick={() => {
                         if (!window.confirm('停用后新上传的流水不会再自动套用这个模板。继续？')) return;
                         void act('已停用 #' + t.id, () => disableTemplate(t.id));
