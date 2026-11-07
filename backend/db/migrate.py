@@ -30,6 +30,16 @@ def ensure_columns() -> list[str]:
             done.append("task.field_map_override")
     except Exception:  # noqa: BLE001 - 老库可能还没有 task 表
         pass
+    # OCR 路由的 endpoint（换供应商用）
+    try:
+        ocols = {c["name"] for c in insp.get_columns("ocr_routing")}
+        if ocols and "endpoint" not in ocols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE ocr_routing ADD COLUMN endpoint VARCHAR(255) NULL"))
+            done.append("ocr_routing.endpoint")
+    except Exception:  # noqa: BLE001
+        pass
+
     # 模板自定义字段的原始值
     try:
         tcols = {c["name"] for c in insp.get_columns("txn")}

@@ -96,6 +96,37 @@ def change_password(payload: ChangePasswordIn, user: User = Depends(current_user
     return {"changed": True}
 
 
+@router.delete("/users/{user_id}", dependencies=[Depends(require_admin)])
+def delete_user(user_id: int, db: Session = Depends(get_session),
+                admin: User = Depends(require_admin)):
+    """停用并移除一个账号。
+
+    不物理删除：audit_log 里 actor_id 指向它，物理删会让历史审计断链。
+    停用（status=disabled）后登录会被拒（login 里已有 status != active 的判断），
+    列表默认不显示停用账号。
+    """
+    from datetime import datetime as _dt  # noqa: PLC0415
+
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "账号不存在"})
+    if target.id == admin.id:
+        raise HTTPException(400, detail={"code": "E_SELF", "message": "不能停用自己的账号"})
+    if target.role == "banker" and target.is_admin:
+        others = db.execute(
+            select(User).where(User.role == "banker", User.is_admin.is_(True), User.id != user_id)
+        ).scalars().all()
+        if not others:
+            raise HTTPException(400, detail={
+                "code": "E_LAST_ADMIN", "message": "这是最后一个管理员，停用后将无人能管理系统"})
+    target.status = "disabled"
+    target.last_login_at = target.last_login_at
+    db.add(AuditLog(action="disable_user", object_type="user", object_id=user_id,
+                    detail=f"停用账号 {target.username}"))
+    db.commit()
+    return {"id": user_id, "status": "disabled"}
+
+
 @router.get("/users")
 def list_users(user: User = Depends(require_banker), db: Session = Depends(get_session)):
     rows = db.execute(select(User).order_by(User.id)).scalars().all()

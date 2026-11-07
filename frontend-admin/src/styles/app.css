@@ -723,7 +723,9 @@ tr.clickable:hover { background: #f6f8fb; }
 .merge-criteria li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: #5b6b80; }
 .merge-criteria li.ok { color: #1f6f43; }
 .merge-why-rule { font-size: 12.5px; color: #5b6b80; background: #f6f9fd; border-radius: 8px; padding: 8px 10px; line-height: 1.7; }
-.merge-metrics { border: 1px solid #e6edf6; border-radius: 12px; padding: 10px 14px; margin: 6px 0 4px; background: #fcfdff; }
-.merge-metrics > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #1f2d3d; list-style: none; padding: 2px 0; }
-.merge-metrics > summary::-webkit-details-marker { display: none; }
-/* 快慢双通道的复核状态 */
+/* 连续缩放：拉条 + 微调按钮 + 当前值 */
+.zoom-group { display: flex; align-items: center; gap: 6px; }
+.zoom-range { width: 140px; accent-color: #2563eb; cursor: pointer; }
+.zoom-step { padding: 2px 8px; min-width: 30px; font-size: 14px; line-height: 1.2; }
+.zoom-value { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.zoom-reset { padding: 2px 8px; font-size: 12px; }

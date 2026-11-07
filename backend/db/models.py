@@ -256,6 +256,8 @@ class OcrRouting(Base):
     min_images: Mapped[int] = mapped_column(Integer, default=3, server_default=text("3"))
     workers: Mapped[int] = mapped_column(Integer, default=2, server_default=text("2"))
     model: Mapped[str] = mapped_column(String(32), default="PP-OCRv6", server_default=text("'PP-OCRv6'"))
+    # 换供应商时地址也要能改，不能只改模型名
+    endpoint: Mapped[str | None] = mapped_column(String(255))
     note: Mapped[str | None] = mapped_column(String(255))
     updated_by: Mapped[str | None] = mapped_column(String(64))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)

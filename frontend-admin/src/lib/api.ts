@@ -667,16 +667,21 @@ export async function createBankUser(payload: {
 
 export type OcrRouting = {
   enabled: boolean; min_images: number; workers: number; model: string;
-  credential_ready?: boolean;
+  endpoint?: string | null; credential_ready?: boolean;
 };
 export async function getOcrRouting(): Promise<OcrRouting> {
   return json(await authFetch(BASE + '/ocr-routing'));
 }
 export async function saveOcrRouting(payload: {
-  enabled: boolean; min_images: number; workers: number; model: string; note?: string;
+  enabled: boolean; min_images: number; workers: number; model: string; endpoint?: string; note?: string;
 }): Promise<OcrRouting> {
   return json(await authFetch(BASE + '/ocr-routing', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }));
+}
+
+/** 停用账号（不物理删除，保证审计链不断） */
+export async function disableUser(id: number): Promise<{ id: number; status: string }> {
+  return json(await authFetch(BASE + '/auth/users/' + id, { method: 'DELETE' }));
 }

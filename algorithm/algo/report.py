@@ -242,12 +242,21 @@ def build_report(
     if version < 1:
         raise ValueError("报告版本必须从 1 起")
 
+    # 自定义指标的值也交给阈值判定：用户给某个自定义指标设了上限，
+    # 超了就要出结论，否则那个指标算出来只是个数字。
+    custom_vals = {}
+    for m in getattr(metrics, "metrics", []) or []:
+        code = getattr(m, "code", "")
+        val = getattr(m, "value", None)
+        if code and val is not None:
+            custom_vals[code] = val
     threshold_result = evaluate_thresholds(
         metrics,
         hits=hits,
         config=thresholds,
         monthly_payment=monthly_payment,
         transactions=transactions,
+        custom_values=custom_vals,
     )
     active_thresholds = thresholds if thresholds is not None else DEFAULT_THRESHOLDS
     position_ids = _position_ids(transactions, txn_ids)

@@ -15,6 +15,8 @@ class RoutingIn(BaseModel):
     min_images: int = Field(default=3, ge=1, le=200)
     workers: int = Field(default=2, ge=1, le=8)
     model: str = "PP-OCRv6"
+    # 换供应商时改这里（留空则用默认 aistudio 地址）
+    endpoint: str | None = None
     note: str | None = None
 
 

@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from db.models import OcrRouting
 
-DEFAULTS = {"enabled": False, "min_images": 3, "workers": 2, "model": "PP-OCRv6"}
+DEFAULTS = {"enabled": False, "min_images": 3, "workers": 2, "model": "PP-OCRv6", "endpoint": None}
 
 
 def get_config(db) -> dict:
@@ -26,6 +26,7 @@ def get_config(db) -> dict:
         "min_images": int(row.min_images or DEFAULTS["min_images"]),
         "workers": int(row.workers or DEFAULTS["workers"]),
         "model": row.model or DEFAULTS["model"],
+        "endpoint": row.endpoint,
     }
 
 
@@ -38,6 +39,8 @@ def save_config(db, payload: dict, username: str | None = None) -> dict:
     row.min_images = max(1, int(payload.get("min_images") or DEFAULTS["min_images"]))
     row.workers = max(1, min(8, int(payload.get("workers") or DEFAULTS["workers"])))
     row.model = (payload.get("model") or DEFAULTS["model"])[:32]
+    ep = (payload.get("endpoint") or "").strip()
+    row.endpoint = ep[:255] if ep else None
     row.note = (payload.get("note") or "")[:255] or None
     row.updated_by = username
     row.updated_at = datetime.utcnow()
