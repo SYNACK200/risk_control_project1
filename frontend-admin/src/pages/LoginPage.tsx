@@ -24,7 +24,9 @@ export function LoginPage() {
         return;
       }
       if (data.user.role !== 'banker') {
-        setError('这是借款侧账号，请用银行侧账号登录，或去借款端 5173。');
+        // 不提示「这是借款侧账号」：那等于告诉任何能试密码的人「这个用户名存在，且是哪类账号」。
+        // 换账号是唯一该给的指引，不透露原因。
+        setError('当前账号无法登录本入口，请换一个账号。');
         return;
       }
       setToken(data.token);
