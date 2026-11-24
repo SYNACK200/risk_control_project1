@@ -179,5 +179,18 @@ def ocr_many(items: list[tuple[str, bytes]], model: str = "PP-OCRv6",
     return out
 
 
-def available() -> bool:
+def available(db=None, extra_key: str | None = None) -> bool:
+    """判断云端 OCR 凭据是否就绪：页面本次提交的 key > DB 已存 key > 环境变量 > 本地配置文件。"""
+    if (extra_key or "").strip():
+        return True
+    if db is not None:
+        try:
+            from sqlalchemy import select  # noqa: PLC0415
+            from db.models import OcrRouting  # noqa: PLC0415
+
+            row = db.execute(select(OcrRouting).order_by(OcrRouting.id)).scalars().first()
+            if row is not None and (row.api_key or "").strip():
+                return True
+        except Exception:  # noqa: BLE001
+            pass
     return CONF.exists() or bool(os.environ.get("PADDLEOCR_ACCESS_TOKEN"))

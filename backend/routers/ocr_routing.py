@@ -27,7 +27,7 @@ def read_routing(db: Session = Depends(get_session), user=Depends(current_user))
     from services import ocr_api  # noqa: PLC0415
 
     cfg = get_config(db)
-    return {**cfg, "credential_ready": ocr_api.available()}
+    return {**cfg, "credential_ready": ocr_api.available(db=db)}
 
 
 @router.put("", dependencies=[Depends(require_admin)])
@@ -35,10 +35,10 @@ def write_routing(payload: RoutingIn, db: Session = Depends(get_session),
                   user=Depends(current_user)):
     from services import ocr_api  # noqa: PLC0415
 
-    if payload.enabled and not ocr_api.available():
+    if payload.enabled and not ocr_api.available(db=db, extra_key=payload.api_key):
         raise HTTPException(400, detail={
             "code": "E_NO_CREDENTIAL",
-            "message": "没有找到云端 OCR 凭据（~/.dsh/ocr/paddle.json），无法开启云端路由",
+            "message": "没有找到云端 OCR 凭据（请填写 API Key 或配置环境变量/凭据文件），无法开启云端路由",
         })
     cfg = save_config(db, payload.model_dump(), username=getattr(user, "username", None))
-    return cfg
+    return {**cfg, "credential_ready": ocr_api.available(db=db)}

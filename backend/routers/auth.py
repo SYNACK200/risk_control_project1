@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from collections import defaultdict, deque
 from datetime import datetime
+import time
 
 from db.models import AuditLog, User
 from db.session import get_session
@@ -40,6 +42,13 @@ class CreateUserIn(BaseModel):
     password: str = Field(min_length=6, max_length=64)
     role: str = "banker"
     display_name: str | None = None
+    is_admin: bool = False
+
+
+class UpdateUserIn(BaseModel):
+    display_name: str | None = None
+    is_admin: bool | None = None
+    password: str | None = Field(default=None, min_length=6, max_length=64)
 
 
 def _public(user: User) -> dict:
@@ -69,13 +78,32 @@ def register(payload: RegisterIn, db: Session = Depends(get_session)):
     return {"token": issue_token(user), "user": _public(user)}
 
 
+# 登录失败滑动窗口限流：同一账号 5 分钟内连续失败 5 次即锁定，防暴力破解
+_LOGIN_FAILS: dict[str, deque[float]] = defaultdict(deque)
+_LOGIN_WINDOW_SEC = 300.0
+_LOGIN_MAX_FAILS = 5
+
+
+def _check_login_rate(key: str) -> None:
+    now_ts = time.time()
+    q = _LOGIN_FAILS[key]
+    while q and now_ts - q[0] > _LOGIN_WINDOW_SEC:
+        q.popleft()
+    if len(q) >= _LOGIN_MAX_FAILS:
+        raise HTTPException(429, detail={"code": "E_LIMIT", "message": "登录失败次数过多，请 5 分钟后再试"})
+
+
 @router.post("/login")
 def login(payload: LoginIn, db: Session = Depends(get_session)):
-    user = db.execute(select(User).where(User.username == payload.username.strip())).scalars().first()
+    uname = payload.username.strip()
+    _check_login_rate(uname)
+    user = db.execute(select(User).where(User.username == uname)).scalars().first()
     if user is None or not verify_password(payload.password, user.password_hash):
+        _LOGIN_FAILS[uname].append(time.time())
         raise HTTPException(401, detail={"code": "E_AUTH", "message": "用户名或密码不正确"})
     if user.status != "active":
         raise HTTPException(403, detail={"code": "E_FORBIDDEN", "message": "账号已停用"})
+    _LOGIN_FAILS.pop(uname, None)
     user.last_login_at = datetime.utcnow()
     db.commit()
     return {"token": issue_token(user), "user": _public(user)}
@@ -114,21 +142,24 @@ def delete_user(user_id: int, db: Session = Depends(get_session),
         raise HTTPException(400, detail={"code": "E_SELF", "message": "不能停用自己的账号"})
     if target.role == "banker" and target.is_admin:
         others = db.execute(
-            select(User).where(User.role == "banker", User.is_admin.is_(True), User.id != user_id)
+            select(User).where(
+                User.role == "banker", User.is_admin.is_(True),
+                User.status == "active", User.id != user_id,
+            )
         ).scalars().all()
         if not others:
             raise HTTPException(400, detail={
                 "code": "E_LAST_ADMIN", "message": "这是最后一个管理员，停用后将无人能管理系统"})
     target.status = "disabled"
     target.last_login_at = target.last_login_at
-    db.add(AuditLog(action="disable_user", object_type="user", object_id=user_id,
+    db.add(AuditLog(actor_id=admin.id, action="disable_user", object_type="user", object_id=user_id,
                     detail=f"停用账号 {target.username}"))
     db.commit()
     return {"id": user_id, "status": "disabled"}
 
 
 @router.get("/users")
-def list_users(user: User = Depends(require_banker), db: Session = Depends(get_session)):
+def list_users(user: User = Depends(require_admin), db: Session = Depends(get_session)):
     rows = db.execute(select(User).order_by(User.id)).scalars().all()
     return {"items": [_public(r) for r in rows]}
 
@@ -144,14 +175,58 @@ def create_user(payload: CreateUserIn, user: User = Depends(require_admin),
     exists = db.execute(select(User).where(User.username == payload.username)).scalars().first()
     if exists is not None:
         raise HTTPException(409, detail={"code": "E_EXISTS", "message": "用户名已被占用"})
-    row = User(username=payload.username.strip(), password_hash=hash_password(payload.password),
-               role=payload.role, display_name=(payload.display_name or payload.username)[:64])
+    row = User(
+        username=payload.username.strip(),
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        is_admin=bool(payload.is_admin),
+        display_name=(payload.display_name or payload.username)[:64],
+    )
     db.add(row)
     db.add(AuditLog(action="create_user", object_type="user", object_id=0,
                     detail=(payload.username + "/" + payload.role)[:180]))
     db.commit()
     db.refresh(row)
     return {"user": _public(row)}
+
+
+@router.patch("/users/{user_id}", dependencies=[Depends(require_admin)])
+def update_user(user_id: int, payload: UpdateUserIn, db: Session = Depends(get_session),
+                admin: User = Depends(require_admin)):
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "账号不存在"})
+    if payload.display_name is not None:
+        target.display_name = payload.display_name.strip()[:64] or target.username
+    if payload.is_admin is not None:
+        if target.role == "banker" and target.is_admin and not payload.is_admin:
+            if target.id == admin.id:
+                raise HTTPException(400, detail={"code": "E_SELF", "message": "不能取消自己的管理员权限"})
+            others = db.execute(
+                select(User).where(User.role == "banker", User.is_admin.is_(True), User.status == "active", User.id != user_id)
+            ).scalars().all()
+            if not others:
+                raise HTTPException(400, detail={"code": "E_LAST_ADMIN", "message": "至少需要保留一位在用管理员"})
+        target.is_admin = bool(payload.is_admin)
+    if payload.password:
+        target.password_hash = hash_password(payload.password)
+    db.add(AuditLog(action="update_user", object_type="user", object_id=user_id,
+                    detail=f"更新账号 {target.username}"))
+    db.commit()
+    db.refresh(target)
+    return {"user": _public(target)}
+
+
+@router.post("/users/{user_id}/enable", dependencies=[Depends(require_admin)])
+def enable_user(user_id: int, db: Session = Depends(get_session)):
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "账号不存在"})
+    target.status = "active"
+    db.add(AuditLog(action="enable_user", object_type="user", object_id=user_id,
+                    detail=f"重新启用账号 {target.username}"))
+    db.commit()
+    return {"id": user_id, "status": "active"}
 
 
 def seed_admin(db: Session) -> None:
@@ -169,7 +244,7 @@ def seed_admin(db: Session) -> None:
         except OSError:
             pass
     db.add(User(username="admin", password_hash=hash_password(password),
-                role="banker", display_name="系统管理员"))
+                role="banker", is_admin=True, display_name="系统管理员"))
     db.commit()
     print("[auth] 已创建初始银行侧账号 admin，密码：" + password, flush=True)
     print("[auth] 密码已写入 backend/.admin_password（首次登录后请修改并删除该文件）", flush=True)

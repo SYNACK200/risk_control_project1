@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 from datetime import datetime
 
 from sqlalchemy import select
@@ -16,6 +18,39 @@ from db.models import OcrRouting
 
 DEFAULTS = {"enabled": False, "min_images": 3, "workers": 2, "model": "PP-OCRv6",
             "endpoint": None, "api_key": None}
+_ENC_PREFIX = "enc:v1:"
+
+
+def _keystream(n: int) -> bytes:
+    import os  # noqa: PLC0415
+
+    secret = (os.getenv("AUTH_SECRET") or "rc-default-secret").encode("utf-8")
+    out = bytearray()
+    counter = 0
+    while len(out) < n:
+        out.extend(hashlib.sha256(secret + counter.to_bytes(4, "big")).digest())
+        counter += 1
+    return bytes(out[:n])
+
+
+def encrypt_api_key(plain: str) -> str:
+    raw = plain.encode("utf-8")
+    ks = _keystream(len(raw))
+    xored = bytes(a ^ b for a, b in zip(raw, ks))
+    return _ENC_PREFIX + base64.urlsafe_b64encode(xored).decode("ascii")
+
+
+def decrypt_api_key(stored: str | None) -> str:
+    if not stored:
+        return ""
+    if not stored.startswith(_ENC_PREFIX):
+        return stored.strip()
+    try:
+        xored = base64.urlsafe_b64decode(stored[len(_ENC_PREFIX):].encode("ascii"))
+        ks = _keystream(len(xored))
+        return bytes(a ^ b for a, b in zip(xored, ks)).decode("utf-8").strip()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def get_config(db) -> dict:
@@ -47,7 +82,7 @@ def save_config(db, payload: dict, username: str | None = None) -> dict:
     # key 只在用户填了新值时才覆盖；传空串表示「不改」，避免误把已存的 key 清掉
     key = (payload.get("api_key") or "").strip()
     if key:
-        row.api_key = key[:255]
+        row.api_key = encrypt_api_key(key)[:255]
     row.note = (payload.get("note") or "")[:255] or None
     row.updated_by = username
     row.updated_at = datetime.utcnow()

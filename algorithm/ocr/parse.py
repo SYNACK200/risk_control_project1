@@ -22,6 +22,7 @@ from .table import (
     Line,
     Word,
     build_columns,
+    build_columns_from_layout,
     find_header,
     group_lines,
     line_cells,
@@ -211,10 +212,12 @@ def _is_body_char(obj: dict) -> bool:
     return MIN_BODY_SIZE <= size <= MAX_BODY_SIZE
 
 
-def _clip_for_page(layout, page_no, rect, total_pages=None):
+def _clip_for_page(layout, page_no, rect, total_pages=None, meta_boxes=None):
     """把模板框换算成该页的文字提取区域（PDF 点坐标）。
 
-    上方多留 12%：表头通常画在框外，裁掉就找不到表头。
+    - 首页（page_no == 0）保留顶部页眉区（y0 = 0），避免户名/账号/起止日期被裁掉；
+    - 若该页配置了单值框（meta_boxes），裁剪区自动扩张至覆盖全部单值框；
+    - 其余页上方多留 12%，避免表头画在框外被裁掉。
     返回 None 表示不裁剪。
     """
     area = _layout_area_for(layout, page_no, total_pages)
@@ -232,9 +235,17 @@ def _clip_for_page(layout, page_no, rect, total_pages=None):
     if W <= 0 or H <= 0:
         return None
     x0 = max(0.0, ax - 0.02) * W
-    y0 = max(0.0, ay - 0.12) * H
+    y0 = 0.0 if page_no == 0 else max(0.0, ay - 0.12) * H
     x1 = min(1.0, ax + aw + 0.02) * W
     y1 = min(1.0, ay + ah + 0.03) * H
+    # 合并该页单值框（meta_boxes 页号为 1-based），防止单值字段被提前裁空
+    for box in (meta_boxes or []):
+        if getattr(box, "page", None) != page_no + 1:
+            continue
+        x0 = min(x0, max(0.0, float(box.x) - 0.01) * W)
+        y0 = min(y0, max(0.0, float(box.y) - 0.01) * H)
+        x1 = max(x1, min(1.0, float(box.x) + float(box.w) + 0.01) * W)
+        y1 = max(y1, min(1.0, float(box.y) + float(box.h) + 0.01) * H)
     if x1 - x0 < 8 or y1 - y0 < 8:
         return None
     return fitz.Rect(x0, y0, x1, y1)
@@ -305,8 +316,9 @@ def _fitz_extract(
         body_texts: list[str] = []
         has_text = False
         _lay = getattr(template, "layout", None) if template is not None else None
+        _mboxes = getattr(template, "meta_boxes", None) if template is not None else None
         for page_no, page in enumerate(doc, start=1):
-            _clip = _clip_for_page(_lay, page_no - 1, page.rect, doc.page_count)
+            _clip = _clip_for_page(_lay, page_no - 1, page.rect, doc.page_count, meta_boxes=_mboxes)
             words, texts, page_has_text = _fitz_page_words(page, clip=_clip)
             pages.append((page_no, words))
             body_texts.extend(texts)
@@ -317,8 +329,8 @@ def _fitz_extract(
 
 
 # 已有专列的字段，其余都算「自定义字段」进 extra
-_KNOWN_FIELDS = {"txn_date", "trade_time", "summary", "counterparty", "direction",
-                 "amount", "balance", "amount_in", "amount_out", "reference_no"}
+_KNOWN_FIELDS = {"txn_date", "trade_time", "summary", "counterparty", "counterparty_name",
+                 "direction", "amount", "balance", "amount_in", "amount_out", "reference_no"}
 
 
 def _extra_cells(cells: dict[str, list[Word]]) -> dict[str, str] | None:
@@ -413,6 +425,21 @@ def _boxes_match_page(lines: list[Line], template: Template | None) -> bool:
     return max_x <= width * 1.2 and max_y <= height * 1.2
 
 
+def _strip_meta_prefix(text: str, box_label: str | None = None) -> str:
+    """去掉单值框里可能连带框住的标签前缀（如 '开户行：XXX' → 'XXX'）。"""
+    cleaned = text.strip()
+    m = re.match(r"^[^:：]{1,12}[:：]\s*(.+)$", cleaned)
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    if box_label:
+        lbl = box_label.strip()
+        if lbl and cleaned.startswith(lbl):
+            rest = cleaned[len(lbl):].lstrip(" :：")
+            if rest:
+                return rest
+    return cleaned
+
+
 def _fill_header_from_boxes(
     header: PageHeader,
     page_no: int,
@@ -423,6 +450,12 @@ def _fill_header_from_boxes(
     if not _boxes_match_page(lines, template):
         return
     width, height = template.page_size  # type: ignore[misc]
+    raw_meta = (getattr(template, "layout", None) or {}).get("meta_boxes") or []
+    label_by_field = {
+        str(m.get("field") or ""): str(m.get("label") or "")
+        for m in raw_meta
+        if isinstance(m, dict)
+    }
     for box in template.meta_boxes:
         if box.page != page_no:
             continue
@@ -433,6 +466,7 @@ def _fill_header_from_boxes(
         compact = re.sub(r"\s+", "", text)
         bbox = _bbox(words)
         confidence = min(word.confidence for word in words)
+        box_label = label_by_field.get(box.field)
         if box.field == "account_no" and header.account_no is None:
             match = ACCOUNT_LABEL_RE.search(compact)
             value = _clean_account(match.group(1) if match else compact)
@@ -440,9 +474,21 @@ def _fill_header_from_boxes(
                 header.account_no = HeaderField(value=value, bbox=bbox, confidence=confidence)
         elif box.field == "account_name" and header.account_name is None:
             match = NAME_LABEL_RE.search(text)
-            value = _clean_name(match.group(1) if match else text)
+            value = _clean_name(match.group(1) if match else _strip_meta_prefix(text, box_label))
             if value:
                 header.account_name = HeaderField(value=value, bbox=bbox, confidence=confidence)
+        elif box.field in ("bank_branch", "branch") and header.bank_branch is None:
+            value = _clean_name(_strip_meta_prefix(text, box_label or "开户行"))
+            if value and len(value) >= 2:
+                header.bank_branch = HeaderField(value=value, bbox=bbox, confidence=confidence)
+        elif box.field == "account_type" and header.account_type is None:
+            value = _clean_name(_strip_meta_prefix(text, box_label or "账户类型"))
+            if value and len(value) >= 2:
+                header.account_type = HeaderField(value=value, bbox=bbox, confidence=confidence)
+        elif box.field == "currency" and header.currency is None:
+            value = _clean_name(_strip_meta_prefix(text, box_label or "币种"))
+            if value:
+                header.currency = HeaderField(value=value, bbox=bbox, confidence=confidence)
         elif box.field == "period" and header.period_start is None:
             match = PERIOD_RE.search(compact)
             if not match:
@@ -452,6 +498,10 @@ def _fill_header_from_boxes(
             if start and end:
                 header.period_start = HeaderField(value=start, bbox=bbox, confidence=confidence)
                 header.period_end = HeaderField(value=end, bbox=bbox, confidence=confidence)
+        elif box.field not in header.extra_fields:
+            value = _strip_meta_prefix(text, box_label).strip()
+            if value:
+                header.extra_fields[box.field] = HeaderField(value=value, bbox=bbox, confidence=confidence)
 
 
 def _page_header(
@@ -504,46 +554,65 @@ def _page_header(
     return header
 
 
-def _layout_area_for(layout, page_no, total_pages=None):
-    """取该页的表格框。
+def _layout_areas_for(layout, page_no, total_pages=None):
+    """取该页的所有表格框（同一页可能有明细表 + 汇总表两块）。
 
-    支持两种存法，优先级从高到低：
-      1. 绝对页号 table["page"]（旧数据，也用于单页模板）
-      2. 语义槽位 table["slot"]：first / second / last
+    返回列表；单块时与旧行为完全一致（列表长度 1）。
+    """
+    one = _layout_area_for(layout, page_no, total_pages)
+    if not one or not layout:
+        return [one] if one else []
+    tables = [t for t in (layout.get("tables") or []) if t.get("area")]
+    areas = []
+    for t in tables:
+        if int(t.get("page") or 0) == page_no:
+            areas.append(t["area"])
+    if not areas:
+        for t in tables:
+            resolved = _layout_area_for({"tables": [t], "page_size": layout.get("page_size")},
+                                        page_no, total_pages)
+            if resolved is one:
+                areas.append(t["area"])
+    return areas or [one]
 
-    槽位是为了处理「首页、第二页、末页版式可能不同」：
-      - 1 页文件：first 就是 last，用 first
-      - 2 页文件：second 与 last 是同一页，用 last
-      - 3 页及以上：三段各自独立
-    中间页（第 3 页到倒数第 2 页）没有自己的槽位时，沿用 first —— 版式一致是模板成立的前提。
+
+def _layout_table_for(layout, page_no, total_pages=None):
+    """取该页对应的表格配置（含 area / headerY / columns / slot）。
+
+    兼容槽位：first / second / middle / last / auto。
+    优先级：显式非 auto 页号匹配 > 语义槽位匹配。
     """
     if not layout:
         return None
-    tables = [t for t in (layout.get("tables") or []) if t.get("area")]
+    tables = [t for t in (layout.get("tables") or []) if t.get("area") or t.get("columns")]
     if not tables:
         return None
     for t in tables:
-        if int(t.get("page") or 0) == page_no:
-            return t["area"]
+        if t.get("page") is not None and int(t.get("page") or 0) == page_no and (t.get("slot") or "") != "auto":
+            return t
 
     def _by_slot(name):
         for t in tables:
             if (t.get("slot") or "first") == name:
-                return t["area"]
+                return t
         return None
 
     total = total_pages if total_pages and total_pages > 0 else 1
-    if page_no == 0:
-        return _by_slot("first")
-    if total == 1:
-        return _by_slot("first")
+    if page_no == 0 or total == 1:
+        return _by_slot("first") or _by_slot("auto")
     if total == 2:
-        return _by_slot("last") or _by_slot("second") or _by_slot("first")
+        return _by_slot("last") or _by_slot("middle") or _by_slot("second") or _by_slot("first") or _by_slot("auto")
     if page_no == 1:
-        return _by_slot("second") or _by_slot("first")
+        return _by_slot("second") or _by_slot("middle") or _by_slot("first") or _by_slot("auto")
     if page_no == total - 1:
-        return _by_slot("last") or _by_slot("first")
-    return _by_slot("first")
+        return _by_slot("last") or _by_slot("middle") or _by_slot("first") or _by_slot("auto")
+    return _by_slot("middle") or _by_slot("second") or _by_slot("first") or _by_slot("auto")
+
+
+def _layout_area_for(layout, page_no, total_pages=None):
+    """取该页的表格框。兼容 first / second / middle / last / auto 槽位。"""
+    tb = _layout_table_for(layout, page_no, total_pages)
+    return tb.get("area") if tb else None
 
 
 def _crop_by_layout(words, layout, page_no, total_pages=None):
@@ -553,27 +622,34 @@ def _crop_by_layout(words, layout, page_no, total_pages=None):
     实测反而比不用模板慢 30%。裁掉区域外的词才有真正收益。
     上方留 12%：表头通常画在表格区之外，裁掉就找不到表头了。
     """
-    area = _layout_area_for(layout, page_no, total_pages)
-    if not area:
+    areas = _layout_areas_for(layout, page_no, total_pages)
+    if not areas:
         return words
     size = (layout or {}).get("page_size") or {}
     W = float(size.get("w") or 0)
     H = float(size.get("h") or 0)
     if W <= 0 or H <= 0:
         return words
-    ax = float(area.get("x", 0))
-    ay = float(area.get("y", 0))
-    aw = float(area.get("w", 1))
-    ah = float(area.get("h", 1))
-    x0 = max(0.0, ax - 0.02) * W
-    x1 = min(1.0, ax + aw + 0.02) * W
-    y0 = max(0.0, ay - 0.12) * H
-    y1 = min(1.0, ay + ah + 0.03) * H
+
+    boxes = []
+    for area in areas:
+        ax = float(area.get("x", 0))
+        ay = float(area.get("y", 0))
+        aw = float(area.get("w", 1))
+        ah = float(area.get("h", 1))
+        boxes.append((
+            max(0.0, ax - 0.02) * W,
+            min(1.0, ax + aw + 0.02) * W,
+            max(0.0, ay - 0.12) * H,
+            min(1.0, ay + ah + 0.03) * H,
+        ))
+
     kept = []
     for w in words:
         cx = (w.x0 + w.x1) / 2
         cy = (w.top + w.bottom) / 2
-        if x0 <= cx <= x1 and y0 <= cy <= y1:
+        # 落在任意一块里就保留：同一页的明细表和汇总表都要能读
+        if any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, x1, y0, y1 in boxes):
             kept.append(w)
     return kept or words
 
@@ -596,37 +672,59 @@ def _transactions_from_pages(
     has_split_amount = False
 
     _layout = getattr(template, "layout", None) if template is not None else None
-
-    _layout = getattr(template, "layout", None) if template is not None else None
+    _page_size = (_layout or {}).get("page_size") or {}
+    _layout_page_h = float(_page_size.get("h") or 0)
     _page_list = list(pages)
     _total_pages = len(_page_list)
 
-    for page_no, words in _page_list:
-        if _layout:
-            words = _crop_by_layout(words, _layout, page_no, _total_pages)
+    for page_no, raw_words in _page_list:
+        page_table = _layout_table_for(_layout, page_no - 1, _total_pages) if _layout else None
+        words = _crop_by_layout(raw_words, _layout, page_no - 1, _total_pages) if _layout else raw_words
         page_footer: int | None = None
         page_summary = PageSummary(page_no=page_no)
         summaries.append(page_summary)
-        lines = group_lines(words, y_tol=y_tol if y_tol else LINE_Y_TOLERANCE)
+        line_y_tol = y_tol if y_tol else LINE_Y_TOLERANCE
+        lines = group_lines(words, y_tol=line_y_tol)
+        # 页眉与单值框提取必须基于裁剪前的整页词，避免页眉被表格区裁空
+        header_lines = group_lines(raw_words, y_tol=line_y_tol) if words is not raw_words else lines
+
+        header_y_norm = page_table.get("headerY") if page_table else None
+        header_y_pt = (
+            float(header_y_norm) * _layout_page_h
+            if header_y_norm is not None and _layout_page_h > 0
+            else None
+        )
 
         header = find_header(lines, template.field_map if template else None)
-        page_footer: int | None = None
-        page_summary = PageSummary(page_no=page_no)
-        summaries.append(page_summary)
         if header is not None:
             header_line, tokens, mapping = header
-            columns = build_columns(tokens, mapping, layout=getattr(template, "layout", None))
+            columns = build_columns(
+                tokens, mapping,
+                layout=_layout,
+                page_no=page_no - 1,
+                total_pages=_total_pages,
+                target_table=page_table,
+            )
             header_top = header_line.top
-            fields = set(mapping.values())
+            fields = {c.field for c in columns}
             has_direction_column = has_direction_column or "direction" in fields
             has_split_amount = has_split_amount or bool({"amount_in", "amount_out"} & fields)
+        elif page_table and page_table.get("columns") and (header_y_pt is not None or columns is not None):
+            # 表头未命中但模板提供了当前页列几何（及 headerY 表头线）：直接按框与表头线切分，不整页跳过
+            layout_cols = build_columns_from_layout(page_table, _page_size)
+            if layout_cols:
+                columns = layout_cols
+                fields = {c.field for c in columns}
+                has_direction_column = has_direction_column or "direction" in fields
+                has_split_amount = has_split_amount or bool({"amount_in", "amount_out"} & fields)
+            header_top = header_y_pt if header_y_pt is not None else -1.0
         elif columns is None:
             warnings.append(f"第 {page_no} 页未识别到表头，跳过该页")
-            headers.append(PageHeader(page_no=page_no))
+            headers.append(_page_header(page_no, header_lines, header_y_pt or HEADER_ZONE_BOTTOM, False, template))
             continue
         else:
-            header_top = -1.0
-        headers.append(_page_header(page_no, lines, header_top, header is not None, template))
+            header_top = header_y_pt if header_y_pt is not None else -1.0
+        headers.append(_page_header(page_no, header_lines, header_top, header is not None or header_y_pt is not None, template))
         if not lines:
             continue
 
@@ -688,7 +786,7 @@ def _transactions_from_pages(
                 extra = _cell_text(cells.get("summary", []))
                 if extra and extra not in (current.summary or ""):
                     current.summary = f"{current.summary or ''}{extra}"
-                extra_cp = _cell_text(cells.get("counterparty", []))
+                extra_cp = _cell_text(cells.get("counterparty") or cells.get("counterparty_name") or [])
                 if extra_cp and extra_cp not in (current.counterparty_name or ""):
                     current.counterparty_name = f"{current.counterparty_name or ''}{extra_cp}"
                 if current.trade_time is None:
@@ -712,7 +810,7 @@ def _transactions_from_pages(
                 trade_time=_line_clock(line),
                 reference_no=_cell_text(cells.get("reference_no", [])) or None,
                 summary=summary or None,
-                counterparty_name=_cell_text(cells.get("counterparty", [])) or None,
+                counterparty_name=_cell_text(cells.get("counterparty") or cells.get("counterparty_name") or []) or None,
                 direction=parse_direction(direction_text, None),
                 confidence=_line_confidence(line),
                 bbox=_bbox(line.words),

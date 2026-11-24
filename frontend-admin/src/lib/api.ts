@@ -459,7 +459,10 @@ export async function getTemplateLayoutPng(id: number, page = 0): Promise<Blob> 
   return await res.blob();
 }
 
-export interface ProbeSuggestion { field: string; column: string; x: number; y: number }
+export interface ProbeSuggestion {
+  field: string; column: string; x: number; y: number;
+  x0?: number; x1?: number; col_x?: number; col_w?: number;
+}
 export interface ProbeResult {
   bank_name: string | null;
   bank_code: string | null;

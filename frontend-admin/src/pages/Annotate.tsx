@@ -239,14 +239,31 @@ export function AnnotatePage() {
     if (!probeResult || !probeResult.suggestions.length) return;
     const w = map.page_size.w || probeResult.page_size.width || 1;
     const h = map.page_size.h || probeResult.page_size.height || 1;
-    const cols = probeResult.suggestions.map(s => ({ field: s.field, x: s.x / w, w: 0.07 }));
-    const headerY = probeResult.headers[0] ? probeResult.headers[0].y / h : 0.1;
+    // 优先消费后端基于表头间隙算出的真实列起止坐标（col_x / col_w），不再把表头中心点当左界或写死 0.07 宽
+    const cols = probeResult.suggestions.map(s => {
+      if (typeof s.col_x === 'number' && typeof s.col_w === 'number' && s.col_w > 0) {
+        return { field: s.field, x: s.col_x, w: s.col_w };
+      }
+      if (typeof s.x0 === 'number' && typeof s.x1 === 'number' && s.x1 > s.x0) {
+        const xNorm = Math.max(0, s.x0 / w);
+        return { field: s.field, x: xNorm, w: Math.min(1 - xNorm, Math.max(0.02, (s.x1 - s.x0) / w)) };
+      }
+      const xNorm = Math.max(0, s.x / w - 0.035);
+      return { field: s.field, x: xNorm, w: Math.min(1 - xNorm, 0.07) };
+    });
+    const ta = probeResult.table_area;
+    const area = ta
+      ? { x: ta.x, y: ta.y, w: ta.w, h: ta.h }
+      : { x: 0.02, y: 0.12, w: 0.96, h: 0.84 };
+    const headerY = typeof ta?.header_y === 'number'
+      ? ta.header_y
+      : (probeResult.headers[0] ? probeResult.headers[0].y / h : area.y + 0.03);
     // 预读到的页眉 metadata（账号/户名/期间/币种）直接落成 meta_boxes，补齐必填字段
     const metaBoxes = prev2Meta();
     setMap(prev => {
       const tables = prev.tables.length
-        ? prev.tables.map((tb, i) => (i === 0 ? { ...tb, columns: cols, headerY } : tb))
-        : [{ id: uid('t'), page: 1, area: { x: 0.02, y: 0.02, w: 0.96, h: 0.96 }, headerY, columns: cols }];
+        ? prev.tables.map((tb, i) => (i === 0 ? { ...tb, area, columns: cols, headerY } : tb))
+        : [{ id: uid('t'), page: 1, area, headerY, columns: cols }];
       return { ...prev, bank_code: probeResult.bank_code || prev.bank_code, tables, meta_boxes: metaBoxes(prev) };
     });
     setNotice({ level: 'info', text: '已采用预读建议：' + cols.length + ' 列' +

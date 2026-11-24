@@ -79,12 +79,28 @@ class PageHeader(BaseModel):
     account_name: HeaderField | None = None
     period_start: HeaderField | None = None
     period_end: HeaderField | None = None
+    # 单值属性（不是跨页比对字段，但报告要用）：开户行、账户类型、币种及自定义短字段
+    bank_branch: HeaderField | None = None
+    account_type: HeaderField | None = None
+    currency: HeaderField | None = None
+    extra_fields: dict[str, HeaderField] = Field(default_factory=dict)
 
     @property
     def is_empty(self) -> bool:
-        return all(
-            getattr(self, field) is None
-            for field in ("account_no", "account_name", "period_start", "period_end")
+        return (
+            all(
+                getattr(self, field) is None
+                for field in (
+                    "account_no",
+                    "account_name",
+                    "period_start",
+                    "period_end",
+                    "bank_branch",
+                    "account_type",
+                    "currency",
+                )
+            )
+            and not self.extra_fields
         )
 
 

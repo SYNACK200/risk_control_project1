@@ -92,11 +92,16 @@ def _ocr_texts(data: bytes, is_pdf: bool) -> tuple[list[str], str]:
 
     from algorithm.ocr.engine import get_default_engine  # noqa: PLC0415
 
-    # 优先云端（能识别照片，且多页可并发）；没有凭据就用本地
+    # 隐私合规：仅当管理员显式开启 ocr_routing.enabled 且凭据就绪时才允许调用云端 OCR
     try:
-        from services import ocr_api  # noqa: PLC0415
+        from db.session import SessionLocal as _SL  # noqa: PLC0415
+        from services import ocr_api, ocr_routing as _or  # noqa: PLC0415
 
-        if ocr_api.available():
+        cloud_enabled = False
+        if _SL is not None:
+            with _SL() as _s:
+                cloud_enabled = bool(_or.get_config(_s).get("enabled")) and ocr_api.available(db=_s)
+        if cloud_enabled:
             payload = data
             pages = None
             if is_pdf and MAX_PAGES > 0:
@@ -171,6 +176,19 @@ def verify_report(db: Session, task_id: int) -> dict:
         return {"status": "failed", "reason": "原始文件已被清理"}
     data = path.read_bytes()
     is_pdf = data[:4] == b"%PDF"
+    # 加密 PDF 不落库口令，慢通道主动标记 skipped 避免反复报错
+    if is_pdf:
+        try:
+            from services.analysis import is_password_protected as _is_enc  # noqa: PLC0415
+
+            if _is_enc(data):
+                return {
+                    "status": "skipped",
+                    "checked_at": datetime.utcnow().isoformat(),
+                    "reason": "加密 PDF 不留存口令，跳过慢通道自动复核",
+                }
+        except Exception:  # noqa: BLE001
+            pass
 
     fast_txns = db.execute(select(Txn).where(Txn.task_id == task_id).order_by(Txn.id)).scalars().all()
     if not fast_txns:
@@ -183,7 +201,6 @@ def verify_report(db: Session, task_id: int) -> dict:
         return {"status": "failed", "reason": f"慢通道全量识别失败：{str(exc)[:120]}"}
 
     slow_bag = extract_numbers(texts)
-    diffs, total = compare_numbers(fast_txns, slow_bag)
 
     # 主判据：快通道读出的金额总和，是否能在慢通道的全量数字里被"覆盖"。
     # 逐个值比对在原理上不可靠——快通道的值是解析后的结构化结果，

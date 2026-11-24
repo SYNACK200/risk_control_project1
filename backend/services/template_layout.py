@@ -125,21 +125,96 @@ def build_layout(pdf_bytes: bytes, marks: list[dict], columns: list[dict], field
             "pages": pages, "boxes": boxes}
 
 
+def _open_as_pdf(data: bytes) -> pymupdf.Document:
+    if b"%PDF-" in data[:1024]:
+        return pymupdf.open(stream=data, filetype="pdf")
+    # 图片样本（PNG/JPG）封装为单页 PDF，统一复用画框与 PNG 导出逻辑
+    pix = pymupdf.Pixmap(data)
+    doc = pymupdf.open()
+    page = doc.new_page(width=float(pix.width), height=float(pix.height))
+    page.insert_image(page.rect, stream=data)
+    return doc
+
+
+def _draw_label(page: pymupdf.Page, x: float, y: float, text: str, color: tuple[float, float, float]) -> None:
+    if not text:
+        return
+    try:
+        page.insert_text((x, y), text, fontsize=7.5, color=color, fontname="china-ss")
+    except Exception:  # noqa: BLE001
+        page.insert_text((x, y), text, fontsize=7.5, color=color)
+
+
 def render_page_png(pdf_bytes: bytes, layout: dict, page_no: int, dpi: int = 140) -> bytes:
-    """在指定页上画出标注框与字段名，返回 PNG 字节。"""
-    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-    if page_no >= doc.page_count:
-        page_no = 0
-    page = doc[page_no]
-    for index, box in enumerate(layout.get("boxes") or []):
-        if int(box.get("page", 0)) != page_no:
-            continue
-        color = _color(index)
-        rect = pymupdf.Rect(float(box["x0"]), float(box["y0"]), float(box["x1"]), float(box["y1"]))
-        page.draw_rect(rect, color=color, width=1.6)
-        label = str(box.get("field") or "") + (("←" + str(box["column"])) if box.get("column") else "")
-        page.insert_text((rect.x0, max(8.0, rect.y0 - 3)), label, fontsize=7.5, color=color)
-    pix = page.get_pixmap(dpi=dpi)
-    data = pix.tobytes("png")
-    doc.close()
-    return data
+    """在指定页上画出标注框与字段名（兼容新版 tables/meta_boxes 与旧版 boxes），返回 PNG 字节。"""
+    doc = _open_as_pdf(pdf_bytes)
+    try:
+        if page_no < 0 or page_no >= doc.page_count:
+            page_no = 0
+        page = doc[page_no]
+        W, H = float(page.rect.width), float(page.rect.height)
+        tables = list(layout.get("tables") or [])
+        meta_boxes = list(layout.get("meta_boxes") or [])
+        drew_modern = False
+
+        # 新版结构：表格区（紫色）+ 表头线（琥珀）+ 列带（多色）
+        page_tables = [t for t in tables if int(t.get("page", 0)) == page_no]
+        if not page_tables and page_no == 0 and tables:
+            # 只有按 slot 建的模板但页码未严格匹配时，首页至少展示 first/首个表格定义
+            page_tables = [t for t in tables if t.get("slot") in ("first", "auto", None)] or [tables[0]]
+        for t in page_tables:
+            drew_modern = True
+            area = t.get("area") or {}
+            ax = float(area.get("x", 0.02)) * W
+            ay = float(area.get("y", 0.15)) * H
+            aw = float(area.get("w", 0.96)) * W
+            ah = float(area.get("h", 0.75)) * H
+            area_rect = pymupdf.Rect(ax, ay, min(W, ax + aw), min(H, ay + ah))
+            page.draw_rect(area_rect, color=(0.49, 0.23, 0.93), width=1.4, dashes="[4 3]")
+            _draw_label(page, area_rect.x0 + 2, max(10.0, area_rect.y0 - 3), "表格区", (0.49, 0.23, 0.93))
+
+            hy = t.get("headerY")
+            if hy is not None:
+                y_line = float(hy) * H
+                page.draw_line((area_rect.x0, y_line), (area_rect.x1, y_line), color=(0.85, 0.55, 0.10), width=1.4)
+
+            for index, col in enumerate(t.get("columns") or []):
+                color = _color(index)
+                cx = float(col.get("x", 0)) * W
+                cw = float(col.get("w", 0.05)) * W
+                col_rect = pymupdf.Rect(cx, area_rect.y0, min(W, cx + cw), area_rect.y1)
+                page.draw_rect(col_rect, color=color, width=1.6)
+                field_name = col.get("field") or ",".join(col.get("fields") or [])
+                _draw_label(page, col_rect.x0 + 2, max(12.0, col_rect.y0 + 10), str(field_name), color)
+
+        mb_one_based = (
+            layout.get("page_base") == 1
+            or (bool(meta_boxes) and not tables and min(int(m.get("page", 0)) for m in meta_boxes) >= 1)
+        )
+        for index, mb in enumerate(meta_boxes):
+            mb_page = int(mb.get("page", 0)) - (1 if mb_one_based else 0)
+            if mb_page != page_no:
+                continue
+            drew_modern = True
+            mx = float(mb.get("x", 0)) * W
+            my = float(mb.get("y", 0)) * H
+            mw = float(mb.get("w", 0.1)) * W
+            mh = float(mb.get("h", 0.03)) * H
+            mrect = pymupdf.Rect(mx, my, min(W, mx + mw), min(H, my + mh))
+            page.draw_rect(mrect, color=(0.06, 0.58, 0.52), width=1.5, dashes="[3 2]")
+            _draw_label(page, mrect.x0, max(10.0, mrect.y0 - 2), str(mb.get("label") or mb.get("field") or ""), (0.06, 0.58, 0.52))
+
+        if not drew_modern:
+            for index, box in enumerate(layout.get("boxes") or []):
+                if int(box.get("page", 0)) != page_no:
+                    continue
+                color = _color(index)
+                rect = pymupdf.Rect(float(box["x0"]), float(box["y0"]), float(box["x1"]), float(box["y1"]))
+                page.draw_rect(rect, color=color, width=1.6)
+                label = str(box.get("field") or "") + (("←" + str(box["column"])) if box.get("column") else "")
+                _draw_label(page, rect.x0, max(8.0, rect.y0 - 3), label, color)
+
+        pix = page.get_pixmap(dpi=dpi)
+        return pix.tobytes("png")
+    finally:
+        doc.close()

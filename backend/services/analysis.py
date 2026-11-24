@@ -4,6 +4,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -15,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from algorithm.ocr.parse import parse  # noqa: E402
-from algorithm.ocr.models import Template as ParseTemplate  # noqa: E402
+from algorithm.ocr.models import MetaBox, Template as ParseTemplate  # noqa: E402
 from algorithm.algo.file_layer import analyze_file  # noqa: E402
 from algorithm.algo.content_layer import analyze_content  # noqa: E402
 from algorithm.algo.ledger_layer import analyze_ledger  # noqa: E402
@@ -62,6 +63,27 @@ def _custom_field_stats(txns: list) -> list[dict]:
             "samples": box["samples"],
         })
     return sorted(out, key=lambda x: -x["count"])
+
+
+def _extract_header_meta(headers: list) -> dict:
+    """提取模板/预读从页眉单值框读到的扩展元数据（含币种与自定义短字段）。"""
+    meta: dict = {}
+    extra: dict[str, str] = {}
+    for hdr in (headers or []):
+        for fname in ("account_no", "account_name", "bank_branch", "account_type", "currency", "period_start", "period_end"):
+            if fname in meta:
+                continue
+            hf = getattr(hdr, fname, None)
+            val = getattr(hf, "value", None) if hf is not None else hf
+            if val:
+                meta[fname] = str(val)
+        for k, hf in (getattr(hdr, "extra_fields", None) or {}).items():
+            val = getattr(hf, "value", None)
+            if val and k not in extra:
+                extra[k] = str(val)
+    if extra:
+        meta["extra_fields"] = extra
+    return meta
 
 
 def _append_custom_metrics(metrics, transactions):
@@ -112,6 +134,48 @@ def is_password_protected(file_bytes: bytes) -> bool:
         doc.close()
 
 
+def plain_bytes(file_bytes: bytes, password: str | None) -> bytes:
+    """加密 PDF 用口令解出一份可解析的明文副本；非加密件原样返回。
+
+    为什么必须有这一步：算法侧的 parse 只认明文，直接喂加密字节能"成功"返回 0 笔
+    （它会吞掉 pymupdf 的加密异常），于是模板试跑显示"0 笔"而入口还报了成功。
+    """
+    if file_bytes[:4] != b"%PDF":
+        return file_bytes
+    doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+    try:
+        if not doc.needs_pass:
+            return file_bytes
+        if not password:
+            raise EncryptedFile("PDF 设有打开口令，请输入口令后再分析")
+        if doc.authenticate(password) <= 0:
+            raise EncryptedFile("口令不正确，请重新输入")
+        # 临时文件用随机名：并发解析两份加密件时固定名会互相覆盖
+        import uuid
+
+        tmp = Path(tempfile.gettempdir()) / f"plain_{uuid.uuid4().hex}.pdf"
+        doc.save(tmp, encryption=pymupdf.PDF_ENCRYPT_NONE)
+        try:
+            return tmp.read_bytes()
+        finally:
+            tmp.unlink(missing_ok=True)
+    finally:
+        doc.close()
+
+
+def password_opens(file_bytes: bytes, password: str) -> bool:
+    """给的口令能不能打开这份 PDF。上传时就该判定，而不是受理后再失败。"""
+    if file_bytes[:4] != b"%PDF":
+        return True
+    doc = pymupdf.open(stream=file_bytes, filetype="pdf")
+    try:
+        if not doc.needs_pass:
+            return True
+        return doc.authenticate(password) > 0
+    finally:
+        doc.close()
+
+
 def run_analysis(
     file_bytes: bytes,
     *,
@@ -119,6 +183,7 @@ def run_analysis(
     template: dict | None = None,
     preread: object | None = None,
     thresholds: object | None = None,
+    ocr_route: tuple[bool, dict] | None = None,
 ) -> dict:
     """返回 {carrier, pages, has_text_layer, txn_count, report, metrics, bank} 供落库。"""
     raw = file_bytes
@@ -131,28 +196,53 @@ def run_analysis(
         pages = doc.page_count
         if doc.needs_pass:
             password_protected = True
-            if not password or doc.authenticate(password) <= 0:
-                raise EncryptedFile("PDF 需要打开口令")
-            tmp = Path(tempfile.gettempdir()) / "backend_plain.pdf"
-            doc.save(tmp, encryption=pymupdf.PDF_ENCRYPT_NONE)
-            raw = tmp.read_bytes()
+            doc.close()
+            raw = plain_bytes(file_bytes, password)      # 加密件解成明文副本，算法侧只认明文
             doc = pymupdf.open(stream=raw, filetype="pdf")
         text_len = sum(len(doc[i].get_text("text").strip()) for i in range(doc.page_count))
         has_text = text_len > 50 * doc.page_count
+        doc.close()          # 解析要用 bytes，doc 只用来数页与判断有没有文字层，用完就关
     carrier = "electronic" if has_text else "image"
 
     tpl = None
     if template:
-        tpl = ParseTemplate(
+        from services.template_parse import build_template  # noqa: PLC0415
+
+        tpl = build_template(
             bank_code=str(template.get("bank_code", "UNKNOWN")),
             version=int(template.get("version", 1)),
-            field_map=dict(template.get("field_map", {})),
-            # 必须带上框画范围：不带的话解析只能按表头词中心推算列边界，
-            # 「改框画范围」就永远不会影响结果（这一点之前实测时漏掉了）
+            field_map=template.get("field_map", {}),
+            # 必须带上框画范围：不带的话解析只能按表头词中心推算列边界
             layout=template.get("layout"),
         )
 
+    pipeline_backend = os.getenv("PIPELINE_BACKEND", "legacy").strip().lower()
     parsed = parse(raw, tpl)
+    # B1: 当显式开启 PIPELINE_BACKEND=rc_platform 或主解析 0 笔时，尝试用 rc_platform 锚点扩散 + parse_v2 兜底
+    if (pipeline_backend == "rc_platform" or not parsed.transactions) and raw[:4] == b"%PDF":
+        try:
+            from algorithm.ocr.models import Transaction as _LegacyTxn  # noqa: PLC0415
+            from rc_platform.capabilities.layout.detect import detect_layout  # noqa: PLC0415
+            from rc_platform.capabilities.layout.words import extract_pdf_words  # noqa: PLC0415
+            from rc_platform.capabilities.parse_v2.table_reader import read_statement  # noqa: PLC0415
+
+            rc_pages = extract_pdf_words(raw)
+            rc_plan = detect_layout(rc_pages)
+            rc_stmt = read_statement(rc_pages, rc_plan)
+            if len(rc_stmt.rows) > len(parsed.transactions):
+                parsed.transactions = [
+                    _LegacyTxn(
+                        page_no=r.page_no, row_no=r.row_no, txn_date=r.txn_date,
+                        trade_time=r.trade_time, reference_no=r.reference_no,
+                        summary=r.summary, counterparty_name=r.counterparty_name,
+                        direction=r.direction, amount=r.amount, balance=r.balance,
+                        confidence=r.confidence, extra=r.extra,
+                    )
+                    for r in rc_stmt.rows
+                ]
+                pipeline_backend = "rc_platform"
+        except Exception:  # noqa: BLE001 - 兜底失败不影响主流程
+            pass
     file_layer = analyze_file(raw, carrier=carrier)
     content_layer = analyze_content(parsed)
     ledger = analyze_ledger(parsed.transactions)
@@ -181,6 +271,20 @@ def run_analysis(
     payload = json.loads(report.model_dump_json())
     # 模板自定义字段的汇总（有值笔数、合计、均值、样例），报告与看板都用它
     payload["custom_field_stats"] = _custom_field_stats(parsed.transactions or [])
+    header_meta = _extract_header_meta(getattr(parsed, "headers", None) or [])
+    if header_meta:
+        payload["header_meta"] = header_meta
+
+    # 模板缺列要说清楚：否则用户看到的是一堆「不可算」指标，不知道是版式没标全
+    from services.template_checks import missing_required  # noqa: PLC0415
+
+    missing = missing_required((template or {}).get("field_map"), (template or {}).get("required_fields"))
+    if missing:
+        payload.setdefault("limitations", [])
+        payload["limitations"].insert(
+            0,
+            "模板缺列：" + "、".join(missing) + "（这份版式模板未标注这些列，相关指标因此不可算）",
+        )
 
     # 解析覆盖率门禁：笔数远少于页脚声明时，报告必须自我说明并降级，避免「只读到 12 笔还给良好」
     footer_count = getattr(parsed, "footer_count", None)
@@ -211,7 +315,18 @@ def run_analysis(
             if "解析不完整" not in label:
                 scores["grade_label"] = (label + "·解析不完整").strip("·")
 
+    route_info = None
+    if ocr_route is not None:
+        use_api, rcfg = ocr_route
+        route_info = {
+            "engine": "cloud_api" if (use_api and carrier != "electronic") else "local",
+            "cloud_eligible": bool(use_api),
+            "workers": int((rcfg or {}).get("workers") or 2),
+            "model": (rcfg or {}).get("model") or "PP-OCRv6",
+        }
     return {
+        "pipeline_backend": pipeline_backend,
+        "ocr_route": route_info,
         "carrier": carrier,
         "pages": pages,
         "has_text_layer": has_text,
@@ -220,6 +335,7 @@ def run_analysis(
         "footer_count": footer_count,
         "parse_coverage": parse_coverage,
         "warnings": list(parsed.warnings),
+        "header_meta": header_meta,
         "preread": preread.to_dict() if preread is not None else None,
         "self_check": {
             "status": self_check.status,

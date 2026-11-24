@@ -17,6 +17,17 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
 
 _MULTI_FIELD = {"amount_in", "amount_out"}
 
+# 前后端字段别名归一化：新版画布写入 counterparty_name，解析核心统一为 counterparty
+FIELD_NAME_NORMALIZE: dict[str, str] = {
+    "counterparty_name": "counterparty",
+}
+
+
+def canonical_field(name: str) -> str:
+    """将前后端可能不一致的字段名归一化为解析内部标准名。"""
+    key = str(name or "").strip()
+    return FIELD_NAME_NORMALIZE.get(key, key)
+
 
 @dataclass(frozen=True)
 class Word:
@@ -139,7 +150,7 @@ def merge_tokens(line: Line, gap: float = 2.0) -> list[Word]:
 def find_header(
     lines: list[Line],
     field_map: dict[str, str | int] | None = None,
-    limit: int = 20,
+    limit: int = 30,
 ) -> tuple[Line, list[Word], dict[int, str]] | None:
     best: tuple[int, Line, list[Word], dict[int, str]] | None = None
     for line in lines[:limit]:
@@ -163,7 +174,8 @@ def apply_template(tokens: list[Word], mapping: dict[int, str], field_map: dict[
     """模板显式映射优先：同一字段只保留模板指定的那一列，去掉表头自动识别的重名列。"""
     merged = dict(mapping)
     claimed: dict[str, int] = {}
-    for canonical, target in field_map.items():
+    for raw_canonical, target in field_map.items():
+        canonical = canonical_field(raw_canonical)
         idx: int | None = None
         if isinstance(target, int):
             if 0 <= target < len(tokens):
@@ -174,6 +186,11 @@ def apply_template(tokens: list[Word], mapping: dict[int, str], field_map: dict[
                 if _norm(token.text) == want:
                     idx = i
                     break
+            if idx is None and len(want) >= 2:
+                for i, token in enumerate(tokens):
+                    if want in _norm(token.text):
+                        idx = i
+                        break
         if idx is None:
             continue
         merged[idx] = canonical
@@ -184,36 +201,93 @@ def apply_template(tokens: list[Word], mapping: dict[int, str], field_map: dict[
     return merged
 
 
+def _pick_layout_table(layout: dict, page_no: int | None, total_pages: int | None) -> dict | None:
+    """按当前页号/多页槽位（first/second/middle/last/auto）选择匹配的表格配置。"""
+    tables = [t for t in (layout.get("tables") or []) if t.get("columns") or t.get("area")]
+    if not tables:
+        return None
+    if page_no is None:
+        return tables[0]
+    for t in tables:
+        if t.get("page") is not None and int(t.get("page")) == page_no and (t.get("slot") or "") != "auto":
+            return t
+
+    def _by_slot(name: str) -> dict | None:
+        for t in tables:
+            if (t.get("slot") or "first") == name:
+                return t
+        return None
+
+    total = total_pages if total_pages and total_pages > 0 else 1
+    if page_no == 0 or total == 1:
+        return _by_slot("first") or _by_slot("auto") or tables[0]
+    if total == 2:
+        return _by_slot("last") or _by_slot("middle") or _by_slot("second") or _by_slot("first") or _by_slot("auto") or tables[0]
+    if page_no == 1:
+        return _by_slot("second") or _by_slot("middle") or _by_slot("first") or _by_slot("auto") or tables[0]
+    if page_no == total - 1:
+        return _by_slot("last") or _by_slot("middle") or _by_slot("first") or _by_slot("auto") or tables[0]
+    return _by_slot("middle") or _by_slot("second") or _by_slot("first") or _by_slot("auto") or tables[0]
+
+
+def build_columns_from_layout(table: dict | None, page_size: dict | None) -> list[Column]:
+    """仅凭模板某页的 layout.columns 直接构造列边界（表头 OCR 失败时由 headerY 兜底用）。"""
+    if not table:
+        return []
+    width = float((page_size or {}).get("w") or 0)
+    if width <= 0:
+        return []
+    built: list[Column] = []
+    seen: set[str] = set()
+    for c in (table.get("columns") or []):
+        raw_f = c.get("field") or ((c.get("fields") or [None])[0])
+        f = canonical_field(str(raw_f)) if raw_f else ""
+        if not f or f in seen or c.get("x") is None or not c.get("w"):
+            continue
+        seen.add(f)
+        left = float(c["x"]) * width
+        right = left + float(c["w"]) * width
+        built.append(Column(field=f, left=left, right=right))
+    return built
+
+
 def build_columns(tokens: list[Word], mapping: dict[int, str],
-                  layout: dict | None = None) -> list[Column]:
-    """按列边界切分。优先用模板保存的框画范围（layout），否则按表头词中心推算。
+                  layout: dict | None = None,
+                  page_no: int | None = None,
+                  total_pages: int | None = None,
+                  target_table: dict | None = None) -> list[Column]:
+    """按列边界切分。优先用模板当前页/槽位的框画范围（layout），否则按表头词中心推算。
 
     为什么优先 layout：表头词中心是「文字位置」，字宽、空格、对齐都会让它偏离真实列边界；
     layout 是人工在样本上画出来的「列范围」，版式一致时它更准，也让「改框画范围」真正生效。
-    字段在 layout 里找不到时逐个回退到中心推算，不会因为一个字段缺失就整体失效。
+    多页模板按当前 page_no/slot 取对应表的列几何，不再全局拍平。
     """
     # ---- 优先：用 layout 的列几何 ----
     if layout:
-        tables = layout.get("tables") or []
-        cols = []
-        for tb in tables:
-            cols.extend(tb.get("columns") or [])
+        tb = target_table or _pick_layout_table(layout, page_no, total_pages)
+        cols = list((tb or {}).get("columns") or [])
+        if not cols:
+            for item in (layout.get("tables") or []):
+                cols.extend(item.get("columns") or [])
         page_size = layout.get("page_size") or {}
         width = float(page_size.get("w") or 0)
         if cols and width > 0:
             by_field: dict[str, dict] = {}
             for c in cols:
-                f = c.get("field")
+                raw_f = c.get("field") or ((c.get("fields") or [None])[0])
+                f = canonical_field(str(raw_f)) if raw_f else ""
                 if f and f not in by_field:
-                    by_field[str(f)] = c
+                    by_field[f] = c
             centers = [t.cx for t in tokens]
             fallback = [-1e9]
             for left, right in zip(centers, centers[1:]):
                 fallback.append((left + right) / 2)
             fallback.append(1e9)
             built: list[Column] = []
-            for idx, canonical in mapping.items():
-                c = by_field.get(str(canonical))
+            added: set[str] = set()
+            for idx, raw_canonical in mapping.items():
+                canonical = canonical_field(raw_canonical)
+                c = by_field.get(canonical)
                 if c and c.get("x") is not None and c.get("w"):
                     left = float(c["x"]) * width
                     right = left + float(c["w"]) * width
@@ -223,6 +297,14 @@ def build_columns(tokens: list[Word], mapping: dict[int, str],
                     hi = fallback[idx + 1] if idx + 1 < len(fallback) else 1e9
                     left, right = lo, hi
                 built.append(Column(field=canonical, left=left, right=right))
+                added.add(canonical)
+            for canonical, c in by_field.items():
+                if canonical in added or c.get("x") is None or not c.get("w"):
+                    continue
+                left = float(c["x"]) * width
+                right = left + float(c["w"]) * width
+                built.append(Column(field=canonical, left=left, right=right))
+                added.add(canonical)
             if built:
                 return built
 

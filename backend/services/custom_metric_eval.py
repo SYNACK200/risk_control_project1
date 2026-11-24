@@ -23,7 +23,7 @@ def _to_view(transactions: list[Any]) -> list[dict]:
             "amount": float(amount) if amount is not None else None,
             "balance": float(getattr(txn, "balance", 0)) if getattr(txn, "balance", None) is not None else None,
             "direction": direction,
-            "counterparty": getattr(txn, "counterparty", None),
+            "counterparty": getattr(txn, "counterparty_name", None) or getattr(txn, "counterparty", None),
             "summary": getattr(txn, "summary", None),
         })
     return out

@@ -146,16 +146,18 @@ def get_dashboard(db: Session = Depends(get_session)):
         scores = payload.get("scores") or {}
         grade = scores.get("grade") or "unknown"
         grades[str(grade)] += 1
+        # 单个任务内按规则 code 去重后再累加，避免 risk_hits 与 conclusions 重复计两次
+        seen_codes: dict[str, str] = {}
         for item in (scores.get("risk_hits") or []):
             code = str(item.get("code") or "").strip()
-            name = str(item.get("name") or code or "未命名")
-            if code:
-                hit_counter[(code, name)] += 1
+            if code and code not in seen_codes:
+                seen_codes[code] = str(item.get("name") or code or "未命名")
         for item in (payload.get("conclusions") or []):
             code = str(item.get("code") or "").strip()
-            if not code:
-                continue
-            hit_counter[(code, str(item.get("name") or item.get("text") or code)[:40])] += 1
+            if code and code not in seen_codes:
+                seen_codes[code] = str(item.get("name") or item.get("text") or code)[:40]
+        for code, name in seen_codes.items():
+            hit_counter[(code, name)] += 1
 
     custom_metric_count = db.scalar(select(func.count(CustomMetric.id))) or 0
 

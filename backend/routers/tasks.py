@@ -28,7 +28,7 @@ from helpers.security import require_admin, current_user, require_banker
 from services import thresholds as threshold_service
 from services import worker
 from services.analysis import EncryptedFile, is_password_protected, run_analysis
-from services.workflow import transition
+from services.workflow import InvalidTransition, transition
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "30")) * 1024 * 1024
 
@@ -140,6 +140,7 @@ def compose_task(
     period_end: str | None = Form(None),
     source_ref: str | None = Form(None),
     bank_code: str | None = Form(None),
+    consent_version: str | None = Form("PIPL-v2026.1"),
     db: Session = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -169,6 +170,7 @@ def compose_task(
     return create_task(
         file=upload, password=password, period_start=period_start,
         period_end=period_end, source_ref=source_ref, bank_code=bank_code,
+        consent_version=consent_version,
         db=db, user=user,
     )
 
@@ -182,12 +184,15 @@ def create_task(
     source_ref: str | None = Form(None),
     bank_code: str | None = Form(None),
     marks: str | None = Form(None, description="临时模板：本次专用的标注 JSON，不写回模板库"),
+    consent_version: str | None = Form("PIPL-v2026.1"),
     db: Session = Depends(get_session),
     user: User = Depends(current_user),
 ):
     data = file.file.read()
     if not data:
         raise HTTPException(400, "文件为空")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail={"code": "E_LIMIT", "message": f"上传文件超过大小上限（{MAX_UPLOAD_BYTES // (1024 * 1024)} MB）"})
     digest = hashlib.sha256(data).hexdigest()
 
     path = STORAGE / f"{uuid.uuid4().hex}{Path(file.filename or '').suffix or '.pdf'}"
@@ -208,52 +213,66 @@ def create_task(
             raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "PDF 需要打开口令"})
         if _password_failure_count(db, password_file.id) >= PASSWORD_ATTEMPT_LIMIT:
             raise HTTPException(429, detail={"code": "E_LIMIT", "message": "该材料口令尝试次数已达上限"})
+        # 口令当场验：错口令如果也受理，会生成一个注定失败的任务，用户要等几分钟才知道
+        from services.analysis import password_opens
 
+        if not password_opens(data, password):
+            _record_password_attempt(
+                db, file_id=password_file.id, file_name=file_name, outcome="failed",
+            )
+            db.commit()
+            raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "口令不正确，请重新输入"})
+
+    # ---- 选模板：同银行的启用模板里，按表头指纹/Jaccard 挑最匹配的一版 ----
+    # 只看「该银行第一个启用模板」会在同银行有多个版式时互抢：新版式被老模板套上，
+    # 读出来是错的还看不出来。这里统一走 template_match（T9 的匹配器）。
+    from db.models import Template  # noqa: PLC0415
+    from services.template_match import doc_headers_from_pdf, select_template  # noqa: PLC0415
+
+    doc_headers = doc_headers_from_pdf(data)
     template = None
     template_row = None
-    if bank_code:
-        from db.models import Template
+    matched_template = None
+    match_score: float | None = None
+    match_reason: str | None = None
 
-        row = db.execute(
-            select(Template).where(Template.bank_code == bank_code.upper(), Template.status == "enabled")
-        ).scalars().first()
-        if row:
-            template_row = row
-            template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
+    def _try_bank(code: str | None, by: str) -> bool:
+        """按银行代码挑模板；挑中就写回现场变量并返回 True。"""
+        nonlocal template, template_row, matched_template, match_score, match_reason
+        if not code:
+            return False
+        rows = db.execute(
+            select(Template).where(
+                Template.bank_code == code.upper(),
+                Template.status == "enabled",
+                Template.deleted_at.is_(None),
+            )
+        ).scalars().all()
+        row, score, reason = select_template(list(rows), doc_headers)
+        match_score, match_reason = score, reason
+        if row is None:
+            return False
+        template_row = row
+        template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
+        matched_template = {"id": row.id, "bank_code": row.bank_code, "version": row.version,
+                            "by": reason, "score": score}
+        return True
+
+    if bank_code:
+        _try_bank(bank_code, "explicit_bank_code")
 
     # 预读取：不看模板，先判断「是不是流水」，并抓基础信息
     preread = run_preread(data, password=password)
     threshold_config = threshold_service.build_config(db)
-    matched_template = None
-    if template is None and preread.bank_code:
-        from db.models import Template
-
-        row = db.execute(
-            select(Template).where(
-                Template.bank_code == preread.bank_code.upper(), Template.status == "enabled"
-            )
-        ).scalars().first()
-        if row is not None:
-            template_row = row
-            template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
-            matched_template = {"id": row.id, "bank_code": row.bank_code, "by": "preread_bank_name"}
+    if template_row is None and preread.bank_code:
+        _try_bank(preread.bank_code, "preread_bank_name")
     # 正文里没有银行名时（很多导出件银行名只在文件名），用文件名兜底
     if template_row is None:
-        from algorithm.algo.preread import bank_from_filename
-        from db.models import Template
+        from algorithm.algo.preread import bank_from_filename  # noqa: PLC0415
 
         alias, code = bank_from_filename(file.filename or "")
         if code:
-            row = db.execute(
-                select(Template).where(
-                    Template.bank_code == code, Template.status == "enabled",
-                    Template.deleted_at.is_(None))
-            ).scalars().first()
-            if row is not None:
-                template_row = row
-                template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
-                matched_template = {"id": row.id, "bank_code": row.bank_code, "by": "filename_bank_name"}
-            elif preread is not None and not preread.bank_code:
+            if not _try_bank(code, "filename_bank_name") and preread is not None and not preread.bank_code:
                 preread.bank_code = code
                 preread.bank_name = alias
     if preread.verdict == "reject":
@@ -285,6 +304,7 @@ def create_task(
             raise HTTPException(400, detail={"code": "E_PARAM", "message": "临时标注必须是非空数组"})
         override_json = _json.dumps(parsed_marks, ensure_ascii=False)
 
+    clean_consent = (consent_version or "PIPL-v2026.1").strip()[:32]
     task = Task(
         biz_no=f"T{datetime.now():%Y%m%d%H%M%S}{uuid.uuid4().hex[:4]}",
         user_id=user.id,
@@ -295,14 +315,19 @@ def create_task(
         field_map_override=override_json,
         period_start=period_start or (preread.period_start if preread else None),
         period_end=period_end or (preread.period_end if preread else None),
+        consent_version=clean_consent,
+        consent_at=datetime.now(),
         check_result={
             "matched_template": matched_template,
             "template_match": {
                 "template_id": template_row.id if template_row else None,
-                "by": ("preread_bank_name" if matched_template else ("explicit_bank_code" if template_row else None)),
+                "by": (matched_template or {}).get("by") or ("explicit_bank_code" if template_row else None),
+                "score": match_score,
                 "reason": None if template_row else (
                     "未识别到银行" if not (preread and preread.bank_code)
-                    else ("银行 " + str(preread.bank_code) + " 没有启用的模板")),
+                    else ("银行 " + str(preread.bank_code) + " 没有启用的模板"
+                          + ("（同银行有模板但表头不匹配）" if match_reason == "jaccard_below_threshold" else ""))),
+                "doc_headers": doc_headers[:12],
             },
             "preread": preread.to_dict(),
         },
@@ -395,13 +420,50 @@ def list_tasks(
 ):
     """解析结果列表：按银行关心的维度汇总，并支持合格性/风险/解析质量/银行/时间/关键字筛选。"""
     # 分页：SQL 侧取全量（上限 2000 防爆），过滤后再算 total 并切出当前页
+    is_banker = user.role == "banker"
     stmt = select(Task).order_by(Task.id.desc()).limit(2000)
-    stmt = stmt.where(Task.deleted_at.is_not(None)) if trash else stmt.where(Task.deleted_at.is_(None))
-    if user.role != "banker":
+    if is_banker and trash:
+        stmt = stmt.where(Task.deleted_at.is_not(None))
+    else:
+        stmt = stmt.where(Task.deleted_at.is_(None))
+    if not is_banker:
         stmt = stmt.where(Task.user_id == user.id)
     if status:
         stmt = stmt.where(Task.status == status)
     rows = db.execute(stmt).scalars().all()
+    if not is_banker:
+        safe_items = []
+        for task in rows:
+            preread = (task.check_result or {}).get("preread") if isinstance(task.check_result, dict) else None
+            bank_name = preread.get("bank_name") if isinstance(preread, dict) else None
+            safe_items.append({
+                "id": task.id,
+                "biz_no": task.biz_no,
+                "status": task.status,
+                "carrier": task.carrier,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "bank_name": bank_name,
+                "period_start": task.period_start,
+                "period_end": task.period_end,
+                "consent_version": task.consent_version,
+                "consent_at": task.consent_at.isoformat() if task.consent_at else None,
+            })
+        if date_from:
+            safe_items = [i for i in safe_items if (i.get("created_at") or "") >= date_from]
+        if date_to:
+            safe_items = [i for i in safe_items if (i.get("created_at") or "") <= date_to + "T23:59:59"]
+        if q:
+            needle = q.strip().lower()
+            safe_items = [i for i in safe_items if needle in (i.get("biz_no") or "").lower()]
+        total = len(safe_items)
+        return {
+            "items": safe_items[offset: offset + limit],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "facets": {},
+        }
+
     items = _summary_rows(db, rows)
     facets = _facets(items)
 
@@ -481,6 +543,11 @@ def transactions_export(task_id: int, db: Session = Depends(get_session),
         writer.writerow([task.biz_no, row.txn_date, "收入" if row.direction == "in" else "支出" if row.direction == "out" else "",
                          "" if row.amount is None else row.amount, "" if row.balance is None else row.balance,
                          row.summary or "", row.counterparty_name or "", row.page_no or ""])
+    db.add(AuditLog(
+        actor_id=user.id, action="report.export", object_type="task", object_id=task.id,
+        detail=f"format=csv; rows={len(rows)}",
+    ))
+    db.commit()
     body = "\ufeff" + buffer.getvalue()
     filename = f"{task.biz_no}.csv"
     return Response(
@@ -490,10 +557,11 @@ def transactions_export(task_id: int, db: Session = Depends(get_session),
     )
 
 
-@router.get("/{task_id}/export.json")
-def report_export(task_id: int, db: Session = Depends(get_session),
+@router.get("/{task_id}/export.json", dependencies=[Depends(require_banker)])
+def report_export(task_id: int, include_transactions: bool = False,
+                  db: Session = Depends(get_session),
                   user: User = Depends(current_user)):
-    # 报告导出：只导平台算出的结论（评分/指标/结论/证据），不含原始流水
+    # 报告导出：默认只导平台结论；管理员显式传 include_transactions=true 时附带明细，并写审计
     task = db.get(Task, task_id)
     if task is None or task.deleted_at is not None:
         raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "流水不存在或已删除"})
@@ -503,14 +571,28 @@ def report_export(task_id: int, db: Session = Depends(get_session),
     ).scalars().first()
     if report_row is None:
         raise HTTPException(404, detail={"code": "E_STATE", "message": "该流水还没有报告"})
-    # 不查原始逐笔：导出物只应有平台得出的结论
+    txns_out: list[dict] = []
+    if include_transactions and getattr(user, "is_admin", False):
+        rows = db.execute(select(Txn).where(Txn.task_id == task_id).order_by(Txn.txn_date, Txn.id)).scalars().all()
+        txns_out = [
+            {"txn_date": r.txn_date, "direction": r.direction,
+             "amount": None if r.amount is None else str(r.amount),
+             "balance": None if r.balance is None else str(r.balance),
+             "summary": r.summary, "counterparty_name": r.counterparty_name, "page_no": r.page_no}
+            for r in rows
+        ]
+    db.add(AuditLog(
+        actor_id=user.id, action="report.export", object_type="task", object_id=task.id,
+        detail=f"format=json; include_txns={bool(txns_out)}",
+    ))
+    db.commit()
     payload = {
         "biz_no": task.biz_no,
         "status": task.status,
         "carrier": task.carrier,
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "report": report_row.payload,
-        "transactions": [],
+        "transactions": txns_out,
     }
     filename = f"{task.biz_no}.json"
     return Response(
@@ -533,7 +615,7 @@ def recycle_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
         if row.deleted_at is None:
             row.deleted_at = now
             moved += 1
-    db.add(AuditLog(action="recycle_tasks", object_type="task", object_id=rows[0].id,
+    db.add(AuditLog(actor_id=user.id, action="recycle_tasks", object_type="task", object_id=rows[0].id,
                     detail=f"ids={_ids_brief([r.id for r in rows])}; moved={moved}"))
     db.commit()
     return {"moved": moved, "ids": sorted(r.id for r in rows)}
@@ -551,7 +633,7 @@ def restore_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
         if row.deleted_at is not None:
             row.deleted_at = None
             restored += 1
-    db.add(AuditLog(action="restore_tasks", object_type="task", object_id=rows[0].id,
+    db.add(AuditLog(actor_id=user.id, action="restore_tasks", object_type="task", object_id=rows[0].id,
                     detail=f"ids={_ids_brief([r.id for r in rows])}; restored={restored}"))
     db.commit()
     return {"restored": restored, "ids": sorted(r.id for r in rows)}
@@ -571,8 +653,13 @@ def purge_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
         raise HTTPException(409, detail={"code": "E_STATE",
                                          "message": f"这些流水还在用，请先移入回收站：{[r.id for r in live]}"})
     ids = [r.id for r in rows]
+    candidate_file_ids: set[int] = set()
     purged = 0
     for task in rows:
+        if task.file_id:
+            candidate_file_ids.add(task.file_id)
+        for tf in db.query(TaskFile).filter(TaskFile.task_id == task.id).all():
+            candidate_file_ids.add(tf.file_id)
         db.query(Txn).filter(Txn.task_id == task.id).delete()
         db.query(MetricValue).filter(MetricValue.task_id == task.id).delete()
         db.query(Report).filter(Report.task_id == task.id).delete()
@@ -580,10 +667,30 @@ def purge_tasks(payload: TaskIdsPayload, db: Session = Depends(get_session),
         db.query(BankAccount).filter(BankAccount.task_id == task.id).delete()
         db.delete(task)
         purged += 1
-    db.add(AuditLog(action="purge_tasks", object_type="task", object_id=ids[0],
-                    detail=f"ids={_ids_brief(ids)}; purged={purged}"))
+    db.flush()
+    # 清理不再被任何任务或模板引用的孤儿 FileObj 及磁盘原件，避免敏感原件残留
+    files_deleted = 0
+    from db.models import Template as _Tpl  # noqa: PLC0415
+    for fid in candidate_file_ids:
+        still_used = (
+            db.query(Task).filter(Task.file_id == fid).first() is not None
+            or db.query(TaskFile).filter(TaskFile.file_id == fid).first() is not None
+            or db.query(_Tpl).filter(_Tpl.sample_file_id == fid).first() is not None
+        )
+        if not still_used:
+            fobj = db.get(FileObj, fid)
+            if fobj is not None:
+                if fobj.storage_path:
+                    try:
+                        Path(fobj.storage_path).unlink(missing_ok=True)
+                    except Exception:  # noqa: BLE001
+                        pass
+                db.delete(fobj)
+                files_deleted += 1
+    db.add(AuditLog(actor_id=user.id, action="purge_tasks", object_type="task", object_id=ids[0],
+                    detail=f"ids={_ids_brief(ids)}; purged={purged}; files_deleted={files_deleted}"))
     db.commit()
-    return {"purged": purged, "ids": sorted(ids)}
+    return {"purged": purged, "files_deleted": files_deleted, "ids": sorted(ids)}
 
 
 @router.post("/{task_id}/verify", dependencies=[Depends(require_banker)])
@@ -591,12 +698,15 @@ def verify_now(task_id: int, db: Session = Depends(get_session)):
     """手动触发慢通道复核。正常情况下不用点，后台空闲时会自动跑。"""
     from services.verify import verify_report, save_verification  # noqa: PLC0415
 
+    task = db.get(Task, task_id)
+    if task is None or task.deleted_at is not None:
+        raise HTTPException(404, "任务不存在")
     result = verify_report(db, task_id)
     save_verification(db, task_id, result)
     return result
 
 
-@router.post("/{task_id}/reanalyze")
+@router.post("/{task_id}/reanalyze", dependencies=[Depends(require_banker)])
 def reanalyze_task(
     task_id: int,
     password: str | None = Form(None),
@@ -605,7 +715,7 @@ def reanalyze_task(
 ):
     """用原文件重跑一次分析，补齐逐项明细（旧版报告没有 checks）。"""
     task = db.get(Task, task_id)
-    if task is None:
+    if task is None or task.deleted_at is not None:
         raise HTTPException(404, "任务不存在")
     if task.file_id is None:
         raise HTTPException(400, detail={"code": "E_STATE", "message": "任务没有关联文件"})
@@ -616,35 +726,40 @@ def reanalyze_task(
     if not path.exists():
         raise HTTPException(400, detail={"code": "E_STATE", "message": "原文件已被清理，无法重算"})
     data = path.read_bytes()
+    # 加密件当场校验口令，避免错口令/缺口令进入队列产生失败任务
+    if data[:4] == b"%PDF" and is_password_protected(data):
+        if not password or not password_opens(data, password):
+            raise HTTPException(400, detail={"code": "E_ENCRYPT", "message": "文件受口令保护，请提供正确的打开口令"})
 
-    template = None
     from db.models import Template
     chosen_id = template_id if template_id is not None else task.template_id
     if chosen_id:
         row = db.get(Template, chosen_id)
-        if row is not None:
-            template = {"bank_code": row.bank_code, "version": row.version, "field_map": row.field_map}
+        if row is None or row.deleted_at is not None:
+            if template_id is not None:
+                raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "指定模板不存在或已删除"})
+        else:
             task.template_id = row.id
             task.template_version = row.version
 
     if task.status in ("QUEUED", "CHECKING", "PARSING", "VERIFYING", "REPORTING"):
         raise HTTPException(409, detail={"code": "E_STATE", "message": "任务正在处理中，请稍后再试"})
+    # 普通重跑 / 换正式模板重跑必须清空一次性临时模板覆盖，避免被历史临时标注劫持
+    task.field_map_override = None
     transition(task, "QUEUED")
     db.add(AuditLog(action="reanalyze_queued", object_type="task", object_id=task_id,
                    detail=f"template={task.template_id}"))
     db.commit()
 
     mode = worker.submit_task(task_id, password=password)
-    return {"task_id": task_id, "version": task.version, "status": task.status,
+    return {"task_id": task_id, "version": task.template_version, "status": task.status,
             "queued": True, "mode": mode}
 
-    return {"task_id": task_id, "version": new_version, "layers": [
-        {"layer": l["layer"], "status": l["status"], "checks": len(l.get("checks") or [])}
-        for l in result["report"].get("layers", [])
-    ]}
+
+_BORROWER_SAFE_FAILURE_CODES = {"E_FORMAT", "E_ENCRYPT", "E_NOT_STATEMENT", "E_NOLAYER"}
 
 
-@router.post("/{task_id}/whitelist")
+@router.post("/{task_id}/whitelist", dependencies=[Depends(require_banker)])
 def whitelist_task(
     task_id: int,
     reason: str = Form(...),
@@ -652,7 +767,7 @@ def whitelist_task(
 ):
     """人工开绿灯：标记该任务为已复核，解析失败不再阻断后续使用。"""
     task = db.get(Task, task_id)
-    if task is None:
+    if task is None or task.deleted_at is not None:
         raise HTTPException(404, "任务不存在")
     check = dict(task.check_result or {})
     check["whitelist"] = {
@@ -668,23 +783,59 @@ def whitelist_task(
 @router.get("/{task_id}")
 def get_task(task_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)):
     task = db.get(Task, task_id)
-    if task is None:
+    if task is None or task.deleted_at is not None:
         raise HTTPException(404, "任务不存在")
     _ensure_access(task, user)
-    return {"id": task.id, "biz_no": task.biz_no, "status": task.status, "carrier": task.carrier,
-            "period_start": task.period_start, "period_end": task.period_end,
-            "failure_code": task.failure_code,
-            "check_result": task.check_result,
-            "created_at": task.created_at.isoformat() if task.created_at else None}
+    payload = {
+        "id": task.id,
+        "biz_no": task.biz_no,
+        "status": task.status,
+        "carrier": task.carrier,
+        "period_start": task.period_start,
+        "period_end": task.period_end,
+        "consent_version": task.consent_version,
+        "consent_at": task.consent_at.isoformat() if task.consent_at else None,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+    }
+    if user.role == "banker":
+        payload["failure_code"] = task.failure_code
+        payload["check_result"] = task.check_result
+    else:
+        payload["failure_code"] = (
+            task.failure_code if task.failure_code in _BORROWER_SAFE_FAILURE_CODES else None
+        )
+    return payload
 
 
-@router.get("/{task_id}/file")
+@router.post("/{task_id}/withdraw")
+def withdraw_consent(task_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)):
+    """借款人撤回《个人信息授权》并软删除任务（banker 管理员亦可代为处置）。"""
+    task = db.get(Task, task_id)
+    if task is None or task.deleted_at is not None:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "任务不存在"})
+    if user.role != "banker" and task.user_id != user.id:
+        raise HTTPException(404, detail={"code": "E_NOT_FOUND", "message": "任务不存在"})
+    if user.role == "banker" and not getattr(user, "is_admin", False) and task.user_id != user.id:
+        raise HTTPException(403, detail={"code": "E_FORBIDDEN", "message": "仅本人或管理员可撤回授权"})
+    task.deleted_at = datetime.now()
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="withdraw_consent",
+        object_type="task",
+        object_id=task.id,
+        detail=f"biz={task.biz_no}; consent={task.consent_version or '-'}",
+    ))
+    db.commit()
+    return {"task_id": task.id, "withdrawn": True, "deleted_at": task.deleted_at.isoformat()}
+
+
+@router.get("/{task_id}/file", dependencies=[Depends(require_banker)])
 def get_task_file(task_id: int, db: Session = Depends(get_session), user: User = Depends(current_user)):
     """取任务的原始文件：给「临时标注重解析」用（用户要在原文件上重新画框）。"""
     from fastapi.responses import FileResponse
 
     task = db.get(Task, task_id)
-    if task is None:
+    if task is None or task.deleted_at is not None:
         raise HTTPException(404, "任务不存在")
     _ensure_access(task, user)
     file_row = db.get(FileObj, task.file_id) if task.file_id else None
@@ -699,7 +850,11 @@ def get_task_file(task_id: int, db: Session = Depends(get_session), user: User =
 @router.post("/{task_id}/reparse", dependencies=[Depends(require_banker)])
 def reparse_task(
     task_id: int,
-    marks: str = Form(..., description="临时标注 JSON，只对这一次重解析生效，用完即弃"),
+    marks: str | None = Form(None, description="临时标注 JSON，只对这一次重解析生效，用完即弃"),
+    layout: str | None = Form(None, description="画布框选 layout JSON，只对这一次重解析生效"),
+    field_map: str | None = Form(None, description="字段映射 JSON，配合 layout 使用"),
+    bank_code: str | None = Form(None),
+    password: str | None = Form(None, description="加密 PDF 打开口令"),
     db: Session = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -709,30 +864,53 @@ def reparse_task(
     不进模板库、不产生新模板；下次重跑若不带标注，仍按模板库/通用解析走。
     """
     task = db.get(Task, task_id)
-    if task is None:
+    if task is None or task.deleted_at is not None:
         raise HTTPException(404, "任务不存在")
     _ensure_access(task, user)
+    if task.status in {"QUEUED", "PARSING", "CHECKING", "VERIFYING", "REPORTING"}:
+        raise HTTPException(409, detail={"code": "E_STATE", "message": f"任务正在执行中（{task.status}），暂不允许重跑"})
 
     import json as _json
 
-    try:
-        parsed = _json.loads(marks)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, detail={"code": "E_PARAM", "message": f"临时标注不是合法 JSON：{exc}"}) from exc
-    if not isinstance(parsed, list) or not parsed:
-        raise HTTPException(400, detail={"code": "E_PARAM", "message": "临时标注必须是非空数组"})
+    detail_desc = ""
+    override_json: str
+    reparse_meta: dict
+    if layout and field_map:
+        try:
+            lay_obj = _json.loads(layout)
+            fmap_obj = _json.loads(field_map)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, detail={"code": "E_PARAM", "message": f"框选 JSON 不合法：{exc}"}) from exc
+        if not isinstance(lay_obj, dict) or not isinstance(fmap_obj, dict) or not fmap_obj:
+            raise HTTPException(400, detail={"code": "E_PARAM", "message": "layout 与 field_map 必须是非空对象"})
+        override_payload = {"field_map": fmap_obj, "layout": lay_obj, "bank_code": bank_code}
+        override_json = _json.dumps(override_payload, ensure_ascii=False)
+        reparse_meta = {"by": "temp_canvas"}
+        detail_desc = "temp_canvas"
+    elif marks:
+        try:
+            parsed = _json.loads(marks)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, detail={"code": "E_PARAM", "message": f"临时标注不是合法 JSON：{exc}"}) from exc
+        if not isinstance(parsed, list) or not parsed:
+            raise HTTPException(400, detail={"code": "E_PARAM", "message": "临时标注必须是非空数组"})
+        override_json = _json.dumps(parsed, ensure_ascii=False)
+        reparse_meta = {"by": "temp_marks", "marks": len(parsed)}
+        detail_desc = f"temp_marks n={len(parsed)}"
+    else:
+        raise HTTPException(400, detail={"code": "E_PARAM", "message": "请提供 marks 或 layout + field_map"})
 
-    task.field_map_override = _json.dumps(parsed, ensure_ascii=False)
-    task.check_result = {
-        **(task.check_result or {}),
-        "reparse": {"by": "temp_marks", "marks": len(parsed)},
-    }
-    transition(task, "QUEUED")
-    db.add(AuditLog(action="reparse_task", object_type="task", object_id=task.id,
-                    detail=f"temp_marks n={len(parsed)}"))
+    try:
+        transition(task, "QUEUED")
+    except InvalidTransition as exc:
+        raise HTTPException(400, detail={"code": "E_STATE", "message": str(exc)}) from exc
+
+    task.field_map_override = override_json
+    task.check_result = {**(task.check_result or {}), "reparse": reparse_meta}
+    db.add(AuditLog(actor_id=user.id, action="reparse_task", object_type="task", object_id=task.id, detail=detail_desc))
     db.commit()
 
-    mode = worker.submit_task(task.id)
+    mode = worker.submit_task(task.id, password=password)
     return {"task_id": task.id, "status": task.status, "mode": mode}
 
 
@@ -742,7 +920,7 @@ def merge_modes():
     return {"items": mode_catalog()}
 
 
-@router.post("/merge")
+@router.post("/merge", dependencies=[Depends(require_banker)])
 def merge_tasks(payload: dict, db: Session = Depends(get_session)):
     """把同一借款人的多个账户合并成一份视图。
 
@@ -755,7 +933,7 @@ def merge_tasks(payload: dict, db: Session = Depends(get_session)):
     accounts = []
     for task_id in task_ids:
         task = db.get(Task, task_id)
-        if task is None:
+        if task is None or task.deleted_at is not None:
             continue
         rows = db.execute(select(Txn).where(Txn.task_id == task_id).order_by(Txn.id)).scalars().all()
         def _d(value):
@@ -798,8 +976,9 @@ def add_supplement(
 ):
     """为待补件任务追加材料；不创建新任务，也不覆盖历史材料。"""
     task = db.get(Task, task_id)
-    if task is None:
+    if task is None or task.deleted_at is not None:
         raise HTTPException(404, "任务不存在")
+    _ensure_access(task, user)
     if task.status != "NEED_SUPPLEMENT":
         raise HTTPException(409, detail={"code": "E_STATE", "message": "当前任务不允许补件"})
 
@@ -822,10 +1001,14 @@ def add_supplement(
     )
     max_seq = db.scalar(select(func.max(TaskFile.seq)).where(TaskFile.task_id == task.id)) or 0
     db.add(TaskFile(task_id=task.id, file_id=file_obj.id, role="supplement", seq=int(max_seq) + 1))
-    transition(task, "PARSING")
+    transition(task, "QUEUED")
     db.add(AuditLog(
-        action="add_supplement", object_type="task", object_id=task.id,
+        actor_id=user.id, action="add_supplement", object_type="task", object_id=task.id,
         detail=f"file={_safe_file_name(file.filename)}; file_id={file_obj.id}",
     ))
     db.commit()
-    return {"task_id": task.id, "status": task.status, "file_id": file_obj.id, "material_count": int(max_seq) + 1}
+    mode = worker.submit_task(task.id)
+    return {
+        "task_id": task.id, "status": task.status, "file_id": file_obj.id,
+        "material_count": int(max_seq) + 1, "mode": mode,
+    }

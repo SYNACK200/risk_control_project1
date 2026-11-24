@@ -94,3 +94,5 @@ deploy/.env
 .admin_password
 backend/.auth_secret
 backend/.admin_password
+# 特征 Lab 的本地自定义特征（用户数据，不入库）
+var/lab/

@@ -45,7 +45,7 @@
 | [ ] | BE-39 | 报告输出 authenticity_summary（level/label/未通过层/受限数） | 前端自算会与导出/审计不一致 | `algo/report.py` 调用链 + `schemas` | 报告 JSON 含该字段，页面与它一致 |
 | [ ] | BE-31 | `POST /templates/dry-run`：传样例与 field_map，返回抽取值、条数、自检三项 | 标注页需要即时反馈 | `routers/templates.py` | 返回明细条数与自检结果 |
 | [x] | BE-33 | 口令次数上限与审计（PDF/zip 均 3 次，口令不落库） | 现在前端有提示，后端不限次 | `routers/tasks.py` + `audit_log` | `cd backend && py -m pytest tests -q`；实现按 file_id 统计 3 次失败，第 4 次 `E_LIMIT`，审计不含口令 |
-| [~] | BE-32 | 补件：`POST /tasks/{id}/supplement` 追加 task_file，不新建任务 | 缺件场景走不通 | `routers/tasks.py`、`services/workflow.py` | 已验证仅 `NEED_SUPPLEMENT` 可转 `PARSING` 且追加材料不新建任务；待 BE-09 队列完成多材料重跑并让报告 materials 变为 2 份 |
+| [x] | BE-32 | 补件：`POST /tasks/{id}/supplement` 追加 task_file，不新建任务 | 缺件场景走不通 | `routers/tasks.py`、`services/workflow.py`、`services/task_runner.py` | `NEED_SUPPLEMENT → QUEUED` 后按 original + supplement 合并分析；报告 `materials` 保留每份材料的 file_id、role、pages、sha256；`python -m pytest tests/test_task_runner.py tests/test_workflow.py -q`（4 passed） |
 
 ## P1
 

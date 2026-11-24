@@ -241,3 +241,148 @@
 | 2026-10-31 | 模板创建恢复可用：反验未通过不再硬拦草稿保存（`GET/POST /templates/infer` 增加 valid/saved_invalid，保留 draft_map）；标注页新增「保存为模板草稿」与反验提示 | 算法、后端、银行侧 |
 | 2026-10-31 | 模板删除改为「有引用则软删」：template.deleted_at，DELETE /templates/{id} 返回 soft/used/message；列表默认隐藏已移除，`?include_deleted=true` 可查 | 后端、银行侧 |
 | 2026-10-31 | 任务分析改为后台进程池：POST /tasks 与 /tasks/{id}/reanalyze 立即返回 status=QUEUED，新增 QUEUED 状态；ANALYSIS_BACKEND/ANALYSIS_WORKERS 配置；并发写 metric_value 的死锁加 READ COMMITTED + 重试 | 后端、借款侧、银行侧 |
+---
+
+# 重构线补充（rebuild/v1，2026-11-11）
+
+## 能力契约（不再是「只有 HTTP 接口」）
+
+数据在能力之间按契约流动，契约定义在 `rc_platform/core/contracts.py`：
+
+| 契约 | 生产者 | 消费者 |
+| --- | --- | --- |
+| `document` | 外部输入 | preread / parse / verify |
+| `profile` | `preread.algorithm_compat` | layout / verify.file / verify.compose |
+| `layout` | `layout.anchor_spread` | `parse.layout_v2` |
+| `statement` | `parse.algorithm_compat` / `parse.layout_v2` | layer_content / layer_ledger / layer_external / features / metrics |
+| `layer_file` `layer_content` `layer_ledger` `layer_external` | 四个层能力 | `verify.compose` |
+| `verification` | `verify.compose` / `verify.algorithm_compat` | report |
+| `metrics` | `metrics.algorithm_compat` | report |
+| `features` | `features.derivation` | （指标派生，进行中） |
+| `report` | `report.algorithm_compat` | API |
+
+`document` 是外部输入契约，装配时视为已满足；其余契约必须有能力产出。
+账务层与外部层是 `verify.compose` 的可选依赖：本行没接入时按「未执行」处理，不让整单失败。
+
+## 新增数据表（重构线）
+
+| 表 | 用途 | 约束 |
+| --- | --- | --- |
+| `rc_queue_job` | 任务队列（状态/优先级/租约/重试/死信） | 主键自增；`status` 六态；`lease_until` 过期可回收 |
+
+自定义特征目前存文件（`var/lab/custom_features.json`，按 `code` 版本化），进库前需要补迁移与权限。
+
+## 接口补充
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/v1/lab/operators` | 算子目录（80 个，含参数说明） |
+| `GET /api/v1/lab/features` | 内置特征目录（24 个） |
+| `GET /api/v1/lab/samples` | 可试算的合成样本 |
+| `POST /api/v1/lab/evaluate` | 按表达式或已保存的 `code` 试算 |
+| `GET/POST/DELETE /api/v1/lab/custom` | 自定义特征的列表/保存（版本化）/删除 |
+| `GET /api/v1/health` | 修正：不再被 `/api/{path:path}` 兜底吃成 404 |
+---
+
+# 特征 Lab 独立服务契约（v3，2026-11-21）
+
+> 完整设计见 `方案设计/特征Lab独立化方案.md`。本节只写**接口与数据契约**，改动前先改这里。
+
+## 定位变化
+
+| 项 | v2 | v3 |
+| --- | --- | --- |
+| 形态 | 挂在业务后端进程内的 16 个路由 | 独立服务 `lab_service/`，端口 **8030** |
+| 鉴权 | 复用业务系统 JWT（`require_banker`） | 服务间 **`X-Api-Key`**；业务系统前端不直连 |
+| 交互 | 一次请求算一次，结果直接返回 | **提交 → `run_id` + 指标清单 → 按 `run_id` 取数值** |
+| 输入 | 交易行或合成样本 | **结构化 rows JSON 为主**，PDF 为可选入口 |
+| 结果留存 | 无 | MySQL `lab_run` / `lab_run_value`，保留 **30 天** |
+
+## 服务基址与鉴权
+
+| 项 | 约定 |
+| --- | --- |
+| 基址 | `http://127.0.0.1:8030`（不外网） |
+| 鉴权 | `X-Api-Key` 头；`/healthz` 与 `/ui` 下静态页豁免 |
+| 错误信封 | `detail` 里的 `code` 与 `message` —— **与现有实现一致**，不引入第二套信封 |
+| 金额 | 字符串或 `DECIMAL(28,8)`；**禁止 JSON 浮点** |
+| 时间 | ISO 8601 带 `+08:00` |
+| 幂等 | `request_hash` 相同且在有效期内 → 返回同一 `run_id` |
+
+## 接口清单（Lab 服务）
+
+| 方法 | 路径 | 说明 | 错误 |
+| --- | --- | --- | --- |
+| POST | `/v1/runs` | 提交流水，返回 `run_id` 与可用/不可算清单 | 400/401/404/413 |
+| POST | `/v1/runs/file` | 可选：直接传 PDF（multipart） | 400/401/422 |
+| GET | `/v1/runs/{run_id}` | run 概要（不含数值） | 404/410 |
+| GET | `/v1/runs/{run_id}/features` | 按 `codes` 批量取指标值 | 404/410 |
+| GET | `/v1/runs/{run_id}/features/{code}` | 单个指标值 | 404/410 |
+| GET | `/v1/catalog/features` | 46 条内置特征（含口径、表达式、分类） | — |
+| GET | `/v1/catalog/operators` | 83 个算子 | — |
+| POST | `/v1/expr/evaluate` | 表达式试算 | 422 |
+| GET | `/healthz` | 状态、目录版本、DB 连通 | — |
+### 提交一次计算
+
+```jsonc
+// POST /v1/runs 请求
+{
+  "profile": {"carrier": "electronic", "bank_code": "CCB"},
+  "rows": [{"txn_date": "2021-05-13", "direction": "in",
+             "amount": "9671.74", "balance": "9691.67"}],
+  "codes": ["f_in_total"],
+  "client_ref": "task-167"
+}
+```
+
+```jsonc
+// 201 响应：反馈 = run_id + 指标清单
+{ "run_id": "run_9f3c1a2b", "status": "succeeded", "rows": 570,
+  "feature_catalog_version": "1.0",
+  "expires_at": "2026-12-21T21:00:00+08:00",
+  "available": [{"code": "f_in_total", "name": "入账总额", "unit": "元"}],
+  "unavailable": [{"code": "f_night_count", "reason": "缺 trade_time 列"}] }
+```
+
+### 按 run_id 取指标
+
+```jsonc
+// GET /v1/runs/{run_id}/features?codes=f_in_total
+{ "run_id": "run_9f3c1a2b",
+  "items": [{"code": "f_in_total", "value": "596599.17", "unit": "元", "reason": null},
+            {"code": "f_night_count", "value": null, "reason": "缺 trade_time 列"}] }
+```
+
+**硬规则**：算不出来 → `value: null` 加 `reason`，**绝不返回 0**。
+## 上限
+
+| 项 | 值 | 超限 |
+| --- | --- | --- |
+| 单次 rows | 20000 行 | `413 E_LIMIT` |
+| 单次 codes | 200 个 | `400 E_PARAM` |
+| 请求体 | 32 MB | `413 E_LIMIT` |
+| 未知 code | — | `404 E_NOT_FOUND`（列出未知项） |
+| run 过期 | 30 天 | `410 E_EXPIRED` |
+
+## 新增数据表（v3）
+
+| 表 | 用途 | 约束 |
+| --- | --- | --- |
+| `lab_run` | 一次计算（run 句柄、幂等哈希、过期时间） | `run_id` 唯一；`request_hash` 索引；`expires_at` 索引 |
+| `lab_run_value` | run 的单项结果 | `(run_id, code)` 唯一；数值进 `DECIMAL(28,8)` |
+| `feature_dict` `metric_dict` `operator_dict` | 口径字典（从代码导出，防漂移） | 条数须为 46 / 40 / 83 |
+
+## 兼容期（W47–W50）
+
+| 旧路径（业务后端） | 兼容期行为 | W51 |
+| --- | --- | --- |
+| `/api/v1/features/*` | 反代到 8030，注入 Key，保留 `require_banker` | 删除 |
+| `/api/v1/lab/*` | 同上 | 删除 |
+
+代理铁律：**只转发、不改字段、不改状态码**。新增 `GET /api/v1/lab-bridge/health` 供前端显示连接状态。
+
+## 变更日志
+
+| 日期 | 变更 | 由谁 |
+| --- | --- | --- |
+| 2026-11-21 | 新增 v3 章节：Lab 拆独立服务、run 两段式契约、lab_run 表 | Lead（用户拍板） |

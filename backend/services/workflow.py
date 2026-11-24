@@ -9,7 +9,7 @@ TRANSITIONS: dict[str, frozenset[str]] = {
     "QUEUED": frozenset({"CHECKING", "FAILED"}),
     "CHECKING": frozenset({"PARSING", "FAILED"}),
     "PARSING": frozenset({"VERIFYING", "NEED_SUPPLEMENT", "FAILED"}),
-    "NEED_SUPPLEMENT": frozenset({"PARSING", "FAILED"}),
+    "NEED_SUPPLEMENT": frozenset({"QUEUED", "PARSING", "FAILED"}),
     "VERIFYING": frozenset({"REPORTING", "FAILED"}),
     "REPORTING": frozenset({"DONE", "FAILED"}),
     "DONE": frozenset({"QUEUED"}),

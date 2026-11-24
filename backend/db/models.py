@@ -63,6 +63,9 @@ class Task(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     user_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    # 借款人单独同意与撤回留痕（PIPL 第二十九条）
+    consent_version: Mapped[str | None] = mapped_column(String(32))
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class TaskFile(Base):
@@ -154,6 +157,9 @@ class Template(Base):
     # 建模板时用的样本文件与当时的框选（供事后可视化回看）
     sample_file_id: Mapped[int | None] = mapped_column(Integer)
     layout: Mapped[dict | None] = mapped_column(JSON)
+    # 必需列：这份版式必须读到的字段（如 txn_date/amount/balance）。
+    # 缺列时不是「指标不可算」这么含糊，而是模板层直接说清楚缺了哪一列。
+    required_fields: Mapped[list | None] = mapped_column(JSON)
     # 有历史流水引用时不允许物理删除，改为从列表移除（审计可查）
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -266,3 +272,17 @@ class OcrRouting(Base):
     note: Mapped[str | None] = mapped_column(String(255))
     updated_by: Mapped[str | None] = mapped_column(String(64))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ApprovalRecord(Base):
+    """审批工作台留痕：审批意见、决定与报告版本绑定。"""
+    __tablename__ = "approval_record"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("task.id"), index=True)
+    report_id: Mapped[int | None] = mapped_column(Integer)
+    report_version: Mapped[int] = mapped_column(Integer, default=1)
+    decision: Mapped[str] = mapped_column(String(24))  # approve / reject / supplement / hold
+    comment: Mapped[str] = mapped_column(String(1024))
+    actor_id: Mapped[int | None] = mapped_column(Integer)
+    actor_name: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import threading
 import time
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from db.models import Report, Task
 from logging import getLogger
@@ -37,26 +37,67 @@ def _fast_busy() -> bool:
     except Exception:  # noqa: BLE001
         return False
 
+def _fast_last_finished() -> float:
+    try:
+        from services import worker  # noqa: PLC0415
+
+        return float(worker.last_finished_at())
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
 def _pick_one() -> int | None:
-    """取一个待复核的任务。只看电子件、只看最新报告。"""
+    """取一个待复核的任务。直接按 status='pending' 过滤，避免超过 50 条历史报告后永久卡死。"""
     from db.session import SessionLocal  # noqa: PLC0415
 
     if SessionLocal is None:
         return None
     with SessionLocal() as db:
-        rows = db.execute(
-            select(Report).where(Report.verification.isnot(None)).order_by(Report.id.asc()).limit(50)
-        ).scalars().all()
-        for rep in rows:
-            v = rep.verification or {}
-            if v.get("status") != "pending":
-                continue
-            if (rep.carrier or "").lower() not in ("", "electronic"):
-                continue
-            task = db.get(Task, rep.task_id)
-            if task is None or task.deleted_at is not None:
-                continue
-            return rep.task_id
+        # 优先在数据库层用 JSON_EXTRACT 精确过滤 pending，避免全表拉取
+        candidates = None
+        try:
+            status_expr = func.json_unquote(func.json_extract(Report.verification, "$.status"))
+            candidates = db.execute(
+                select(Report)
+                .where(Report.verification.isnot(None), status_expr == "pending")
+                .order_by(Report.id.asc())
+                .limit(50)
+            ).scalars().all()
+        except Exception:  # noqa: BLE001 - 非 MySQL 或方言不支持时回退游标分页扫描
+            candidates = None
+
+        if candidates is not None:
+            for rep in candidates:
+                if (rep.carrier or "").lower() not in ("", "electronic", "image"):
+                    continue
+                task = db.get(Task, rep.task_id)
+                if task is None or task.deleted_at is not None:
+                    continue
+                return rep.task_id
+            return None
+
+        # 回退游标分页扫描：每次最多扫 100 条，确保历史报告 >50 条时新报告依然能被扫到
+        last_id = 0
+        while True:
+            rows = db.execute(
+                select(Report)
+                .where(Report.verification.isnot(None), Report.id > last_id)
+                .order_by(Report.id.asc())
+                .limit(100)
+            ).scalars().all()
+            if not rows:
+                break
+            last_id = rows[-1].id
+            for rep in rows:
+                v = rep.verification or {}
+                if v.get("status") != "pending":
+                    continue
+                if (rep.carrier or "").lower() not in ("", "electronic", "image"):
+                    continue
+                task = db.get(Task, rep.task_id)
+                if task is None or task.deleted_at is not None:
+                    continue
+                return rep.task_id
     return None
 
 
@@ -66,14 +107,18 @@ def _loop() -> None:
     last_fast = time.time()
     while not _stop.is_set():
         try:
+            now_ts = time.time()
             if _fast_busy():
-                last_fast = time.time()
-            elif time.time() - last_fast >= _IDLE_SECONDS:
-                tid = _pick_one()
-                if tid is not None:
-                    log.info("慢通道复核 task=%s", tid)
-                    verify_task(tid)
-                    continue
+                last_fast = now_ts
+            else:
+                # 同步读取快通道真实结束时间戳，防止 20s 轮询间隔内跑完的任务绕过 5s 空闲约束
+                last_fast = max(last_fast, _fast_last_finished())
+                if now_ts - last_fast >= _IDLE_SECONDS:
+                    tid = _pick_one()
+                    if tid is not None:
+                        log.info("慢通道复核 task=%s", tid)
+                        verify_task(tid)
+                        continue
         except Exception as exc:  # noqa: BLE001
             log.warning("慢通道异常：%s", exc)
         _stop.wait(_POLL_SECONDS)

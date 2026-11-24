@@ -45,10 +45,19 @@ def _norm(text: str) -> str:
 
 
 def _page_text(raw: bytes) -> list[str]:
+    """抽取 PDF 文本层；影像件（JPG/PNG）无 PDF 结构，返回空列表避免抛 FileDataError。"""
+    if not raw or raw[:4] != b"%PDF":
+        return []
     out: list[str] = []
-    doc = pymupdf.open(stream=raw, filetype="pdf")
-    for i in range(doc.page_count):
-        out.append(_norm(doc[i].get_text("text")))
+    try:
+        doc = pymupdf.open(stream=raw, filetype="pdf")
+        try:
+            for i in range(doc.page_count):
+                out.append(_norm(doc[i].get_text("text")))
+        finally:
+            doc.close()
+    except Exception:  # noqa: BLE001
+        return []
     return out
 
 
@@ -104,56 +113,69 @@ def run_self_check(
     if total == 0:
         return SelfCheckResult("inconsistent", [SelfCheckItem("S0", "明细存在", "inconsistent", "未解析到任何明细")])
 
-    def pages_of(i: int) -> str:
-        t = transactions[i]
-        idx = (getattr(t, "page_no", None) or 1) - 1
-        idx = min(max(idx, 0), len(texts) - 1)
-        return texts[idx]
+    if not texts:
+        # 影像件（JPG/PNG）或无文本层扫描件：S1–S4 标记为受限，避免空列表越界崩溃
+        items.append(SelfCheckItem("S1", "金额回查", "limited", "影像件无 PDF 文本层，跳过原文回查"))
+        items.append(SelfCheckItem("S2", "日期回查", "limited", "影像件无 PDF 文本层，跳过原文回查"))
+        items.append(SelfCheckItem("S3", "余额回查", "limited", "影像件无 PDF 文本层，跳过原文回查"))
+        items.append(SelfCheckItem("S4", "跨引擎一致", "limited", "影像件无双引擎文本层，跳过跨引擎核对"))
+    else:
+        def pages_of(i: int) -> str:
+            t = transactions[i]
+            idx = (getattr(t, "page_no", None) or 1) - 1
+            idx = min(max(idx, 0), len(texts) - 1)
+            return texts[idx]
 
-    # S1 金额回查：解析值必须能在对应页原文里找到
-    hit_amt = 0
-    for i, t in enumerate(transactions):
-        amt = getattr(t, "amount", None)
-        if amt is None:
-            continue
-        token = _norm(format(Decimal(str(amt)), "f")).lstrip("+")
-        if token in pages_of(i):
-            hit_amt += 1
-        elif len(samples) < 5:
-            samples.append(f"第 {i+1} 笔金额 {token} 未在原文找到")
-    ratio_amt = hit_amt / total
-    items.append(SelfCheckItem("S1", "金额回查", "pass" if ratio_amt >= 0.99 else "inconsistent",
-                               f"{hit_amt}/{total} 笔金额能在原文定位", round(ratio_amt, 4)))
+        # S1 金额回查：解析值必须能在对应页原文里找到
+        hit_amt = 0
+        for i, t in enumerate(transactions):
+            amt = getattr(t, "amount", None)
+            if amt is None:
+                continue
+            token = _norm(format(Decimal(str(amt)), "f")).lstrip("+")
+            if token in pages_of(i):
+                hit_amt += 1
+            elif len(samples) < 5:
+                samples.append(f"第 {i+1} 笔金额 {token} 未在原文找到")
+        ratio_amt = hit_amt / total
+        items.append(SelfCheckItem("S1", "金额回查", "pass" if ratio_amt >= 0.99 else "inconsistent",
+                                   f"{hit_amt}/{total} 笔金额能在原文定位", round(ratio_amt, 4)))
 
-    # S2 日期回查
-    hit_date = sum(1 for i, t in enumerate(transactions)
-                   if getattr(t, "txn_date", None) and str(t.txn_date) in pages_of(i))
-    ratio_date = hit_date / total
-    items.append(SelfCheckItem("S2", "日期回查", "pass" if ratio_date >= 0.99 else "limited",
-                               f"{hit_date}/{total} 笔日期能在原文定位", round(ratio_date, 4)))
+        # S2 日期回查
+        hit_date = sum(1 for i, t in enumerate(transactions)
+                       if getattr(t, "txn_date", None) and str(t.txn_date) in pages_of(i))
+        ratio_date = hit_date / total
+        items.append(SelfCheckItem("S2", "日期回查", "pass" if ratio_date >= 0.99 else "limited",
+                                   f"{hit_date}/{total} 笔日期能在原文定位", round(ratio_date, 4)))
 
-    # S3 余额回查
-    hit_bal = sum(1 for i, t in enumerate(transactions)
-                  if getattr(t, "balance", None) is not None
-                  and _norm(format(Decimal(str(t.balance)), "f")) in pages_of(i))
-    ratio_bal = hit_bal / total
-    items.append(SelfCheckItem("S3", "余额回查", "pass" if ratio_bal >= 0.99 else "limited",
-                               f"{hit_bal}/{total} 笔余额能在原文定位", round(ratio_bal, 4)))
+        # S3 余额回查
+        hit_bal = sum(1 for i, t in enumerate(transactions)
+                      if getattr(t, "balance", None) is not None
+                      and _norm(format(Decimal(str(t.balance)), "f")) in pages_of(i))
+        ratio_bal = hit_bal / total
+        items.append(SelfCheckItem("S3", "余额回查", "pass" if ratio_bal >= 0.99 else "limited",
+                                   f"{hit_bal}/{total} 笔余额能在原文定位", round(ratio_bal, 4)))
 
-    # S4 跨引擎一致：同一笔金额在两个引擎的文本里都能找到（token 级比对会被切分差异干扰）
-    plumber_pages = _plumber_page_texts(raw, len(texts))
-    both = 0
-    for i, t in enumerate(transactions):
-        amt = getattr(t, "amount", None)
-        if amt is None:
-            continue
-        token = _norm(format(Decimal(str(amt)), "f")).lstrip("+")
-        if token in pages_of(i) and token in plumber_pages[min(max((getattr(t, "page_no", None) or 1) - 1, 0), len(plumber_pages) - 1)]:
-            both += 1
-    ratio_engine = both / total
-    items.append(SelfCheckItem("S4", "跨引擎一致",
-                               "pass" if ratio_engine >= 0.99 else "limited" if ratio_engine >= 0.9 else "inconsistent",
-                               f"{both}/{total} 笔金额在两个引擎文本中均可定位", round(ratio_engine, 4)))
+        # S4 跨引擎一致：plumber_pages 为空时安全降级为 limited，防止 IndexError
+        plumber_pages = _plumber_page_texts(raw, len(texts))
+        if not plumber_pages:
+            items.append(SelfCheckItem("S4", "跨引擎一致", "limited", "第二引擎未提取到文本层，跳过跨引擎核对"))
+        else:
+            both = 0
+            for i, t in enumerate(transactions):
+                amt = getattr(t, "amount", None)
+                if amt is None:
+                    continue
+                token = _norm(format(Decimal(str(amt)), "f")).lstrip("+")
+                p_idx = min(max((getattr(t, "page_no", None) or 1) - 1, 0), len(plumber_pages) - 1)
+                if token in pages_of(i) and token in plumber_pages[p_idx]:
+                    both += 1
+            ratio_engine = both / total
+            items.append(SelfCheckItem(
+                "S4", "跨引擎一致",
+                "pass" if ratio_engine >= 0.99 else "limited" if ratio_engine >= 0.9 else "inconsistent",
+                f"{both}/{total} 笔金额在两个引擎文本中均可定位", round(ratio_engine, 4),
+            ))
 
     # S5 行数守恒
     if footer_count is None:
