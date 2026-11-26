@@ -139,7 +139,9 @@ def op_monthly_values(x, *, column="amount", where=None, agg="sum", notes=None):
     rows = _rows(x)
     period = _period(rows)
     if period is None:
-        return None
+        # 返回空序列而不是 None：调用方（如 f_month_in_cv）还能继续走 mean/pstdev，
+        # 由那些算子按空集给 None + 原因，不至于在表达式组合处抛 OperatorError。
+        return Series(name=f"monthly_{agg}", values=[], frame=None)
     start, end = period
     buckets: dict[tuple[int, int], Decimal] = {
         key: Decimal(0) for key in _months_between(start, end)
