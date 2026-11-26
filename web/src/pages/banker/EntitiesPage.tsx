@@ -12,6 +12,7 @@ import {
 import { getErrorMessage } from '../../api/errors';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 type ConflictItem = {
   account_key?: string;
@@ -202,12 +203,10 @@ export default function EntitiesPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>客户多账户合并与冲突裁决</h1>
-          <p className="sub">同客户多张卡自动识别内部互转与期间重叠，支持多口径合并测算；同卡异名冲突需审贷人员签字裁决。</p>
-        </div>
-      </header>
+      <PageHeader
+        title="客户与账户"
+        description="同客户多张卡自动识别内部互转与期间重叠，支持多口径合并测算；同卡异名冲突需审贷人员签字裁决。"
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}

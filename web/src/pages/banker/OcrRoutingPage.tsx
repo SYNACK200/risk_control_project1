@@ -5,6 +5,7 @@ import { getUser } from '../../auth/store';
 import { Button } from '../../ui/Button';
 import { Field } from '../../ui/Field';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 /** OCR 路由：图片件多到一定数量才走云端；Key 只显示「有没有配」，不回显。 */
 export default function OcrRoutingPage() {
@@ -38,13 +39,11 @@ export default function OcrRoutingPage() {
 
   return (
     <div className="panel">
-      <header className="panel-head">
-        <div>
-          <h1>OCR 路由</h1>
-          <p className="sub">图片件达到阈值才走云端识别；未配置 Key 时只用本地引擎。</p>
-        </div>
-        {isAdmin ? <Button onClick={() => void save()}>保存</Button> : <span className="muted small">只读（需管理员）</span>}
-      </header>
+      <PageHeader
+        title="OCR 路由"
+        description="图片件达到阈值才走云端识别；未配置 Key 时只用本地引擎。"
+        actions={isAdmin ? <Button onClick={() => void save()}>保存</Button> : <span className="muted small">只读（需管理员）</span>}
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {message ? <Notice tone="ok">{message}</Notice> : null}

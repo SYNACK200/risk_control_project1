@@ -28,6 +28,7 @@ import {
 import { PdfPageCanvas } from '../../components/PdfPageCanvas';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 type Tab = 'active' | 'draft' | 'disabled' | 'trash';
 
@@ -278,12 +279,11 @@ export default function TemplatesPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>模板库</h1>
-          <p className="sub">模板决定特定银行版式的几何列框与单值抽取策略；支持字段智能分析建模板、画布微调、实时试跑与版本迭代，删除仅软入回收站。</p>
-        </div>
-        <div className="filters">
+      <PageHeader
+        title="模板库"
+        description="模板决定特定银行版式的几何列框与单值抽取策略；支持字段智能分析建模板、画布微调、实时试跑与版本迭代，删除仅软入回收站。"
+        actions={
+          <div className="filters">
           <Button
             size="sm"
             onClick={() => {
@@ -318,8 +318,9 @@ export default function TemplatesPage() {
           >
             导入模板 JSON
           </Button>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       <div className="filters-bar">
         <div className="tabs small-tabs">
@@ -397,7 +398,7 @@ export default function TemplatesPage() {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 14 }}>
             {/* 短字段配置 */}
-            <div style={{ border: '1px solid var(--border, #d8dee9)', borderRadius: 8, padding: 10 }}>
+            <div style={{ border: '1px solid var(--c-line)', borderRadius: 8, padding: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div>
                   <strong>1. 短字段（就近匹配）</strong>
@@ -462,7 +463,7 @@ export default function TemplatesPage() {
             </div>
 
             {/* 标题字段配置 */}
-            <div style={{ border: '1px solid var(--border, #d8dee9)', borderRadius: 8, padding: 10 }}>
+            <div style={{ border: '1px solid var(--c-line)', borderRadius: 8, padding: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div>
                   <strong>2. 标题字段（版式分析）</strong>
@@ -561,7 +562,7 @@ export default function TemplatesPage() {
           </div>
 
           {analyzeResult && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border, #d8dee9)', paddingTop: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--c-line)', paddingTop: 12 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 <span className="pill ok">
                   银行：{analyzeResult.bank_name ? `${analyzeResult.bank_name} (${analyzeResult.bank_code})` : analyzeResult.bank_code}

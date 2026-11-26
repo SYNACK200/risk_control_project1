@@ -12,6 +12,7 @@ import { getErrorMessage } from '../../api/errors';
 import { getUser } from '../../auth/store';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 export default function UsersPage() {
   const me = getUser();
@@ -153,17 +154,17 @@ export default function UsersPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>账号与权限管理</h1>
-          <p className="sub">借款人可自助注册；银行员工与管理员账号由管理员创建、赋权、启停及重置密码。</p>
-        </div>
-        {isAdmin && (
-          <Button size="sm" onClick={() => setCreateOpen((v) => !v)}>
-            {createOpen ? '收起新建表单' : '+ 新建银行账号'}
-          </Button>
-        )}
-      </header>
+      <PageHeader
+        title="账号与权限管理"
+        description="借款人可自助注册；银行员工与管理员账号由管理员创建、赋权、启停及重置密码。"
+        actions={
+          isAdmin && (
+            <Button size="sm" onClick={() => setCreateOpen((v) => !v)}>
+              {createOpen ? '收起新建表单' : '+ 新建银行账号'}
+            </Button>
+          )
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}

@@ -21,6 +21,7 @@ import { bankLabel } from '../../components/annotate/types';
 import { labelOf } from '../../lib/columns';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 const CANDIDATES = [
   'txn_date',
@@ -190,18 +191,17 @@ export default function TemplateDetailPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>
-            {bankLabel(template.bank_code)} ({template.bank_code}) v{template.version}
-          </h1>
-          <p className="sub">
+      <PageHeader
+        title={<>{bankLabel(template.bank_code)} ({template.bank_code}) v{template.version}</>}
+        description={
+          <>
             模板 #{template.id} · 状态 {template.status === 'enabled' ? '在用' : template.status === 'draft' ? '草稿' : '停用'}
             {' '}· 已标 {mapped.length} 列
             {layObj.tables?.length ? ` · ${layObj.tables.length} 个表格区框选` : ''}
             {template.sample_file_id ? ' · 含原件样本' : ' · 暂无原件样本'}
-          </p>
-        </div>
+          </>
+        }
+        actions={
         <div className="filters">
           <Button size="sm" onClick={() => navigate('/bank/annotate?templateId=' + template.id)}>
             在画布中编辑框选
@@ -225,7 +225,8 @@ export default function TemplateDetailPage() {
           <button type="button" className="btn btn-ghost" onClick={() => void onExport()}>导出 JSON</button>
           <Link className="btn btn-ghost" to="/bank/templates">回到列表</Link>
         </div>
-      </header>
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {message ? <Notice tone="ok">{message}</Notice> : null}
@@ -243,7 +244,7 @@ export default function TemplateDetailPage() {
           <img
             src={layoutImgUrl}
             alt="模板框选示意图"
-            style={{ maxWidth: '100%', maxHeight: 420, border: '1px solid var(--border, #d8dee9)', borderRadius: 8 }}
+            style={{ maxWidth: '100%', maxHeight: 420, border: '1px solid var(--c-line)', borderRadius: 8 }}
           />
         </section>
       )}
