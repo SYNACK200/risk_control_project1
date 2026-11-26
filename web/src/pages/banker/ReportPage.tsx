@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   createApproval,
   exportPrintableReport,
@@ -28,16 +28,27 @@ import { PdfPageCanvas, type PageRenderSize } from '../../components/PdfPageCanv
 import { AmountHistogram, Bar, DomainRadar, InsightSection, MonthlyFlow } from '../../components/ReportCharts';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { Tabs } from '../../ui/Tabs';
 
-type Tab = 'summary' | 'verify' | 'metrics' | 'evidence' | 'txns';
+/** 明细视图下的四个页签；「结论与评分」已并入结论视图。 */
+type Tab = 'verify' | 'metrics' | 'evidence' | 'txns';
+type View = 'conclusion' | 'detail';
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'summary', label: '结论与评分' },
-  { key: 'verify', label: '四层核验与自检' },
+  { key: 'verify', label: '核验与自检' },
   { key: 'metrics', label: '40 项指标' },
   { key: 'evidence', label: '证据与原件定位' },
   { key: 'txns', label: '交易流水明细' },
 ];
+
+const VIEWS: { key: View; label: string }[] = [
+  { key: 'conclusion', label: '结论' },
+  { key: 'detail', label: '明细' },
+];
+
+function toTab(raw: string | null): Tab {
+  return TABS.some((item) => item.key === raw) ? (raw as Tab) : 'verify';
+}
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   PENDING: '待排队',
@@ -190,8 +201,10 @@ export default function ReportPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [tab, setTab] = useState<Tab>('summary');
-  const [viewMode, setViewMode] = useState<'brief' | 'detail'>('detail');
+  // 视图与页签以 URL 为唯一来源：?view=conclusion|detail&tab=verify|metrics|evidence|txns，可直接分享
+  const [params, setParams] = useSearchParams();
+  const view: View = params.get('view') === 'detail' ? 'detail' : 'conclusion';
+  const tab = toTab(params.get('tab'));
   const [txns, setTxns] = useState<TxnRow[] | null>(null);
   const [txnPage, setTxnPage] = useState(0);
   const [keyword, setKeyword] = useState('');
@@ -222,6 +235,40 @@ export default function ReportPage() {
   const [actionBusy, setActionBusy] = useState(false);
 
   const PAGE = 100;
+
+  function setView(next: View) {
+    setParams(
+      (prev) => {
+        const merged = new URLSearchParams(prev);
+        merged.set('view', next);
+        if (next === 'detail') {
+          if (toTab(merged.get('tab')) !== merged.get('tab')) merged.set('tab', 'verify');
+        } else {
+          merged.delete('tab');
+        }
+        return merged;
+      },
+      { replace: true },
+    );
+  }
+
+  function setTab(next: Tab) {
+    setParams(
+      (prev) => {
+        const merged = new URLSearchParams(prev);
+        merged.set('view', 'detail');
+        merged.set('tab', next);
+        return merged;
+      },
+      { replace: true },
+    );
+  }
+
+  // 打印只出结论视图（防泄密）：先把 DOM 同步切到结论视图，再唤起打印
+  function printConclusion() {
+    setParams({ view: 'conclusion' }, { replace: true, flushSync: true });
+    window.setTimeout(() => window.print(), 80);
+  }
 
   const loadReport = useCallback(() => {
     // 报告 404 时也要把任务本身读出来：否则页面只能显示「报告不存在」，
@@ -428,7 +475,7 @@ export default function ReportPage() {
           {st && why[st] ? <p className="muted">{why[st]}</p> : null}
           <div className="empty-actions">
             {st === 'FAILED' ? (
-              <Link className="btn" to="/bank/queue">去任务队列重试</Link>
+              <Link className="btn" to="/bank/tasks?tab=queue">去任务队列重试</Link>
             ) : null}
             <Link className="btn btn-ghost" to="/bank/tasks">回到任务列表</Link>
             <button className="btn btn-ghost" onClick={loadReport}>重新加载</button>
@@ -504,29 +551,10 @@ export default function ReportPage() {
           <Button size="sm" variant="ghost" disabled={actionBusy} onClick={() => void handleExport('html')}>
             导出带水印报告
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              const next = viewMode === 'brief' ? 'detail' : 'brief';
-              setViewMode(next);
-              if (next === 'brief') setTab('summary');
-            }}
-          >
-            {viewMode === 'brief' ? '切换明细版' : '切换结论版'}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setViewMode('brief');
-              setTab('summary');
-              window.setTimeout(() => window.print(), 80);
-            }}
-          >
+          <Button size="sm" variant="ghost" disabled={actionBusy} onClick={printConclusion}>
             打印 / 存 PDF
           </Button>
-          <Link className="btn btn-ghost" to="/bank/tasks">回到列表</Link>
+          <Link className="btn btn-ghost" to="/bank/tasks">回到任务中心</Link>
         </div>
       </header>
 
@@ -539,13 +567,13 @@ export default function ReportPage() {
         </div>
       )}
       {vetoChecks.length > 0 && (
-        <div className="alert err" style={{ borderLeft: '4px solid #c0392b', background: '#fdf2f2', padding: '10px 14px', marginBottom: 12 }}>
+        <div className="alert err alert-veto">
           <strong>一票否决警示：</strong>关键核验项（{vetoChecks.map((c) => c.code).join('、')}）未通过，
           请重点核查余额链/页合计/笔数一致性后再作授信决策。
         </div>
       )}
       {whitelistInfo && (
-        <div className="alert ok" style={{ borderLeft: '4px solid #16a34a', background: '#f0fdf4', padding: '10px 14px', marginBottom: 12 }}>
+        <div className="alert ok alert-veto">
           <strong>人工核实已加白：</strong>
           {whitelistInfo.reason || '已确认真实有效'}
           {whitelistInfo.at ? <span className="muted small" style={{ marginLeft: 8 }}>（{whitelistInfo.at}）</span> : null}
@@ -621,17 +649,14 @@ export default function ReportPage() {
         <div className="score"><span className="score-value">{report.materials?.length ?? 0}</span><span className="muted small">提交材料</span></div>
       </div>
 
-      {viewMode === 'detail' && (
-      <div className="tabs small-tabs report-tabs no-print">
-        {TABS.map((item) => (
-          <button key={item.key} className={tab === item.key ? 'active' : ''} onClick={() => setTab(item.key)}>
-            {item.label}
-          </button>
-        ))}
+      <div className="report-views no-print">
+        <Tabs label="报告视图" items={VIEWS} value={view} onChange={setView} />
+        {view === 'detail' ? (
+          <Tabs className="line-tabs" label="明细页签" items={TABS} value={tab} onChange={setTab} />
+        ) : null}
       </div>
-      )}
 
-      {tab === 'summary' ? (
+      {view === 'conclusion' ? (
         <>
           {(preread || matchedTpl || Object.keys(headerMeta).length > 0 || taskMeta?.consent_version) && (
             <div className="preread-card">
@@ -689,12 +714,10 @@ export default function ReportPage() {
             </div>
           )}
 
-          {viewMode === 'brief' && (
-            <div className="summary-panel">
-              <h3>结论摘要视图（可直接打印交付审贷会）</h3>
-              <p>{buildNarrative(report)}</p>
-            </div>
-          )}
+          <div className="summary-panel">
+            <h3>结论摘要（可直接打印交付审贷会）</h3>
+            <p>{buildNarrative(report)}</p>
+          </div>
 
           <section>
             <h2>四层得分仪表</h2>
@@ -766,7 +789,12 @@ export default function ReportPage() {
             </section>
           ) : null}
 
-          {txns && txns.length > 0 && viewMode === 'detail' ? <InsightSection txns={txns} /> : null}
+          {/* 资金全景只在屏幕上看，不进打印件 */}
+          {txns && txns.length > 0 ? (
+            <div className="no-print">
+              <InsightSection txns={txns} />
+            </div>
+          ) : null}
 
           {customStats.length > 0 && (
             <section>
@@ -876,7 +904,7 @@ export default function ReportPage() {
         </>
       ) : null}
 
-      {tab === 'verify' ? (
+      {view === 'detail' && tab === 'verify' ? (
         <section>
           <h2>四层真实性核验明细</h2>
           {layers.map((layer) => (
@@ -949,7 +977,7 @@ export default function ReportPage() {
         </section>
       ) : null}
 
-      {tab === 'metrics' ? (
+      {view === 'detail' && tab === 'metrics' ? (
         <>
           {Object.entries(grouped).map(([domain, items]) => (
             <section key={domain}>
@@ -993,7 +1021,7 @@ export default function ReportPage() {
         </>
       ) : null}
 
-      {tab === 'evidence' ? (
+      {view === 'detail' && tab === 'evidence' ? (
         <>
           <section>
             <div className="panel-head">
@@ -1089,7 +1117,7 @@ export default function ReportPage() {
               {needDocPassword && (
                 <div className="import-box" style={{ marginBottom: 10 }}>
                   <strong>该原件受口令保护，请输入 PDF 打开口令以调阅：</strong>
-                  {docPasswordWrong ? <span className="small" style={{ color: '#c0392b', marginLeft: 8 }}>口令不正确，请重试</span> : null}
+                  {docPasswordWrong ? <span className="small" style={{ color: 'var(--c-danger)', marginLeft: 8 }}>口令不正确，请重试</span> : null}
                   <div className="try-row" style={{ marginTop: 8 }}>
                     <input
                       type="password"
@@ -1183,7 +1211,7 @@ export default function ReportPage() {
         </>
       ) : null}
 
-      {tab === 'txns' ? (
+      {view === 'detail' && tab === 'txns' ? (
         <section>
           <div className="filters" style={{ marginBottom: 10 }}>
             <input
