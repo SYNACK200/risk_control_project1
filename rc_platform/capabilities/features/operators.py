@@ -847,7 +847,7 @@ def op_within_days(x, *, days=90, ref=None, notes=None):
     anchor = _parse_date(ref) if ref else max(dates)
     if anchor is None:
         raise OperatorError(f"within_days 的 ref 不是合法日期：{ref!r}")
-    cutoff = anchor - timedelta(days=int(days))
+    cutoff = anchor - timedelta(days=int(days) - 1)  # 含锚点共 N 天，不是 N+1 天
     kept: list[TxnRow] = []
     for row in frame.rows:
         row_date = _parse_date(row.txn_date)

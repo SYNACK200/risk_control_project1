@@ -13,11 +13,22 @@ from ...core.contracts import FeatureSet, Statement
 from . import expr as expr_mod
 from .operators import Frame, OperatorError, run_steps
 
+# AL-105：不可算原因只允许这五类，调用方才能按原因分类展示，而不是解析长句。
+REASON_CODES: dict[str, str] = {
+    "missing_column": "缺列",
+    "no_rows": "无数据",
+    "no_denominator": "分母为 0",
+    "insufficient_period": "期数/样本不足",
+    "invalid_input": "输入不合法",
+}
+
 SCHEMA: dict[str, Any] = {
     "columns": ["code", "name", "value", "unit", "reason", "version"],
     "value_types": ["Decimal", "int", "bool", "str", "None"],
     "amount_type": "Decimal（禁止 float）",
     "null_policy": "缺输入为 None 且 reason 写明缺什么；只有笔数/个数这类空集本身是真值的特征可以为 0",
+    "reason_type": "{code, message} | None",
+    "reason_codes": dict(REASON_CODES),
 }
 
 
@@ -78,18 +89,33 @@ def _normalize(raw: Any, definition: FeatureDef) -> Any:
     )
 
 
-def _reason(frame: Frame, notes: Sequence[str]) -> str:
+def _reason_code(message: str) -> str:
+    """把算子写的说明归到五类原因码；分类不确定时宁可归 invalid_input，也不新造码。"""
+    if "缺列" in message or "整列为空" in message:
+        return "missing_column"
+    if any(word in message for word in ("少于", "不足", "至少", "无定义")):
+        return "insufficient_period"
+    if any(word in message for word in ("分母", "除以 0", "均值 0", "均值为 0", "为 0")):
+        return "no_denominator"
+    if any(word in message for word in ("没有可", "为空", "无数据")):
+        return "no_rows"
+    return "invalid_input"
+
+
+def _reason(frame: Frame, notes: Sequence[str]) -> dict[str, str]:
     if not frame.rows:
-        return "明细为空：没有可用的交易记录"
-    if frame.missing:
-        return f"缺列：{'、'.join(sorted(frame.missing))}（该列在全部交易上都没有值）"
-    if notes:
-        return "；".join(dict.fromkeys(notes))
-    return "按条件过滤后没有可聚合的数据"
+        message = "明细为空：没有可用的交易记录"
+    elif frame.missing:
+        message = f"缺列：{'、'.join(sorted(frame.missing))}（该列在全部交易上都没有值）"
+    elif notes:
+        message = "；".join(dict.fromkeys(notes))
+    else:
+        message = "按条件过滤后没有可聚合的数据"
+    return {"code": _reason_code(message), "message": message}
 
 
-def evaluate(definition: FeatureDef, rows: Iterable[Any]) -> tuple[Any, str]:
-    """算一条特征，返回 (值, 原因)；算不出来时值必为 None 且原因为空串以外的说明。"""
+def evaluate(definition: FeatureDef, rows: Iterable[Any]) -> tuple[Any, dict[str, str] | None]:
+    """算一条特征，返回 (值, 原因)；算不出来时值必为 None，原因形如 {code, message}。"""
     frame = Frame(list(rows), origin=f"{definition.code} 的帧")
     notes: list[str] = []
     try:
@@ -102,7 +128,7 @@ def evaluate(definition: FeatureDef, rows: Iterable[Any]) -> tuple[Any, str]:
     except OperatorError as exc:
         raise FeatureDefError(f"特征 {definition.code} 的计算描述有误：{exc}") from None
     value = _normalize(raw, definition)
-    return value, ("" if value is not None else _reason(frame, notes))
+    return value, (None if value is not None else _reason(frame, notes))
 
 
 def compute(defs: Iterable[FeatureDef], statement: Statement, *, version: str = "1.0") -> FeatureSet:
@@ -281,19 +307,22 @@ BUILTIN_FEATURES: tuple[FeatureDef, ...] = (
                category="收入与偿债",
                description="入账金额的标准差/均值；越低说明收入越规律（工资型），越高越像经营或临时进账。"),
     FeatureDef(code="f_month_in_cv", name="月度入账波动", unit="比例",
-               steps=[{"atom": "filter_direction", "args": {"value": "in"}},
-                      {"atom": "monthly_agg", "args": {"mode": "sum", "signed": False}},
-                      {"atom": "cv"}],
+               expr="if_else(mean(monthly_values(column='amount', where=direction=='in')) == 0, none, "
+                    "pstdev(monthly_values(column='amount', where=direction=='in')) / "
+                    "abs(mean(monthly_values(column='amount', where=direction=='in'))))",
                category="收入与偿债",
-               description="按月汇总入账后再算变异系数，跨月看收入稳定性，比单笔口径更贴近还款能力。"),
+               description="按自然月补空月后汇总入账，再算总体标准差 ÷ 均值绝对值；与指标 A04 同口径。"),
     FeatureDef(code="f_round_amount_share", name="整数金额占比", unit="比例",
                expr="count(where=(direction=='out') and (round(amount) == amount)) / count(where=direction=='out')",
                category="鲁棒与异常",
                description="金额恰好是整数的出账笔数占比；异常偏高常见于凑整走账、刷单或人工造流水。"),
     FeatureDef(code="f_large_out_share", name="大额出账金额占比", unit="比例",
-               expr="sum(amount, where=(direction=='out') and (amount >= 20000), signed=false) / sum(amount, where=direction=='out', signed=false)",
+               expr="if_else(count(where=direction=='out') == 0, none, "
+                    "if_else(count(where=(direction=='out') and (amount >= 20000)) == 0, 0, "
+                    "sum(amount, where=(direction=='out') and (amount >= 20000), signed=false) / "
+                    "sum(amount, where=direction=='out', signed=false)))",
                category="集中度与稳定性",
-               description="单笔 2 万元以上的出账合计占全部出账的比例，衡量资金流出是否集中在少数大额交易上。"),
+               description="单笔 2 万元以上的出账合计占全部出账的比例；没有大额出账时为 0，没有出账时为 null。"),
     FeatureDef(code="f_idle_months", name="无交易月数", unit="月",
                expr="idle_months()",
                category="时间行为",

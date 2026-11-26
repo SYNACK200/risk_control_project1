@@ -33,39 +33,50 @@ def test_compute_returns_contract_shaped_records():
     for record in result.records:
         assert set(record) == {"code", "name", "value", "unit", "reason", "version"}
         if record["value"] is not None:
-            assert record["reason"] == ""
+            assert record["reason"] is None
         else:
             assert record["reason"], record["code"]
+            assert record["reason"]["code"] in defs.REASON_CODES
+            assert record["reason"]["message"]
+
+
+def test_all_reasons_use_the_standard_codes():
+    """AL-105：46 个特征在缺 trade_time 的件上，原因码必须全部落在五类字典内。"""
+    for kwargs in ({}, {"drop": ("trade_time",)}):
+        got = records(**kwargs)
+        for record in got.values():
+            if record["value"] is None:
+                assert record["reason"]["code"] in defs.REASON_CODES, record["code"]
 
 
 def test_missing_balance_column_is_none_and_explained():
     got = records(drop=("balance",))
     for code in ("f_balance_min", "f_balance_last"):
         assert got[code]["value"] is None
-        assert "balance" in got[code]["reason"]
+        assert "balance" in got[code]["reason"]["message"]
         assert got[code]["value"] != 0
 
 
 def test_missing_time_column_is_none_and_explained():
     got = records(drop=("trade_time",))
     assert got["f_night_count"]["value"] is None
-    assert "trade_time" in got["f_night_count"]["reason"]
+    assert "trade_time" in got["f_night_count"]["reason"]["message"]
 
 
 def test_missing_direction_column_is_none_and_explained():
     got = records(drop=("direction",))
     assert got["f_out_total"]["value"] is None
-    assert "direction" in got["f_out_total"]["reason"]
+    assert "direction" in got["f_out_total"]["reason"]["message"]
 
 
 def test_empty_statement_says_no_rows_and_count_is_real_zero():
     result = defs.compute(defs.BUILTIN_FEATURES, Statement())
     got = {record["code"]: record for record in result.records}
     assert got["f_out_total"]["value"] is None
-    assert "明细为空" in got["f_out_total"]["reason"]
+    assert "明细为空" in got["f_out_total"]["reason"]["message"]
     # 笔数为 0 是真的 0 笔，不是「缺输入填 0」
     assert got["f_txn_count"]["value"] == 0
-    assert got["f_txn_count"]["reason"] == ""
+    assert got["f_txn_count"]["reason"] is None
 
 
 def test_no_value_is_ever_a_float():
@@ -109,4 +120,4 @@ def test_definition_version_and_unit_are_kept():
     result = defs.compute([definition], Statement(rows=sample_rows()))
     record = result.records[0]
     assert record == {"code": "x_custom", "name": "自定义出账笔数", "value": 5,
-                      "unit": "笔", "reason": "", "version": "3.1"}
+                      "unit": "笔", "reason": None, "version": "3.1"}
