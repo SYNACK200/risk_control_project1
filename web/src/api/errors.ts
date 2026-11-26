@@ -110,3 +110,28 @@ export function getErrorMessage(error: unknown, audience: Audience): string {
   }
   return MESSAGES[audience][error.code];
 }
+
+/**
+ * 任务失败码 → 借款侧处置指引。
+ * 比 MESSAGES.borrower 多说一步「接下来怎么办」；借款侧所有失败码文案只从这里取。
+ */
+const BORROWER_FAILURE_GUIDE: Record<string, string> = {
+  E_FORMAT: '文件格式无法识别，请从手机银行/网银重新导出原版 PDF 后上传。',
+  E_BROKEN: '文件已损坏或不完整，请重新从银行客户端下载后上传。',
+  E_ENCRYPT: '文件设有打开口令，请重新上传并填写正确的打开口令。',
+  E_NOT_STATEMENT: '这份文件不是有效的银行交易流水，请确认后上传对账单或交易明细。',
+  E_NOLAYER: '当前材料清晰度不足或缺少电子信息，请改传原版 PDF 或清晰完整的照片。',
+  E_MULTI: '检测到同一文件混合了多家银行流水，请按银行分别导出后上传。',
+  E_CHECK: '流水明细与页脚合计不一致，请核对原件后重新上传。',
+  E_IMAGE_LOWQ: '照片分辨率过低或画面模糊，请在光线充足环境下重新拍摄或直接导出电子版 PDF。',
+  E_IMAGE_BLUR: '照片分辨率过低或画面模糊，请在光线充足环境下重新拍摄或直接导出电子版 PDF。',
+  E_LIMIT: '文件过大或提交过于频繁，请精简材料后稍后再试。',
+};
+
+export function getFailureGuide(code: string | null | undefined): string {
+  if (!code) return '处理未完成，请尝试重新上传原版材料或联系经办人员。';
+  return (
+    BORROWER_FAILURE_GUIDE[code] ??
+    `处理未完成（${code}），请尝试重新上传原版材料或联系经办人员。`
+  );
+}

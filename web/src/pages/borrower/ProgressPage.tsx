@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getTask, supplementTask, type TaskDetail } from '../../api/borrower';
-import { getErrorMessage } from '../../api/errors';
+import { getTask, listMyTasks, supplementTask, type TaskDetail } from '../../api/borrower';
+import { getFailureGuide, getErrorMessage } from '../../api/errors';
 import { Button } from '../../ui/Button';
+import { EmptyState } from '../../ui/EmptyState';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 const STEPS: { key: string; label: string }[] = [
   { key: 'QUEUED', label: '已受理，等待开始' },
@@ -23,33 +25,56 @@ function stepIndex(status: string) {
   return index;
 }
 
-function failureText(code: string | null) {
-  switch (code) {
-    case 'E_FORMAT':
-      return '文件格式无法识别，请从手机银行/网银重新导出原版 PDF 后上传。';
-    case 'E_BROKEN':
-      return '文件已损坏或不完整，请重新从银行客户端下载后上传。';
-    case 'E_ENCRYPT':
-      return '文件设有打开口令，请重新上传并填写正确的打开口令。';
-    case 'E_NOT_STATEMENT':
-      return '这份文件不是有效的银行交易流水，请确认后上传对账单或交易明细。';
-    case 'E_NOLAYER':
-      return '当前材料清晰度不足或缺少电子信息，请改传原版 PDF 或清晰完整的照片。';
-    case 'E_MULTI':
-      return '检测到同一文件混合了多家银行流水，请按银行分别导出后上传。';
-    case 'E_CHECK':
-      return '流水明细与页脚合计不一致，请核对原件后重新上传。';
-    case 'E_IMAGE_LOWQ':
-    case 'E_IMAGE_BLUR':
-      return '照片分辨率过低或画面模糊，请在光线充足环境下重新拍摄或直接导出电子版 PDF。';
-    default:
-      return '处理未完成，请尝试重新上传原版材料或联系经办人员。';
+/**
+ * 单个任务的进度。没带任务号时默认看最近一条提交（列表按提交时间倒序）。
+ * 本页只显示处理进度；审核结论与风险指标仅供银行工作人员查阅。
+ */
+export default function ProgressPage({ active = true }: { active?: boolean } = {}) {
+  const { id } = useParams();
+  const [latest, setLatest] = useState<{ id: number | null; error: string } | null>(null);
+
+  useEffect(() => {
+    if (id) return;
+    let alive = true;
+    listMyTasks(1)
+      .then((res) => {
+        if (alive) setLatest({ id: res.items?.[0]?.id ?? null, error: '' });
+      })
+      .catch((err) => {
+        if (alive) setLatest({ id: null, error: getErrorMessage(err, 'borrower') });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  if (id) return <TaskProgress key={id} taskId={Number(id)} active={active} />;
+  if (!latest) return <p className="muted">加载中…</p>;
+  if (latest.error) {
+    return (
+      <>
+        <Notice>{latest.error}</Notice>
+        <Link className="btn btn-ghost" to="/app/progress?tab=history">查看我的提交记录</Link>
+      </>
+    );
   }
+  if (latest.id === null) {
+    return (
+      <EmptyState
+        title="还没有提交记录"
+        hint="上传一份银行流水后，可以在这里看到它走到哪一步。"
+        action={
+          <Link className="btn" to="/app">
+            去上传流水
+          </Link>
+        }
+      />
+    );
+  }
+  return <TaskProgress key={latest.id} taskId={latest.id} active={active} />;
 }
 
-export default function ProgressPage() {
-  const { id } = useParams();
-  const taskId = Number(id);
+function TaskProgress({ taskId, active }: { taskId: number; active: boolean }) {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [error, setError] = useState('');
   const [supFile, setSupFile] = useState<File | null>(null);
@@ -61,8 +86,9 @@ export default function ProgressPage() {
 
   const fetchDetail = useCallback(() => getTask(taskId), [taskId]);
 
+  // 不在「当前」页签时不轮询，切回来再续上
   useEffect(() => {
-    if (!Number.isFinite(taskId)) return;
+    if (!Number.isFinite(taskId) || !active) return;
     let alive = true;
     let timer: number | undefined;
 
@@ -93,7 +119,7 @@ export default function ProgressPage() {
       alive = false;
       if (timer) window.clearTimeout(timer);
     };
-  }, [taskId, fetchDetail, pollSeed]);
+  }, [taskId, fetchDetail, pollSeed, active]);
 
   useEffect(() => {
     if (!task || ['DONE', 'FAILED', 'NEED_SUPPLEMENT'].includes(task.status)) return;
@@ -122,11 +148,10 @@ export default function ProgressPage() {
 
   if (notFound) {
     return (
-      <div className="panel">
-        <h1>未找到该提交记录</h1>
-        <p className="sub">任务编号无效或无权查看，请返回提交记录列表确认。</p>
-        <Link className="btn" to="/app/tasks">返回我的提交记录</Link>
-      </div>
+      <>
+        <PageHeader description="任务编号无效或无权查看，请到「历史」页签确认。" />
+        <Link className="btn" to="/app/progress?tab=history">查看我的提交记录</Link>
+      </>
     );
   }
   const status = task?.status ?? 'PENDING';
@@ -134,21 +159,26 @@ export default function ProgressPage() {
   const failed = status === 'FAILED';
 
   return (
-    <div className="panel">
-      <h1>处理进度</h1>
-      <p className="sub">
-        业务号 <span className="mono">{task?.biz_no ?? '—'}</span> · 提交时间{' '}
-        {task?.created_at ? new Date(task.created_at).toLocaleString() : '—'}
-        {task?.carrier ? ` · 材料类型：${task.carrier === 'electronic' ? '电子原件' : '影像/图片件'}` : ''}
-        {elapsedSec > 0 && !['DONE', 'FAILED'].includes(status) ? ` · 已等待 ${elapsedSec} 秒` : ''}
-      </p>
+    <>
+      <PageHeader
+        description={
+          <>
+            任务 #{taskId}{task?.biz_no ? `（${task.biz_no}）` : ''} · 提交时间 {task?.created_at ? new Date(task.created_at).toLocaleString() : '—'}
+            {task?.carrier ? ` · 材料类型：${task.carrier === 'electronic' ? '电子原件' : '影像/图片件'}` : ''}
+            {elapsedSec > 0 && !['DONE', 'FAILED'].includes(status) ? ` · 已等待 ${elapsedSec} 秒` : ''}
+          </>
+        }
+        actions={
+          <Link className="btn" to="/app">
+            {failed ? '重新上传材料' : '再传一份'}
+          </Link>
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {supNotice ? <Notice tone="ok">{supNotice}</Notice> : null}
 
-      {failed ? (
-        <Notice>{failureText(task?.failure_code ?? null)}</Notice>
-      ) : (
+      {failed ? <Notice>{getFailureGuide(task?.failure_code)}</Notice> : (
         <ol className="timeline">
           {STEPS.map((step, index) => {
             const state = index < current ? 'done' : index === current ? 'active' : 'todo';
@@ -165,7 +195,7 @@ export default function ProgressPage() {
       {status === 'NEED_SUPPLEMENT' ? (
         <div className="supplement-box">
           <Notice tone="info">当前材料部分页次不清晰或信息不完整，请补充清晰的原版 PDF 或照片。</Notice>
-          <div className="try-row" style={{ marginTop: 10 }}>
+          <div className="try-row">
             <input
               type="file"
               accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -178,16 +208,7 @@ export default function ProgressPage() {
         </div>
       ) : null}
 
-      <div className="actions">
-        <Link className="btn" to="/app/upload">
-          {failed ? '重新上传材料' : '再传一份'}
-        </Link>
-        <Link className="btn btn-ghost" to="/app/tasks">
-          我的提交记录
-        </Link>
-      </div>
-
       <p className="muted small">本页只显示处理进度；审核结论与风险指标仅供银行工作人员查阅。</p>
-    </div>
+    </>
   );
 }

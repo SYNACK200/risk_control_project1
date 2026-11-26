@@ -7,6 +7,7 @@ import { BANK_OPTIONS } from '../../lib/banks';
 import { Button } from '../../ui/Button';
 import { Field } from '../../ui/Field';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 const MB = 1024 * 1024;
 const CONCURRENCY = 2;
@@ -157,13 +158,13 @@ export default function UploadPage() {
     try {
       if (files.length > 1 && files.every(isImage)) {
         const created = await composeTask(fields, files);
-        navigate('/app/tasks/' + created.task_id, { replace: true });
+        navigate('/app/progress/' + created.task_id, { replace: true });
         return;
       }
 
       if (files.length === 1) {
         const created = await createTask(fields, files[0]);
-        navigate('/app/tasks/' + created.task_id, { replace: true });
+        navigate('/app/progress/' + created.task_id, { replace: true });
         return;
       }
 
@@ -202,8 +203,7 @@ export default function UploadPage() {
 
   return (
     <div className="panel" onPaste={onPaste}>
-      <h1>上传个人银行流水</h1>
-      <p className="sub">优先提交从手机银行/网银直接导出的原版 PDF；多张同一份流水的照片可多选合并提交。本页不展示风险评估结果。</p>
+      <PageHeader title="上传个人银行流水" description="优先提交从手机银行/网银直接导出的原版 PDF；多张同一份流水的照片可多选合并提交。本页不展示风险评估结果。" />
 
       {error ? <Notice>{error}</Notice> : null}
       {warning ? <Notice tone="info">{warning}</Notice> : null}
@@ -224,7 +224,7 @@ export default function UploadPage() {
                 </td>
                 <td>
                   {job.taskId ? (
-                    <button className="link-btn" onClick={() => navigate('/app/tasks/' + job.taskId)}>
+                    <button className="link-btn" onClick={() => navigate('/app/progress/' + job.taskId)}>
                       #{job.taskId} 查看进度
                     </button>
                   ) : job.error ? (
@@ -372,12 +372,12 @@ export default function UploadPage() {
         <div className="recent-box">
           <div className="recent-head">
             <span className="small muted">最近提交</span>
-            <Link className="link-btn" to="/app/tasks">查看全部记录 ›</Link>
+            <Link className="link-btn" to="/app/progress?tab=history">查看全部记录 ›</Link>
           </div>
           <ul className="plain small">
             {recent.map((r) => (
               <li key={r.id}>
-                <Link to={'/app/tasks/' + r.id}>
+                <Link to={'/app/progress/' + r.id}>
                   <span className="mono">{r.biz_no}</span> · {r.status === 'DONE' ? '已完成' : r.status === 'NEED_SUPPLEMENT' ? '需补传' : r.status === 'FAILED' ? '未完成' : '处理中'}
                 </Link>
               </li>
