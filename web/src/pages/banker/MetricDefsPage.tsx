@@ -13,9 +13,10 @@ import { getErrorMessage } from '../../api/errors';
 import { getUser } from '../../auth/store';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 /** 指标口径：口径是业务资产，必须能查到「这一项算什么、缺什么就算不出来」。 */
-export default function MetricDefsPage() {
+export default function MetricDefsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const isAdmin = Boolean(getUser()?.is_admin);
   const [items, setItems] = useState<MetricDef[]>([]);
   const [customs, setCustoms] = useState<CustomMetricItem[]>([]);
@@ -107,29 +108,31 @@ export default function MetricDefsPage() {
   }
 
   return (
-    <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>指标口径</h1>
-          <p className="sub">
+    <div className={embedded ? undefined : 'panel wide'}>
+      <PageHeader
+        title={embedded ? undefined : '指标口径'}
+        description={
+          <>
             共 {items.length} 项 · 指标集版本 {version ?? '—'}。口径只增不改，历史报告按当时版本解释。
-          </p>
-        </div>
-        <div className="filters">
-          <input
-            className="search"
-            placeholder="搜索代号 / 指标名 / 口径"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          <select value={group} onChange={(event) => setGroup(event.target.value)}>
-            <option value="">全部分区</option>
-            {groups.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-        </div>
-      </header>
+          </>
+        }
+        actions={
+          <div className="filters">
+            <input
+              className="search"
+              placeholder="搜索代号 / 指标名 / 口径"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <select value={group} onChange={(event) => setGroup(event.target.value)}>
+              <option value="">全部分区</option>
+              {groups.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}

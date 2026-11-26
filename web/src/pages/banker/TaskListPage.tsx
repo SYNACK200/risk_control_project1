@@ -13,6 +13,16 @@ import { getErrorMessage } from '../../api/errors';
 import { getUser } from '../../auth/store';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
+import { Tabs } from '../../ui/Tabs';
+import QueuePage from './QueuePage';
+
+type CenterTab = 'list' | 'queue';
+
+const CENTER_TABS: { key: CenterTab; label: string }[] = [
+  { key: 'list', label: '列表' },
+  { key: 'queue', label: '队列' },
+];
 
 const VERDICT_TONE: Record<string, string> = {
   未发现异常: 'ok',
@@ -39,8 +49,21 @@ function Badge({ text, tone }: { text: string; tone: string }) {
 
 export default function TaskListPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = Boolean(getUser()?.is_admin);
+  const tab: CenterTab = searchParams.get('tab') === 'queue' ? 'queue' : 'list';
+
+  function selectTab(next: CenterTab) {
+    setSearchParams(
+      (prev) => {
+        const merged = new URLSearchParams(prev);
+        if (next === 'queue') merged.set('tab', 'queue');
+        else merged.delete('tab');
+        return merged;
+      },
+      { replace: true },
+    );
+  }
 
   const [data, setData] = useState<TaskList | null>(null);
   const [query, setQuery] = useState(() => searchParams.get('q') || '');
@@ -103,13 +126,14 @@ export default function TaskListPage() {
     load();
   }, [load]);
 
-  // 有正在处理中的任务时每 3 秒自动刷新一次状态
+  // 有正在处理中的任务时每 3 秒自动刷新一次状态；停在队列页签时不刷
+  const listActive = tab === 'list';
   useEffect(() => {
     const hasRunning = (data?.items ?? []).some((t) => RUNNING_STATUSES.has(t.status));
-    if (!hasRunning || trash) return;
+    if (!hasRunning || trash || !listActive) return;
     const timer = window.setTimeout(() => load(true), 3000);
     return () => window.clearTimeout(timer);
-  }, [data, trash, load]);
+  }, [data, trash, load, listActive]);
 
   const authFacets = data?.facets?.authenticity ?? {};
   const bankFacets = data?.facets?.bank ?? {};
@@ -178,34 +202,41 @@ export default function TaskListPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>{trash ? '流水回收站' : '受理与报告'}</h1>
-          <p className="sub">
-            {trash
-              ? '回收站内的流水可随时恢复或由管理员彻底粉碎。'
-              : `按真实性、银行与风险维度筛选查看；共 ${data?.total ?? 0} 份。`}
-          </p>
-        </div>
-        <div className="filters">
-          <Button size="sm" variant="ghost" onClick={() => load()}>
-            刷新
-          </Button>
-          {isAdmin && (
-            <Button
-              size="sm"
-              variant={trash ? 'primary' : 'ghost'}
-              onClick={() => {
-                setTrash((v) => !v);
-                setOffset(0);
-              }}
-            >
-              {trash ? '返回正式列表' : '查看回收站'}
-            </Button>
-          )}
-        </div>
-      </header>
+      <PageHeader
+        title={trash ? '流水回收站' : '任务中心'}
+        description={
+          trash
+            ? '回收站内的流水可随时恢复或由管理员彻底粉碎。'
+            : tab === 'queue'
+              ? '查任务、看报告、管队列；队列是任务的实时视图。'
+              : `按真实性、银行与风险维度筛选查看；共 ${data?.total ?? 0} 份。`
+        }
+        actions={
+          tab === 'list' ? (
+            <div className="filters">
+              <Button size="sm" variant="ghost" onClick={() => load()}>
+                刷新
+              </Button>
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant={trash ? 'primary' : 'ghost'}
+                  onClick={() => {
+                    setTrash((v) => !v);
+                    setOffset(0);
+                  }}
+                >
+                  {trash ? '返回正式列表' : '查看回收站'}
+                </Button>
+              )}
+            </div>
+          ) : null
+        }
+      />
 
+      <Tabs className="page-tabs" label="任务中心" items={CENTER_TABS} value={tab} onChange={selectTab} />
+
+      <div hidden={tab !== 'list'}>
       <div className="filters-bar">
         <div className="filters">
           <input
@@ -270,7 +301,7 @@ export default function TaskListPage() {
           </select>
           <details style={{ display: 'inline-block' }}>
             <summary className="link-btn" style={{ padding: '4px 8px' }}>高级筛选（日期/收入/解析/来源）</summary>
-            <div className="filters" style={{ marginTop: 8, padding: '8px 10px', background: '#f8fafc', borderRadius: 6 }}>
+            <div className="filters filters-advanced">
               <select aria-label="来源筛选" value={source} onChange={(e) => { setSource(e.target.value); setOffset(0); }}>
                 <option value="">全部来源</option>
                 <option value="clean">可信电子版</option>
@@ -513,6 +544,11 @@ export default function TaskListPage() {
           </button>
         </div>
       ) : null}
+      </div>
+
+      <div hidden={tab !== 'queue'}>
+        <QueuePage embedded active={tab === 'queue'} />
+      </div>
     </div>
   );
 }

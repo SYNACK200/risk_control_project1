@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { getMetricDefinitions, getVerificationDefinitions, type MetricDef, type VerificationDef } from '../../api/banker';
 import { getErrorMessage } from '../../api/errors';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
+import { Tabs } from '../../ui/Tabs';
 
 /**
  * 口径说明：指标口径 + 校验口径。
@@ -9,7 +11,7 @@ import { Notice } from '../../ui/Notice';
  * 这两张表是**只读的字典**，不是可调参数，所以不放在「参数」栏——
  * 参数栏只放能改的东西（风控阈值、OCR 路由）。这里从报告与特征 Lab 里按需跳到。
  */
-export default function GlossaryPage() {
+export default function GlossaryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [tab, setTab] = useState<'metrics' | 'checks'>('metrics');
   const [metrics, setMetrics] = useState<MetricDef[]>([]);
   const [checks, setChecks] = useState<VerificationDef[]>([]);
@@ -36,26 +38,27 @@ export default function GlossaryPage() {
   const shownChecks = layer ? checks.filter((item) => item.layer === layer) : checks;
 
   return (
-    <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>口径说明</h1>
-          <p className="sub">
+    <div className={embedded ? undefined : 'panel wide'}>
+      <PageHeader
+        title={embedded ? undefined : '口径说明'}
+        description={
+          <>
             只读的字典：每项指标怎么算、每项自检怎么验。报告里点开任意指标都能跳回这里。
             {version ? ' 指标集版本 ' + version + '，历史报告按各自版本解释。' : ''}
-          </p>
-        </div>
-        <div className="filters">
-          <div className="tabs small-tabs">
-            <button className={tab === 'metrics' ? 'active' : ''} onClick={() => setTab('metrics')}>
-              指标口径（{metrics.length}）
-            </button>
-            <button className={tab === 'checks' ? 'active' : ''} onClick={() => setTab('checks')}>
-              校验口径（{checks.length}）
-            </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+        actions={
+          <Tabs
+            label="口径说明"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { key: 'metrics', label: `指标口径（${metrics.length}）` },
+              { key: 'checks', label: `校验口径（${checks.length}）` },
+            ]}
+          />
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
 
