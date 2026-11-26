@@ -92,6 +92,8 @@ class Statement:
     page_count: int = 0
     warnings: list[str] = field(default_factory=list)
     native: Any = None
+    # 解析路径留痕：parser_used / dated_ratio / row_count。复盘「这次为什么用了兜底」靠它。
+    meta: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

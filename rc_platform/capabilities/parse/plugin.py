@@ -42,3 +42,37 @@ class AlgorithmParser:
         template = _template_from_config(ctx.setting("parse.template"))
         parsed = parse_document(doc.data, template)
         return statement_from_parsed(parsed)
+
+
+@capability
+class UnifiedParser:
+    """统一入口：layout_v2 为主、日期覆盖率不足时用旧解析器兜底。
+
+    默认不选它（priority 低于兼容层），需要显式 overrides={"statement": "parse.unified"}。
+    这样 M2 的对照能力仍在，切默认是单独一次决定，不会悄悄改变存量结论。
+    """
+
+    name = "parse.unified"
+    version = "1.0"
+    provides = "statement"
+    requires = ("document", "profile")
+    priority = 1
+
+    def run(self, ctx, inputs):
+        from .entry import parse_statement
+
+        doc = inputs["document"]
+        prof = inputs["profile"]
+        profile = {
+            "carrier": prof.carrier,
+            "pages": prof.pages,
+            "has_text_layer": prof.has_text_layer,
+            "encrypted": prof.encrypted,
+            "bank_code": prof.bank_code,
+            "bank_name": prof.bank_name,
+            "period_start": prof.period_start,
+            "period_end": prof.period_end,
+            "is_statement": prof.is_statement,
+            "reasons": list(prof.reasons),
+        }
+        return parse_statement(data=doc.data, profile=profile)

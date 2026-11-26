@@ -21,7 +21,10 @@ from rc_platform.core.registry import default_registry
 
 def run_file(path: Path, *, config: dict | None = None, verbose: bool = False) -> dict:
     registry = default_registry()
-    plan = registry.plan("report")
+    # 有模板时走兼容层（模板只有旧解析器认）；没有模板时走统一入口：
+    # layout_v2 为主，日期覆盖率不足自动用旧解析器兜底。
+    overrides = None if (config or {}).get("parse.template") else {"statement": "parse.unified"}
+    plan = registry.plan("report", overrides=overrides)
     ctx = JobContext(job_id=path.stem, config=config or {})
 
     if verbose:
@@ -35,11 +38,14 @@ def run_file(path: Path, *, config: dict | None = None, verbose: bool = False) -
     verification = result.get("verification")
     statement = result.get("statement")
     metrics = result.get("metrics")
+    meta = dict(getattr(statement, "meta", {}) or {}) if statement else {}
     return {
         "status": result.status,
         "verdict": getattr(verification, "verdict", None),
         "verdict_reason": getattr(verification, "verdict_reason", None),
         "txn_count": len(statement.rows) if statement else 0,
+        "parser_used": meta.get("parser_used"),
+        "dated_ratio": meta.get("dated_ratio"),
         "metric_count": len(metrics.items) if metrics else 0,
         "degradation": result.degradation,
         "stages": [s.to_dict() for s in result.stages],
