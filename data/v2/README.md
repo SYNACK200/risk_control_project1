@@ -1,5 +1,7 @@
 # v2 数据侧交接
 
+> 历史 Demo：本目录锁定旧提交 e9baadf，不适用于当前团队模型。当前独立建表脚本、16 表 153 字段字典与验证方法见 [../current/README.md](../current/README.md)。不要把旧 Demo 的库表计数或验收记录用于新版。
+
 依据团队dev提交e9baadf的contract.md及《数据隐私与外部调用方案》。本地旧分支及历史实现未覆盖；contract_source.md为该提交的原文快照，contract.json为11表89个关键字段清单，原件不是新公共契约。
 
 本轮范围只有DA-25数据隐私与DA-24留存干跑。数据交接接口为integration.validated_v2_records(table, records)：先统一脱敏，再核对新版契约字段、金额精度和补件角色/顺序。只处理关键字段；backend模型额外的created_at/payload等列不能直接混入此接口，须由后端在交接时映射。
