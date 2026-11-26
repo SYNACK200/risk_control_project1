@@ -94,3 +94,5 @@ deploy/.env
 .admin_password
 backend/.auth_secret
 backend/.admin_password
+tmp/data-schema-deps/
+*.snapshot.enc

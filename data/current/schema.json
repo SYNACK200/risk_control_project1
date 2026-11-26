@@ -1,0 +1,651 @@
+{
+  "source": "backend/db/models.py",
+  "table_count": 16,
+  "field_count": 153,
+  "tables": {
+    "app_user": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "username": {
+        "type": "VARCHAR(64)",
+        "nullable": false
+      },
+      "password_hash": {
+        "type": "VARCHAR(255)",
+        "nullable": false
+      },
+      "role": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "is_admin": {
+        "type": "BOOL",
+        "nullable": false
+      },
+      "display_name": {
+        "type": "VARCHAR(64)",
+        "nullable": true
+      },
+      "status": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      },
+      "last_login_at": {
+        "type": "DATETIME",
+        "nullable": true
+      }
+    },
+    "audit_log": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "actor_id": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "action": {
+        "type": "VARCHAR(32)",
+        "nullable": false
+      },
+      "object_type": {
+        "type": "VARCHAR(32)",
+        "nullable": true
+      },
+      "object_id": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "detail": {
+        "type": "VARCHAR(1024)",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "custom_metric": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "code": {
+        "type": "VARCHAR(32)",
+        "nullable": false
+      },
+      "name": {
+        "type": "VARCHAR(64)",
+        "nullable": false
+      },
+      "unit": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "group_name": {
+        "type": "VARCHAR(32)",
+        "nullable": true
+      },
+      "formula": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "inputs": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "note": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "steps": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "enabled": {
+        "type": "BOOL",
+        "nullable": false
+      },
+      "created_by": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "file_obj": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "sha256": {
+        "type": "VARCHAR(64)",
+        "nullable": false
+      },
+      "mime": {
+        "type": "VARCHAR(64)",
+        "nullable": true
+      },
+      "carrier": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "width": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "height": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "pages": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "has_text_layer": {
+        "type": "BOOL",
+        "nullable": true
+      },
+      "storage_path": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "ocr_routing": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "enabled": {
+        "type": "BOOL",
+        "nullable": false
+      },
+      "min_images": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "workers": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "model": {
+        "type": "VARCHAR(32)",
+        "nullable": false
+      },
+      "endpoint": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "api_key": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "note": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "updated_by": {
+        "type": "VARCHAR(64)",
+        "nullable": true
+      },
+      "updated_at": {
+        "type": "DATETIME",
+        "nullable": true
+      }
+    },
+    "rule": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "rule_code": {
+        "type": "VARCHAR(32)",
+        "nullable": false
+      },
+      "version": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "category": {
+        "type": "VARCHAR(32)",
+        "nullable": true
+      },
+      "expr": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "threshold": {
+        "type": "JSON",
+        "nullable": true
+      }
+    },
+    "staff_user": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "name": {
+        "type": "VARCHAR(64)",
+        "nullable": true
+      },
+      "role": {
+        "type": "VARCHAR(32)",
+        "nullable": false
+      },
+      "status": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "subject_decision": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "account_key": {
+        "type": "VARCHAR(128)",
+        "nullable": false
+      },
+      "subject": {
+        "type": "VARCHAR(128)",
+        "nullable": false
+      },
+      "action": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "note": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "created_by": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "template": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "bank_code": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "version": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "status": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "field_map": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "header_columns": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "sample_file_id": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "layout": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "deleted_at": {
+        "type": "DATETIME",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      },
+      "updated_at": {
+        "type": "DATETIME",
+        "nullable": true
+      }
+    },
+    "threshold_profile": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "version": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "values": {
+        "type": "JSON",
+        "nullable": false
+      },
+      "note": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "task": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "biz_no": {
+        "type": "VARCHAR(32)",
+        "nullable": false
+      },
+      "task_type": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "channel": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "file_id": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "carrier": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "template_id": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "template_version": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "field_map_override": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "status": {
+        "type": "VARCHAR(24)",
+        "nullable": false
+      },
+      "check_result": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "period_start": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "period_end": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "hits": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "failure_code": {
+        "type": "VARCHAR(24)",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      },
+      "finished_at": {
+        "type": "DATETIME",
+        "nullable": true
+      },
+      "deleted_at": {
+        "type": "DATETIME",
+        "nullable": true
+      },
+      "user_id": {
+        "type": "INTEGER",
+        "nullable": true
+      }
+    },
+    "bank_account": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "task_id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "account_no": {
+        "type": "VARCHAR(64)",
+        "nullable": true
+      },
+      "bank_name": {
+        "type": "VARCHAR(64)",
+        "nullable": true
+      },
+      "period_start": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "period_end": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "opening_balance": {
+        "type": "NUMERIC(18, 2)",
+        "nullable": true
+      },
+      "closing_balance": {
+        "type": "NUMERIC(18, 2)",
+        "nullable": true
+      }
+    },
+    "metric_value": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "task_id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "metric_code": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "metric_name": {
+        "type": "VARCHAR(64)",
+        "nullable": false
+      },
+      "value_num": {
+        "type": "NUMERIC(18, 4)",
+        "nullable": true
+      },
+      "unit": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "note": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "caliber_version": {
+        "type": "INTEGER",
+        "nullable": false
+      }
+    },
+    "report": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "task_id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "version": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "carrier": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "verdict": {
+        "type": "VARCHAR(32)",
+        "nullable": true
+      },
+      "verdict_reason": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "layers": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "limitations": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "evidence": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "materials": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "metric_set_version": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "verification": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "threshold_version": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "payload": {
+        "type": "JSON",
+        "nullable": true
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "task_file": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "task_id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "file_id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "role": {
+        "type": "VARCHAR(16)",
+        "nullable": false
+      },
+      "seq": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "nullable": false
+      }
+    },
+    "txn": {
+      "id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "task_id": {
+        "type": "INTEGER",
+        "nullable": false
+      },
+      "account_id": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "txn_date": {
+        "type": "VARCHAR(16)",
+        "nullable": true
+      },
+      "direction": {
+        "type": "VARCHAR(8)",
+        "nullable": true
+      },
+      "amount": {
+        "type": "NUMERIC(18, 2)",
+        "nullable": true
+      },
+      "balance": {
+        "type": "NUMERIC(18, 2)",
+        "nullable": true
+      },
+      "summary": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "counterparty_name": {
+        "type": "VARCHAR(255)",
+        "nullable": true
+      },
+      "page_no": {
+        "type": "INTEGER",
+        "nullable": true
+      },
+      "coord_x": {
+        "type": "NUMERIC(10, 4)",
+        "nullable": true
+      },
+      "coord_y": {
+        "type": "NUMERIC(10, 4)",
+        "nullable": true
+      },
+      "confidence": {
+        "type": "NUMERIC(5, 4)",
+        "nullable": true
+      },
+      "drop_reason": {
+        "type": "VARCHAR(64)",
+        "nullable": true
+      },
+      "extra": {
+        "type": "JSON",
+        "nullable": true
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "source": "rc_test_20261126_5f0cf915",
+  "restore": "rc_restore_20261126_5f0cf915",
+  "synthetic_only": true,
+  "complete": true,
+  "tables": 16,
+  "nullable_column_down_up": "PASS",
+  "backup_restore": {
+    "status": "PASS",
+    "rows": {
+      "app_user": 1,
+      "audit_log": 1,
+      "custom_metric": 1,
+      "file_obj": 1,
+      "ocr_routing": 1,
+      "rule": 1,
+      "staff_user": 1,
+      "subject_decision": 1,
+      "template": 1,
+      "threshold_profile": 1,
+      "task": 100,
+      "bank_account": 1,
+      "metric_value": 1,
+      "report": 1,
+      "task_file": 1,
+      "txn": 19100
+    },
+    "sha256": "8a86f04c1c08598df0e945b9f9f0115f0950e8104d79bbf8621e8ff87f995551"
+  },
+  "performance": {
+    "txn_date": {
+      "observations": 100,
+      "rows": 191,
+      "p99_ms": 1.828999986173585,
+      "selected_indexes": [
+        "ix_txn_task_date_id"
+      ],
+      "accepted": true
+    },
+    "metric_code": {
+      "observations": 100,
+      "rows": 1,
+      "p99_ms": 0.805000017862767,
+      "selected_indexes": [
+        "ix_metric_value_task_id"
+      ],
+      "accepted": true
+    },
+    "report_version": {
+      "observations": 100,
+      "rows": 1,
+      "p99_ms": 0.7482000219170004,
+      "selected_indexes": [
+        "ix_report_task_version"
+      ],
+      "accepted": true
+    }
+  }
+}
