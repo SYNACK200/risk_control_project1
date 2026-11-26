@@ -11,6 +11,7 @@ import {
 import { getErrorMessage } from '../../api/errors';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 const STAGE_LABELS: Record<string, string> = {
   QUEUED: '排队等待',
@@ -21,7 +22,7 @@ const STAGE_LABELS: Record<string, string> = {
   FAILED: '已失败 / 已取消',
 };
 
-export default function QueuePage() {
+export default function QueuePage({ embedded = false, active = true }: { embedded?: boolean; active?: boolean } = {}) {
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [jobs, setJobs] = useState<QueueJobItem[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -39,12 +40,14 @@ export default function QueuePage() {
       .catch((err) => setError(getErrorMessage(err, 'banker')));
   }, []);
 
+  // 嵌在任务中心时只有停在「队列」页签才轮询，切走即停
   useEffect(() => {
+    if (!active) return;
     load();
     if (!autoRefresh) return;
     const id = window.setInterval(load, 5000);
     return () => window.clearInterval(id);
-  }, [load, autoRefresh]);
+  }, [load, autoRefresh, active]);
 
   async function handleRetry(taskId: number) {
     setBusyId(taskId);
@@ -77,24 +80,24 @@ export default function QueuePage() {
   }
 
   return (
-    <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>任务队列监控</h1>
-          <p className="sub">实时查看排队位次、当前执行阶段与失败任务，支持一键重试或取消排队。</p>
-        </div>
-        <div className="filters">
-          <label className="inline-check" style={{ marginRight: 8 }}>
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
-            每 5 秒自动刷新
-          </label>
-          <Button size="sm" variant="ghost" onClick={load}>立即刷新</Button>
-        </div>
-      </header>
+    <div className={embedded ? undefined : 'panel wide'}>
+      <PageHeader
+        title={embedded ? undefined : '任务队列'}
+        description="队列是任务的实时视图：排队位次、当前执行阶段与失败任务，可一键重试或取消排队。"
+        actions={
+          <div className="filters">
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+              />
+              每 5 秒自动刷新
+            </label>
+            <Button size="sm" variant="ghost" onClick={load}>立即刷新</Button>
+          </div>
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}

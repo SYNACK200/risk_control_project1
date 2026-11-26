@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { getDashboard, type DashboardData } from '../../api/banker';
 import { getErrorMessage } from '../../api/errors';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 import { Bar } from '../../components/ReportCharts';
 
 /**
@@ -30,15 +31,11 @@ export default function DashboardPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>看板</h1>
-          <p className="sub">
-            当前参数版本 v{s.threshold_version}；阈值改了只影响之后的分析，历史报告按各自版本解释。
-          </p>
-        </div>
-        <Link className="btn btn-ghost" to="/bank/tasks">去任务与报告</Link>
-      </header>
+      <PageHeader
+        title="看板"
+        description={<>当前参数版本 v{s.threshold_version}；阈值改了只影响之后的分析，历史报告按各自版本解释。</>}
+        actions={<Link className="btn btn-ghost" to="/bank/tasks">去任务中心</Link>}
+      />
 
       <section className="gauge-row">
         <div className="gauge-card">

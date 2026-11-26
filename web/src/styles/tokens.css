@@ -1,0 +1,96 @@
+/*
+ * 设计令牌：只放变量，不写任何选择器规则。
+ * 页面与 app.css 只消费 var(--x)，不写裸色值。
+ *
+ * 带透明度的主色/强调色用 color-mix 从令牌现场调，
+ * 所以改主色只需要改 --c-primary 一处。
+ */
+:root {
+  color-scheme: light;
+
+  /* ---- 主色 ---- */
+  --c-primary: #2f6fed;
+  --c-primary-hover: #4a82f0;
+  --c-primary-ink: #1e40af;
+  --c-primary-weak: #eaf1ff;
+  --c-primary-line: #bfdbfe;
+
+  /* ---- 语义色：文字 / 深文字 / 亮色 / 浅底 / 浅底描边 ---- */
+  --c-ok: #0f766e;
+  --c-ok-ink: #065f46;
+  --c-ok-bright: #16a34a;
+  --c-ok-bg: #ecfdf5;
+  --c-ok-line: #a7f3d0;
+
+  --c-warn: #b45309;
+  --c-warn-ink: #92400e;
+  --c-warn-bright: #d97706;
+  --c-warn-bg: #fffbeb;
+  --c-warn-line: #fde68a;
+
+  --c-danger: #b91c1c;
+  --c-danger-ink: #991b1b;
+  --c-danger-bright: #dc2626;
+  --c-danger-bg: #fef2f2;
+  --c-danger-line: #fecaca;
+
+  /* ---- 中性 6 档（浅 → 深） ---- */
+  --c-neutral-1: #f6f8fc;
+  --c-neutral-2: #eef2f7;
+  --c-neutral-3: #e5e7eb;
+  --c-neutral-4: #94a3b8;
+  --c-neutral-5: #6b7280;
+  --c-neutral-6: #0f1f33;
+
+  --c-ink: var(--c-neutral-6);
+  --c-muted: var(--c-neutral-5);
+  --c-fill: #f1f5f9;
+  --c-line: var(--c-neutral-3);
+  --c-line-strong: #cbd5e1;
+
+  /* ---- 底与线 ---- */
+  --c-bg: #f6f8fc;
+  --c-surface: #ffffff;
+  --c-bg-soft: #fbfdff;
+
+  /* ---- 画布标注配色：表格区/单值框（紫）、表头线（橙）、单元格（红） ---- */
+  --c-accent-area: #7c3aed;
+  --c-accent-area-ink: #6d28d9;
+  --c-accent-area-weak: #f3e8ff;
+  --c-accent-single: #0f766e;
+  --c-accent-cell: #dc2626;
+  --c-focus-bg: #fff7e6;
+
+  /* ---- 登录页侧栏（深色底） ---- */
+  --c-navy-1: #12233d;
+  --c-navy-2: #1d3a63;
+  --c-navy-text: #dbe6f5;
+  --c-navy-text-soft: #c4d3e8;
+  --c-navy-muted: #8fa5c2;
+  --c-navy-accent: #5eead4;
+
+  /* ---- 间距 ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* ---- 圆角 ---- */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  /* ---- 字号 ---- */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+
+  /* ---- 阴影：卡片 / 浮层 ---- */
+  --sh-1: 0 1px 6px color-mix(in srgb, var(--c-ink) 12%, transparent);
+  --sh-2: 0 24px 60px color-mix(in srgb, var(--c-ink) 8%, transparent);
+}

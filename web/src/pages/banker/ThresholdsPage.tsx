@@ -5,6 +5,7 @@ import { getErrorMessage } from '../../api/errors';
 import { getUser } from '../../auth/store';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 /**
  * 风控参数。
@@ -105,22 +106,22 @@ export default function ThresholdsPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>风控参数</h1>
-          <p className="sub">
-            当前第 {version ?? '—'} 版，共 {defs.length} 项。改动只影响之后的分析，历史报告不重写。
-          </p>
-        </div>
-        {isAdmin ? (
-          <div className="filters">
-            {dirtyCount > 0 ? <span className="pill warn">已改 {dirtyCount} 项未保存</span> : null}
-            <Button variant="ghost" size="sm" disabled={dirtyCount === 0} onClick={() => setValues(savedValues)}>放弃修改</Button>
-            <Button variant="ghost" size="sm" onClick={() => void handleResetDefaults()}>恢复默认</Button>
-            <Button onClick={() => void save()}>保存为新版本</Button>
-          </div>
-        ) : <span className="muted small">只读（需管理员）</span>}
-      </header>
+      <PageHeader
+        title="风控参数"
+        description={<>当前第 {version ?? '—'} 版，共 {defs.length} 项。改动只影响之后的分析，历史报告不重写。</>}
+        actions={
+          isAdmin ? (
+            <div className="filters">
+              {dirtyCount > 0 ? <span className="pill warn">已改 {dirtyCount} 项未保存</span> : null}
+              <Button variant="ghost" size="sm" disabled={dirtyCount === 0} onClick={() => setValues(savedValues)}>放弃修改</Button>
+              <Button variant="ghost" size="sm" onClick={() => void handleResetDefaults()}>恢复默认</Button>
+              <Button onClick={() => void save()}>保存为新版本</Button>
+            </div>
+          ) : (
+            <span className="muted small">只读（需管理员）</span>
+          )
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {message ? <Notice tone="ok">{message}</Notice> : null}

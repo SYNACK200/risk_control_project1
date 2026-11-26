@@ -720,7 +720,7 @@ export function StepSidebar({
             </div>
           )}
           <label className="ann-field" style={{ display: 'block' }}>
-            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>这份流水属于哪家银行（必填，保存时写入模板）</span>
+            <span style={{ fontSize: 12.5, color: 'var(--c-muted)' }}>这份流水属于哪家银行（必填，保存时写入模板）</span>
             {customBankMode ? (
               <input
                 className="ann-input"

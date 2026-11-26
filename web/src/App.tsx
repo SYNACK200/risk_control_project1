@@ -60,6 +60,7 @@ export default function App() {
 
         {/* 旧地址兼容：书签不能失效 */}
         <Route path="/portal" element={<Navigate to="/" replace />} />
+        <Route path="/bank-old/*" element={<Navigate to="/bank" replace />} />
         <Route path="*" element={<ComingSoon title="页面不存在" detail="请从首页重新进入。" />} />
       </Routes>
     </Suspense>

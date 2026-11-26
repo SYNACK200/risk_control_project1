@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { listMyTasks, withdrawConsent, type BorrowerTaskItem } from '../../api/borrower';
 import { getErrorMessage } from '../../api/errors';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 function statusBadge(status: string): { label: string; cls: string } {
   switch (status) {
@@ -20,7 +21,8 @@ function statusBadge(status: string): { label: string; cls: string } {
   }
 }
 
-export default function HistoryPage() {
+/** 我的提交记录：按提交时间倒序列出每笔材料的受理进度与授权状态。 */
+export default function HistoryPage({ embedded = false, currentId }: { embedded?: boolean; currentId?: number } = {}) {
   const [items, setItems] = useState<BorrowerTaskItem[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -60,16 +62,16 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="panel">
-      <header className="panel-head">
-        <div>
-          <h1>我的提交记录</h1>
-          <p className="sub">按提交时间查看每笔材料的受理进度与授权状态；审核结论由银行侧查阅。</p>
-        </div>
-        <Link className="btn" to="/app/upload">
-          + 上传新流水
-        </Link>
-      </header>
+    <div className={embedded ? undefined : 'panel'}>
+      <PageHeader
+        title={embedded ? undefined : '我的提交记录'}
+        description="按提交时间查看每笔材料的受理进度与授权状态；审核结论由银行侧查阅。"
+        actions={
+          <Link className="btn" to="/app">
+            + 上传新流水
+          </Link>
+        }
+      />
 
       {error ? <Notice>{error}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}
@@ -96,7 +98,7 @@ export default function HistoryPage() {
             {items.map((item) => {
               const badge = statusBadge(item.status);
               return (
-                <tr key={item.id}>
+                <tr key={item.id} className={item.id === currentId ? 'active-row' : undefined}>
                   <td className="mono small">{item.biz_no}</td>
                   <td className="small muted">{item.carrier || 'PDF'}</td>
                   <td className="small muted">
@@ -112,7 +114,7 @@ export default function HistoryPage() {
                     {item.created_at ? new Date(item.created_at).toLocaleString() : '—'}
                   </td>
                   <td className="actions-cell">
-                    <Link className="link-btn" to={'/app/tasks/' + item.id}>
+                    <Link className="link-btn" to={'/app/progress/' + item.id}>
                       {item.status === 'NEED_SUPPLEMENT' ? '补充材料' : '查看进度'}
                     </Link>
                     {confirmWithdrawId === item.id ? (

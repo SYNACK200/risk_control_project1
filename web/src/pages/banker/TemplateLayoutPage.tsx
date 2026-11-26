@@ -13,6 +13,7 @@ import { PdfPageCanvas } from '../../components/PdfPageCanvas';
 import { BOX_COLORS, bankLabel, fieldLabel, fromSavedLayout } from '../../components/annotate/types';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 export default function TemplateLayoutPage() {
   const { id } = useParams();
@@ -111,23 +112,23 @@ export default function TemplateLayoutPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>
-            版式回看：{bankLabel(detail.bank_code)} ({detail.bank_code}) v{detail.version}
-          </h1>
-          <p className="sub">
+      <PageHeader
+        title={<>版式回看：{bankLabel(detail.bank_code)} ({detail.bank_code}) v{detail.version}</>}
+        description={
+          <>
             模板 #{detail.id} · {detail.sample_file_id || layoutInfo?.has_sample ? '含原始样本' : '使用示意图预览'} · 共 {pageCount} 页 ·
             当前页 {pageRegions.length} 个表格区、{pageCols.length} 列、{pageSingles.length} 个单值框
-          </p>
-        </div>
+          </>
+        }
+        actions={
         <div className="filters">
           <Button size="sm" onClick={() => navigate('/bank/annotate?templateId=' + detail.id)}>
             在画布中微调框选
           </Button>
           <Link className="btn btn-ghost" to={'/bank/templates/' + detail.id}>回到详情</Link>
         </div>
-      </header>
+        }
+      />
 
       {error && <Notice>{error}</Notice>}
 
@@ -278,7 +279,7 @@ export default function TemplateLayoutPage() {
           <img
             src={fallbackPngUrl}
             alt={`模板 #${detail.id} 版式示意图`}
-            style={{ maxWidth: '100%', height: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}
+            style={{ maxWidth: '100%', height: 'auto', border: '1px solid var(--c-line)', borderRadius: 6 }}
           />
         </div>
       ) : (

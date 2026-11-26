@@ -1,13 +1,13 @@
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import ErrorBoundary from '../../ui/ErrorBoundary';
 import { clearSession, getUser } from '../../auth/store';
+import { useLabHealth } from '../../hooks/useLabHealth';
 import TaskListPage from './TaskListPage';
-import QueuePage from './QueuePage';
 import ReportPage from './ReportPage';
 import AuditPage from './AuditPage';
 import UsersPage from './UsersPage';
 import AnnotatePage from './AnnotatePage';
-import LabPage from './LabPage';
+import FeaturesPage from './FeaturesPage';
 import ThresholdsPage from './ThresholdsPage';
 import EntitiesPage from './EntitiesPage';
 import OcrRoutingPage from './OcrRoutingPage';
@@ -15,22 +15,81 @@ import TemplatesPage from './TemplatesPage';
 import TemplateDetailPage from './TemplateDetailPage';
 import TemplateLayoutPage from './TemplateLayoutPage';
 import DashboardPage from './DashboardPage';
-import GlossaryPage from './GlossaryPage';
-import MetricDefsPage from './MetricDefsPage';
-import VerificationDefsPage from './VerificationDefsPage';
+import DefinitionsPage from './DefinitionsPage';
+import NotFoundPage from './NotFoundPage';
+
+type NavItem = { label: string; to: string; end?: boolean; admin?: boolean };
+
+/** 银行侧信息架构的唯一来源：侧栏、404 入口列表都从这里出。新增页面先在这里定归属。 */
+const NAV: { title: string; items: NavItem[] }[] = [
+  {
+    title: '受理',
+    items: [
+      { label: '看板', to: '/bank', end: true },
+      { label: '任务中心', to: '/bank/tasks' },
+      { label: '客户与账户', to: '/bank/entities' },
+    ],
+  },
+  {
+    title: '模板',
+    items: [
+      { label: '模板库', to: '/bank/templates' },
+      { label: '标注工作台', to: '/bank/annotate' },
+    ],
+  },
+  {
+    title: '口径',
+    items: [
+      { label: '口径中心', to: '/bank/definitions' },
+      { label: '风控参数', to: '/bank/thresholds' },
+    ],
+  },
+  {
+    title: '特征',
+    items: [{ label: '特征平台', to: '/bank/features' }],
+  },
+  {
+    title: '系统',
+    items: [
+      { label: 'OCR 路由', to: '/bank/ocr' },
+      { label: '操作审计', to: '/bank/audit', admin: true },
+      { label: '账号', to: '/bank/users', admin: true },
+    ],
+  },
+];
+
+/** 旧书签与旧链接的全部落点：只做重定向，不许出现 404。 */
+const LEGACY_REDIRECTS: { from: string; to: string }[] = [
+  { from: 'dashboard', to: '/bank' },
+  { from: 'queue', to: '/bank/tasks?tab=queue' },
+  { from: 'metrics', to: '/bank/definitions?tab=metric' },
+  { from: 'metric-defs', to: '/bank/definitions?tab=metric' },
+  { from: 'verifications', to: '/bank/definitions?tab=verification' },
+  { from: 'verification-defs', to: '/bank/definitions?tab=verification' },
+  { from: 'glossary', to: '/bank/definitions?tab=glossary' },
+  { from: 'lab', to: '/bank/features' },
+  { from: 'ocr-routing', to: '/bank/ocr' },
+  { from: 'import', to: '/bank/templates' },
+  { from: 'import-template', to: '/bank/templates' },
+];
 
 /**
  * 银行侧工作台。
  *
- * 侧栏按「受理与报告 / 模板 / 参数 / 系统」分组，和旧版的信息架构保持一致——
- * 客户经理的心智模型是按任务走的，不是按功能表走的。
- *
- * 所有核心银行侧页面已合入单一 SPA，并保留规范路由别名兼容旧书签。
+ * 侧栏按「受理 / 模板 / 口径 / 特征 / 系统」五组划分，归属以 docs/前端信息架构.md 为准。
  */
 export default function BankerApp() {
   const navigate = useNavigate();
   const user = getUser();
   const isAdmin = Boolean(user?.is_admin);
+  const lab = useLabHealth();
+
+  const groups = NAV.map((group) => ({
+    title: group.title,
+    items: group.items.filter((item) => !item.admin || isAdmin),
+  })).filter((group) => group.items.length > 0);
+
+  const labUp = lab.status === 'up';
 
   return (
     <div className="shell with-sider">
@@ -57,32 +116,25 @@ export default function BankerApp() {
       </header>
 
       <div className="body">
-        <nav className="sider">
-          <div className="sider-group">
-            <span className="sider-title">受理与报告</span>
-            <NavLink to="/bank" end>看板</NavLink>
-            <NavLink to="/bank/tasks">任务与报告</NavLink>
-            <NavLink to="/bank/queue">任务队列</NavLink>
+        <nav className="sider" aria-label="银行侧导航">
+          <div className="sider-groups">
+            {groups.map((group) => (
+              <div className="sider-group" key={group.title}>
+                <span className="sider-title">{group.title}</span>
+                {group.items.map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.end}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            ))}
           </div>
-          <div className="sider-group">
-            <span className="sider-title">模板</span>
-            <NavLink to="/bank/templates" end>模板库</NavLink>
-            <NavLink to="/bank/annotate">标注</NavLink>
-          </div>
-          <div className="sider-group">
-            <span className="sider-title">参数</span>
-            <NavLink to="/bank/lab">特征 Lab</NavLink>
-            <NavLink to="/bank/thresholds">风控参数</NavLink>
-            <NavLink to="/bank/entities">客户与账户</NavLink>
-            <NavLink to="/bank/ocr">OCR 路由</NavLink>
-          </div>
-          <div className="sider-group">
-            <span className="sider-title">系统</span>
-            <NavLink to="/bank/metrics">自定义口径</NavLink>
-            <NavLink to="/bank/verifications">核验口径字典</NavLink>
-            <NavLink to="/bank/glossary">口径说明</NavLink>
-            {isAdmin ? <NavLink to="/bank/audit">操作审计</NavLink> : null}
-            {isAdmin ? <NavLink to="/bank/users">账号</NavLink> : null}
+          <div
+            className="sider-foot"
+            title={labUp ? `特征服务目录版本 ${lab.version ?? '—'}` : '业务后端没有连上特征服务'}
+          >
+            <span className={'status-dot ' + (labUp ? 'ok' : lab.status === 'checking' ? '' : 'bad')} />
+            特征平台：{labUp ? '运行中' : lab.status === 'checking' ? '检测中' : '未连接'}
           </div>
         </nav>
 
@@ -91,39 +143,23 @@ export default function BankerApp() {
           <Routes>
             <Route index element={<DashboardPage />} />
             <Route path="tasks" element={<TaskListPage />} />
-            <Route path="queue" element={<QueuePage />} />
             <Route path="report/:id" element={<ReportPage />} />
             <Route path="annotate" element={<AnnotatePage />} />
             <Route path="annotate/*" element={<AnnotatePage />} />
             <Route path="templates" element={<TemplatesPage />} />
             <Route path="templates/:id" element={<TemplateDetailPage />} />
             <Route path="templates/:id/layout" element={<TemplateLayoutPage />} />
-            <Route path="lab" element={<LabPage />} />
+            <Route path="definitions" element={<DefinitionsPage />} />
             <Route path="thresholds" element={<ThresholdsPage />} />
             <Route path="entities" element={<EntitiesPage />} />
+            <Route path="features" element={<FeaturesPage />} />
             <Route path="ocr" element={<OcrRoutingPage />} />
-            <Route path="glossary" element={<GlossaryPage />} />
-            <Route path="metrics" element={<MetricDefsPage />} />
-            <Route path="verifications" element={<VerificationDefsPage />} />
             <Route path="audit" element={isAdmin ? <AuditPage /> : <Navigate to="/bank" replace />} />
             <Route path="users" element={isAdmin ? <UsersPage /> : <Navigate to="/bank" replace />} />
-            {/* 规范路由与旧书签别名兼容 */}
-            <Route path="dashboard" element={<Navigate to="/bank" replace />} />
-            <Route path="ocr-routing" element={<Navigate to="/bank/ocr" replace />} />
-            <Route path="metric-defs" element={<Navigate to="/bank/metrics" replace />} />
-            <Route path="verification-defs" element={<Navigate to="/bank/verifications" replace />} />
-            <Route path="import" element={<Navigate to="/bank/templates" replace />} />
-            <Route path="import-template" element={<Navigate to="/bank/templates" replace />} />
-            <Route
-              path="*"
-              element={
-                <div className="panel">
-                  <h1>页面不存在</h1>
-                  <p className="sub">未找到对应的工作台地址，请返回看板重新进入。</p>
-                  <button type="button" className="btn" onClick={() => navigate('/bank')}>返回看板</button>
-                </div>
-              }
-            />
+            {LEGACY_REDIRECTS.map((redirect) => (
+              <Route key={redirect.from} path={redirect.from} element={<Navigate to={redirect.to} replace />} />
+            ))}
+            <Route path="*" element={<NotFoundPage groups={groups} />} />
           </Routes>
           </ErrorBoundary>
         </main>

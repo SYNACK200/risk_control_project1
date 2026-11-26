@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listAudit, type AuditRow } from '../../api/banker';
 import { getErrorMessage } from '../../api/errors';
 import { Notice } from '../../ui/Notice';
+import { PageHeader } from '../../ui/PageHeader';
 
 export default function AuditPage() {
   const PAGE = 20;
@@ -23,11 +24,10 @@ export default function AuditPage() {
 
   return (
     <div className="panel wide">
-      <header className="panel-head">
-        <div>
-          <h1>操作审计</h1>
-          <p className="sub">只读，不可修改或删除；共 {total} 条，当前第 {page} 页。</p>
-        </div>
+      <PageHeader
+        title="操作审计"
+        description={<>只读，不可修改或删除；共 {total} 条，当前第 {page} 页。</>}
+        actions={
         <div className="filters">
           <input
             className="search"
@@ -41,7 +41,8 @@ export default function AuditPage() {
           <button type="button" className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</button>
           <button type="button" className="btn btn-ghost" disabled={page * PAGE >= total} onClick={() => setPage((p) => p + 1)}>下一页</button>
         </div>
-      </header>
+        }
+      />
       {error ? <Notice>{error}</Notice> : null}
       <div className="scroll">
         <table className="grid compact">
