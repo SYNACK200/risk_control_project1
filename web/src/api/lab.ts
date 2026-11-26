@@ -1,6 +1,29 @@
 import { request, requestBlob } from './client';
 
-/** 特征 Lab 的接口在独立服务上（8020），由 dev 代理按路径前缀分流。 */
+/**
+ * 特征平台（Lab 服务）经业务后端代理的只读入口。
+ * 前端不直连 Lab：目录与连接状态都从业务后端的兼容路径取。
+ */
+export type LabBridgeHealth = { status?: string; catalog_version?: string; db?: string };
+
+export type FeatureCatalogItem = {
+  code: string;
+  name: string;
+  unit: string;
+  version?: string;
+  description?: string;
+  category?: string;
+};
+
+export function getLabBridgeHealth(): Promise<LabBridgeHealth> {
+  return request<LabBridgeHealth>('/lab-bridge/health', { timeoutMs: 8000 });
+}
+
+export function listFeatureCatalog(): Promise<{ count?: number; items: FeatureCatalogItem[] }> {
+  return request<{ count?: number; items: FeatureCatalogItem[] }>('/features');
+}
+
+/** 标注画布用的解析调试接口：由 dev 代理按路径前缀分流到 Lab。 */
 
 export type LabOperator = {
   key: string;
